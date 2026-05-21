@@ -14,3 +14,14 @@ class FinancialCoreClient:
 
     def get_coop_balance(self, cooperative_id: int):
         return 0.0
+
+
+# Ejeshi review this page
+
+class FinancialCoreClient:
+
+    def hold_escrow(self, user_id, cooperative_id, amount):
+        print(f"[ESCROW HOLD] user={user_id} coop={cooperative_id} amount={amount}")
+
+    def release_escrow(self, cooperative_id):
+        print(f"[ESCROW RELEASE] coop={cooperative_id}")
