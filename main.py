@@ -1,6 +1,13 @@
 from fastapi import FastAPI
-from api.routes import cooperative_routes
+from app.core.config import settings
 
-app = FastAPI(title="Bushmarket Cooperative Service")
+app = FastAPI(title=settings.APP_NAME)
 
-app.include_router(cooperative_routes.router)
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok",
+        "service": settings.APP_NAME,
+        "env": settings.ENV
+    }
