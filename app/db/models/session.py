@@ -1,20 +1,23 @@
 import uuid
-from sqlalchemy import Column, TIMESTAMP, ForeignKey, String
-from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from sqlalchemy import String, DateTime, ForeignKey, Boolean, func
 from app.db.base import Base
 
 
-class UserSession(Base):
-    __tablename__ = "user_sessions"
+class Session(Base):
+    __tablename__ = "sessions"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    id = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    session_token = Column(String, unique=True, nullable=False)
+    user_id = mapped_column(String, ForeignKey("users.id"), index=True)
 
-    device_info = Column(String)
-    ip_address = Column(String)
+    session_token = mapped_column(String, unique=True, index=True)
+    refresh_token = mapped_column(String, unique=True)
 
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
-    expires_at = Column(TIMESTAMP)
+    user_agent = mapped_column(String, nullable=True)
+    ip_address = mapped_column(String, nullable=True)
+
+    is_active = mapped_column(Boolean, default=True)
+
+    expires_at = mapped_column(DateTime)
+
+    created_at = mapped_column(DateTime, server_default=func.now())
