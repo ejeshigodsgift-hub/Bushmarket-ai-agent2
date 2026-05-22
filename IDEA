@@ -134,3 +134,61 @@ If a user can sign up or sign in into the app and can create  cooperative or dec
 
     #created_at TIMESTAMP DEFAULT NOW()
 #);
+
+#Ejeshi apply on code
+
+Recommended pattern:
+Concept
+Naming
+User
+User
+Role
+UserRole
+Session
+UserSession
+Wallet
+UserWallet
+Cooperative
+Cooperative
+Membership
+CooperativeMembership
+
+
+
+Good naming — but must stay strict:
+
+Route file.   Purpose
+
+auth.py.       login/signup/logout
+
+users.py.       profile management
+
+roles.py.       admin role assignment
+
+
+
+ CORRECT ALIGNMENT (FINAL ARCHITECTURE)
+
+DB Models
+
+user.py
+role.py
+session.py
+audit_log.py
+api_key.py
+
+
+Sevices
+
+auth_service.py          → signup/login
+session_service.py       → redis session lifecycle
+permission_service.py    → role checks (RBAC)
+audit_service.py         → logs user actions
+
+
+Routes
+
+auth.py                  → login/signup/logout
+users.py                 → profile
+admin.py                 → admin actions
+agent.py                 → agent workflows
