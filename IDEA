@@ -192,3 +192,16 @@ auth.py                  → login/signup/logout
 users.py                 → profile
 admin.py                 → admin actions
 agent.py                 → agent workflows
+
+
+
+
+. Soft delete is defined but not enforced
+You have:
+Python
+deleted_at = Column(TIMESTAMP, nullable=True)
+✔ Good design
+⚠️ But you must ensure queries exclude deleted users:
+Example rule in services:
+Python
+.filter(User.deleted_at == None)
