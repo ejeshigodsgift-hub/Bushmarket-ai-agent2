@@ -1,12 +1,28 @@
-CREATE TABLE users (
-    id UUID PRIMARY KEY,
-    full_name VARCHAR(200),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    phone VARCHAR(30) UNIQUE,
-    password_hash TEXT NOT NULL,
+import uuid
+from sqlalchemy import Column, String, Boolean, TIMESTAMP
+from sqlalchemy.dialects.postgresql import UUID
+from datetime import datetime
+from app.db.base import Base
 
-    is_active BOOLEAN DEFAULT TRUE,
-    is_verified BOOLEAN DEFAULT FALSE,
 
-    created_at TIMESTAMP DEFAULT NOW()
-);
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    full_name = Column(String(200))
+    email = Column(String(255), unique=True, nullable=False)
+    phone = Column(String(30), unique=True)
+
+    password_hash = Column(String, nullable=False)
+
+    is_active = Column(Boolean, default=True)
+    is_verified = Column(Boolean, default=False)
+
+    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+
+
+
+
+
+
