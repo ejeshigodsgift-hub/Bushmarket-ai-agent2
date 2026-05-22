@@ -115,10 +115,22 @@ If you want next step, I can �⁠draw your full architecture diagram (real pro
 If a user can sign up or sign in into the app and can create  cooperative or decide to shop normally for product in the App market,  or create Market Agent account that must be approved by bushmarket admin, that deligates duties like product sourcing and other real live responsibilities to agent, what and what will I need to create in the database for that user,s ?
 
 
-If a user can sign up or sign in into the app and can create  cooperative or decide to shop normally for product in the App market,  or create Market Agent account that must be approved by bushmarket admin, that deligates duties like product sourcing and other real live responsibilities to agent, what and what will I need to create AUTHENTICATION SYSTEM (COOKIE-BASED LIKE FACEBOOK):
-Login system
-JWT or session cookies (HttpOnly secure cookies)
-Refresh token system
-Middleware auth guard
 
-Please name file placement in repo
+
+#EJESHI CREATE tabel is Useful for reference
+
+
+# DATABASE SQL Create TABLE
+
+#CREATE TABLE users (
+    #id UUID PRIMARY KEY,
+    #full_name VARCHAR(200),
+    #email VARCHAR(255) UNIQUE NOT NULL,
+    #phone VARCHAR(30) UNIQUE,
+    #password_hash TEXT NOT NULL,
+
+    #is_active BOOLEAN DEFAULT TRUE,
+    #is_verified BOOLEAN DEFAULT FALSE,
+
+    #created_at TIMESTAMP DEFAULT NOW()
+#);
