@@ -11,7 +11,7 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     full_name = Column(String(200))
-    email = Column(String(255), unique=True, nullable=False)
+    email = Column(String(255), unique=True, nullable=False, index=True)
     phone = Column(String(30), unique=True)
 
     password_hash = Column(String, nullable=False)
@@ -20,6 +20,13 @@ class User(Base):
     is_verified = Column(Boolean, default=False)
 
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
+
+    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+   
+    deleted_at = Column(TIMESTAMP, nullable=True)
+    
+    
 
 
 
