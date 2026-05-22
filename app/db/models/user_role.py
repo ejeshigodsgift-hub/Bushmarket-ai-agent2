@@ -1,11 +1,16 @@
-CREATE TABLE user_roles (
-    id UUID PRIMARY KEY,
-    user_id UUID REFERENCES users(id),
+import uuid
+from sqlalchemy import String, ForeignKey, DateTime, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.db.base import Base
 
-    role VARCHAR(50) NOT NULL,
-    -- roles: shopper | cooperative_creator | member | market_agent | admin
 
-    created_at TIMESTAMP DEFAULT NOW(),
+class Role(Base):
+    __tablename__ = "user_roles"
 
-    UNIQUE(user_id, role)
-);
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"))
+
+    role: Mapped[str] = mapped_column(String(50))
+    created_at = mapped_column(DateTime, server_default=func.now())
+
+    user = relationship("User", back_populates="roles")
