@@ -17,3 +17,21 @@ class Ledger(Base):
     status = Column(String)  # success | failed
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+# Ledger Entry
+
+class LedgerEntry(Base):
+    __tablename__ = "ledger_entries"
+
+    id = Column(Integer, primary_key=True)
+
+    user_id = Column(Integer, index=True)
+    cooperative_id = Column(Integer, index=True)
+
+    amount = Column(Float)
+    type = Column(String)  # escrow_hold, release, refund, payment
+
+    reference = Column(String)
+    status = Column(String)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
