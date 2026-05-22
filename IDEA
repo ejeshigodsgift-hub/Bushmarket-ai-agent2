@@ -106,3 +106,10 @@ Foundation → Database → Auth → Core Domain → Finance → Events → Noti
 🧠 SIMPLE SUMMARY (ONE LINE)
 👉 You first build infrastructure + database + auth, then cooperative logic, then money system, then event-driven systems, then frontend.
 If you want next step, I can �⁠draw your full architecture diagram (real production flow of Bushmarket end-to-end).
+
+
+
+
+
+
+If a user can sign up or sign in into the app and can create  cooperative or decide to shop normally for product in the App market,  or create Market Agent account that must be approved by bushmarket admin, that deligates duties like product sourcing and other real live responsibilities to agent, what and what will I need to create in the database for that user,s ?
