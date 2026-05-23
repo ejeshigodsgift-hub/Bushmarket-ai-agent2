@@ -1,9 +1,12 @@
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Request, Response, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services.auth_service import auth_service
 from app.services.rate_limit_service import RateLimitService
+from app.services.session_service import SessionService
+from app.services.audit_service import AuditService
+
 from app.core.config import settings
 from app.core.csrf import generate_csrf_token
 
@@ -11,6 +14,8 @@ from app.core.csrf import generate_csrf_token
 router = APIRouter(prefix="/auth")
 
 rate_limit_service = RateLimitService()
+session_service = SessionService()
+audit_service = AuditService()
 
 
 # =========================
@@ -28,7 +33,7 @@ def signup(payload: dict, db: Session = Depends(get_db)):
 
 
 # =========================
-# LOGIN (SECURE + RATE LIMIT + CSRF + SESSION)
+# LOGIN (FULL HYBRID SESSION)
 # =========================
 @router.post("/login")
 def login(
@@ -38,11 +43,11 @@ def login(
     db: Session = Depends(get_db)
 ):
 
-    # -------------------------
-    # 1. RATE LIMITING (anti brute force)
-    # -------------------------
     ip = request.client.host
 
+    # -------------------------
+    # RATE LIMIT
+    # -------------------------
     rate_limit_service.check_limit(
         key=f"login:{ip}",
         limit=5,
@@ -50,15 +55,17 @@ def login(
     )
 
     # -------------------------
-    # 2. META DATA (device tracking)
+    # DEVICE META
     # -------------------------
     meta = {
-        "ip": ip,
-        "user_agent": request.headers.get("user-agent")
+        "ip_address": ip,
+        "user_agent": request.headers.get("user-agent"),
+        "device_id": request.headers.get("x-device-id"),
+        "device_name": request.headers.get("x-device-name")
     }
 
     # -------------------------
-    # 3. AUTHENTICATION
+    # AUTH LOGIN
     # -------------------------
     result = auth_service.login(
         db,
@@ -68,39 +75,50 @@ def login(
     )
 
     if not result:
-        return {
-            "status": "failed",
-            "message": "Invalid credentials"
-        }
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    session = result["session"]
 
     # -------------------------
-    # 4. SET SESSION COOKIE (PRIMARY AUTH)
+    # SESSION COOKIE
     # -------------------------
     response.set_cookie(
         key=settings.COOKIE_NAME,
-        value=result["session_token"],
+        value=session.session_token,
         httponly=True,
-        secure=True,
-        samesite="lax",
-        max_age=60 * 60 * 24  # 1 day
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        max_age=settings.SESSION_EXPIRE_SECONDS
     )
 
     # -------------------------
-    # 5. CSRF TOKEN (for unsafe requests)
+    # CSRF TOKEN
     # -------------------------
     csrf_token = generate_csrf_token()
 
     response.set_cookie(
-        key="csrf_token",
+        key=settings.CSRF_COOKIE_NAME,
         value=csrf_token,
         httponly=False,
-        secure=True,
+        secure=settings.COOKIE_SECURE,
         samesite="strict"
     )
 
     # -------------------------
-    # 6. RESPONSE
+    # AUDIT LOG
     # -------------------------
+    audit_service.log(
+        db=db,
+        user_id=session.user_id,
+        action="LOGIN_SUCCESS",
+        entity_type="session",
+        entity_id=session.id,
+        metadata={
+            "ip": ip,
+            "device_id": meta.get("device_id")
+        }
+    )
+
     return {
         "user_id": result["user"].id,
         "status": "logged_in"
@@ -108,13 +126,35 @@ def login(
 
 
 # =========================
-# LOGOUT
+# LOGOUT (FULL REVOCATION)
 # =========================
 @router.post("/logout")
-def logout(response: Response):
+def logout(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db)
+):
+
+    session_token = request.cookies.get(settings.COOKIE_NAME)
+
+    if session_token:
+
+        session_service.revoke_session(
+            db=db,
+            token=session_token
+        )
+
+        audit_service.log(
+            db=db,
+            user_id="unknown",
+            action="LOGOUT",
+            entity_type="session",
+            entity_id=session_token,
+            metadata={}
+        )
 
     response.delete_cookie(settings.COOKIE_NAME)
-    response.delete_cookie("csrf_token")
+    response.delete_cookie(settings.CSRF_COOKIE_NAME)
 
     return {
         "status": "logged_out"
