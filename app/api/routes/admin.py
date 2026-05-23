@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services.agent_task_service import AgentTaskService
+from app.services.permission_service import PermissionService
+
 
 router = APIRouter(prefix="/admin")
+
+permission_service = PermissionService()
 
 
 # =========================
@@ -16,10 +20,15 @@ def admin_dashboard(request: Request):
     user = request.state.user
 
     if not user:
-        return {"error": "Unauthorized"}
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    roles = user.get("roles", [])
+
+    permission_service.validate_permission(roles, "admin_access")
 
     return {
-        "message": "Admin dashboard"
+        "message": "Admin dashboard",
+        "user_id": user.get("id")
     }
 
 
@@ -35,6 +44,14 @@ def assign_task(
 
     admin_user = request.state.user
 
+    if not admin_user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    roles = admin_user.get("roles", [])
+
+    # STRICT ADMIN VALIDATION
+    permission_service.validate_permission(roles, "*")
+
     task_service = AgentTaskService()
 
     task = task_service.create_task(
@@ -46,4 +63,7 @@ def assign_task(
         cooperative_id=payload.get("cooperative_id")
     )
 
-    return {"task_id": task.id}
+    return {
+        "task_id": task.id,
+        "status": "assigned"
+    }
