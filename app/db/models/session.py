@@ -21,11 +21,19 @@ from app.db.base import Base
 class Session(Base):
     __tablename__ = "sessions"
 
+    # =========================
+    # PRIMARY ID
+    # =========================
+
     id: Mapped[str] = mapped_column(
         String,
         primary_key=True,
         default=lambda: str(uuid.uuid4())
     )
+
+    # =========================
+    # USER RELATION
+    # =========================
 
     user_id: Mapped[str] = mapped_column(
         String,
@@ -33,6 +41,10 @@ class Session(Base):
         nullable=False,
         index=True
     )
+
+    # =========================
+    # TOKENS
+    # =========================
 
     session_token: Mapped[str] = mapped_column(
         String,
@@ -44,7 +56,23 @@ class Session(Base):
     refresh_token: Mapped[str] = mapped_column(
         String,
         unique=True,
-        nullable=False
+        nullable=False,
+        index=True
+    )
+
+    # =========================
+    # DEVICE + SECURITY
+    # =========================
+
+    device_id: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+        index=True
+    )
+
+    device_name: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True
     )
 
     user_agent: Mapped[str | None] = mapped_column(
@@ -57,16 +85,49 @@ class Session(Base):
         nullable=True
     )
 
+    # =========================
+    # SESSION STATUS
+    # =========================
+
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         default=True,
         nullable=False
     )
 
+    is_revoked: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False
+    )
+
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    # =========================
+    # SESSION LIFECYCLE
+    # =========================
+
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False
     )
+
+    refresh_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False
+    )
+
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    # =========================
+    # TIMESTAMPS
+    # =========================
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -81,7 +142,10 @@ class Session(Base):
         nullable=False
     )
 
-    # Relationship to User model
+    # =========================
+    # RELATIONSHIP
+    # =========================
+
     user = relationship(
         "User",
         backref="sessions"
