@@ -14,24 +14,15 @@ class RedisClient:
         )
 
     # =========================
-    # BASIC KV
+    # KEY-VALUE STORE
     # =========================
 
-    def set(
-        self,
-        key: str,
-        value,
-        ttl: int = None
-    ):
+    def set(self, key: str, value, ttl: int = None):
 
         if isinstance(value, (dict, list)):
             value = json.dumps(value)
 
-        self.client.set(
-            key,
-            value,
-            ex=ttl
-        )
+        self.client.set(key, value, ex=ttl)
 
     def get(self, key: str):
 
@@ -52,14 +43,10 @@ class RedisClient:
         return self.client.exists(key)
 
     # =========================
-    # PUBSUB
+    # PUBSUB EVENTS (KAFKA COMPANION LAYER)
     # =========================
 
-    def publish(
-        self,
-        channel: str,
-        message
-    ):
+    def publish(self, channel: str, message):
 
         if isinstance(message, dict):
             message = json.dumps(message)
