@@ -4,22 +4,56 @@ from fastapi import HTTPException
 class PermissionService:
 
     ROLE_PERMISSIONS = {
+
+        # =========================
+        # SYSTEM ADMIN
+        # =========================
         "admin": ["*"],
 
-        "shopper": ["shop_products"],
+        # =========================
+        # SHOPPER
+        # =========================
+        "shopper": [
+            "shop_products",
+            "view_products"
+        ],
 
-        "member": ["join_cooperative"],
+        # =========================
+        # COOPERATIVE MEMBER
+        # =========================
+        "member": [
+            "join_cooperative",
+            "view_cooperative"
+        ],
 
-        "cooperative_creator": ["create_cooperative"],
+        # =========================
+        # COOPERATIVE CREATOR
+        # =========================
+        "cooperative_creator": [
+            "create_cooperative",
+            "manage_cooperative"
+        ],
 
-        "agent": ["product_sourcing", "delivery_tasks", "tasks"]
+        # =========================
+        # AGENT (FIELD OPERATIONS)
+        # =========================
+        "agent": [
+            "product_sourcing",
+            "delivery_tasks",
+            "task_execution"
+        ]
     }
 
+    # =========================
+    # STRICT VALIDATION (RAISES ERROR)
+    # =========================
     def validate_permission(self, roles: list, action: str) -> bool:
 
         for role in roles:
+
             permissions = self.ROLE_PERMISSIONS.get(role, [])
 
+            # ADMIN OVERRIDE
             if "*" in permissions:
                 return True
 
@@ -31,9 +65,14 @@ class PermissionService:
             detail=f"Permission denied for action: {action}"
         )
 
-    # OPTIONAL helper (only if needed internally)
+    # =========================
+    # SAFE CHECK (NO THROW)
+    # =========================
     def has_permission(self, roles: list, action: str) -> bool:
+
         try:
-            return self.validate_permission(roles, action)
+            self.validate_permission(roles, action)
+            return True
+
         except HTTPException:
             return False
