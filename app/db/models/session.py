@@ -1,23 +1,88 @@
 import uuid
-from sqlalchemy import String, DateTime, ForeignKey, Boolean, func
+from datetime import datetime
+
+from sqlalchemy import (
+    String,
+    DateTime,
+    ForeignKey,
+    Boolean,
+    func,
+)
+
+from sqlalchemy.orm import (
+    Mapped,
+    mapped_column,
+    relationship,
+)
+
 from app.db.base import Base
 
 
 class Session(Base):
     __tablename__ = "sessions"
 
-    id = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String,
+        primary_key=True,
+        default=lambda: str(uuid.uuid4())
+    )
 
-    user_id = mapped_column(String, ForeignKey("users.id"), index=True)
+    user_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
 
-    session_token = mapped_column(String, unique=True, index=True)
-    refresh_token = mapped_column(String, unique=True)
+    session_token: Mapped[str] = mapped_column(
+        String,
+        unique=True,
+        nullable=False,
+        index=True
+    )
 
-    user_agent = mapped_column(String, nullable=True)
-    ip_address = mapped_column(String, nullable=True)
+    refresh_token: Mapped[str] = mapped_column(
+        String,
+        unique=True,
+        nullable=False
+    )
 
-    is_active = mapped_column(Boolean, default=True)
+    user_agent: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True
+    )
 
-    expires_at = mapped_column(DateTime)
+    ip_address: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True
+    )
 
-    created_at = mapped_column(DateTime, server_default=func.now())
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False
+    )
+
+    # Relationship to User model
+    user = relationship(
+        "User",
+        backref="sessions"
+    )
