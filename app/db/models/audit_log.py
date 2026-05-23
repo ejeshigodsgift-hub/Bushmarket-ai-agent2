@@ -14,7 +14,7 @@ class AuditLog(Base):
     entity_type = mapped_column(String(100))
     entity_id = mapped_column(String, nullable=True)
 
-    metadata = mapped_column(JSON)
+    event_adata = mapped_column(JSON)
 
     ip_address = mapped_column(String)
     created_at = mapped_column(DateTime, server_default=func.now())
