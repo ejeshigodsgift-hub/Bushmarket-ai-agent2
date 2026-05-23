@@ -1,19 +1,39 @@
-from app.db.models.role import Role
+from fastapi import HTTPException
 
 
 class PermissionService:
 
-    ROLE_MAP = {
+    ROLE_PERMISSIONS = {
         "admin": ["*"],
-        "agent": ["sourcing", "delivery", "tasks"],
-        "cooperative_creator": ["create_cooperative"],
+
+        "shopper": ["shop_products"],
+
         "member": ["join_cooperative"],
-        "shopper": ["shop"]
+
+        "cooperative_creator": ["create_cooperative"],
+
+        "agent": ["product_sourcing", "delivery_tasks", "tasks"]
     }
 
-    def has_permission(self, roles: list, action: str):
+    def validate_permission(self, roles: list, action: str) -> bool:
+
         for role in roles:
-            permissions = self.ROLE_MAP.get(role, [])
-            if "*" in permissions or action in permissions:
+            permissions = self.ROLE_PERMISSIONS.get(role, [])
+
+            if "*" in permissions:
                 return True
-        return False
+
+            if action in permissions:
+                return True
+
+        raise HTTPException(
+            status_code=403,
+            detail=f"Permission denied for action: {action}"
+        )
+
+    # OPTIONAL helper (only if needed internally)
+    def has_permission(self, roles: list, action: str) -> bool:
+        try:
+            return self.validate_permission(roles, action)
+        except HTTPException:
+            return False
