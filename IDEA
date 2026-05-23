@@ -205,3 +205,17 @@ deleted_at = Column(TIMESTAMP, nullable=True)
 Example rule in services:
 Python
 .filter(User.deleted_at == None)
+
+
+
+
+ simple clear answer  
+  
+
+  
+  
+ 1. Cooperative Creation Features ;  existing  Users on the Bushmarke system or app can create cooperative from the user dashboard. For User to successfully create a  cooperative, creator must select a specific product  or   products  but not exceeding three products per single cooperative creation , The creator must also define: quantity of product targeted, Number membership target. Life span of cooperative not exceeding 60 days, target product(s) contribution amount per member funding target. Creator cannot duplicate the same cooperative for the same product(s) repeatedly (anti-spam rule) Cooperative has a lifecycle status: draft → active → funded → purchasing → closed 👥 2. Membership System Users  join by paying a mandatory contribution fee Membership is only activated after successful payment  Users can only join once per cooperative Membership states: pending active failed refunded Optional rule: user can join multiple cooperatives
+
+
+
+
