@@ -352,6 +352,8 @@ Not hard corded
 
 4. QUANTITY MEASUREMENT SYSTEM
 
+Should not be hard coded, admin should have control over the measurements unit
+
 This unit must be displayed whenever any grains product is selected
  per bag
 per paint bucket
