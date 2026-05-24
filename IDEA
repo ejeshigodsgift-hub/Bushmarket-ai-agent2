@@ -388,3 +388,114 @@ CART STRUCTURE
 
 
 🧩 10. COOPERATIVE INTEGRATION READY
+
+
+
+
+
+
+
+What do you think
+
+
+
+1️⃣ Marketplace Product System
+
+User taps Rice
+    ↓
+Sees market locations
+    ↓
+Selects Mile12 market
+    ↓
+Sees:
+   - quantity units
+   - pricing
+   - market fee
+   - stock
+    ↓
+Adds to cart
+    ↓
+Bushmarket fee applied  per product added to cart.,  If product remove from cart fee is also cancel
+    ↓
+Checkout
+
+
+
+
+1. PRODUCT CATEGORIES
+
+Dry Agro Products
+Rice
+Beans
+Garri
+Maize
+Millet
+Soybean
+Groundnut
+Dry pepper
+
+🌿 Spices
+Ginger
+Garlic
+Turmeric
+Cloves
+🛢️ Liquid Products
+Palm oil
+Groundnut oil
+Honey
+
+🥔 Tubers
+Yam
+Potatoes
+Irish
+
+
+2. MARKET LOCATION LAYER (VERY IMPORTANT):
+
+Not hard corded
+
+
+3. PRODUCT MARKET LISTINGS
+
+
+4. QUANTITY MEASUREMENT SYSTEM
+
+Should not be hard coded, admin should have control over the measurements unit
+
+This unit must be displayed whenever any grains product is selected
+ per bag
+per paint bucket
+per kg
+
+
+per liter
+per gallon
+per keg
+
+Yam
+per tuber
+per bundle
+
+Honey
+per liter
+
+
+
+5. MARKET FEE SYSTEM
+Gate_fee
+
+🧩 6. DELIVERY ESTIMATION
+
+
+7. MARKET AGENT INTEGRATION
+
+LIVE PRICE VOLATILITY
+
+ SYSTEM
+CART STRUCTURE
+
+
+🧩 10. COOPERATIVE INTEGRATION READY
+
+YOU NEED THIS LAYER
+Suppliers / Vendors 
