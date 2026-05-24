@@ -525,3 +525,71 @@ pricing
 market_listing
 cooperative
 market_listing
+
+
+
+
+
+Building Rules:
+
+1. you must align cooperative core codes where applicable with existing bushmarket codes, example config, db model, Services, security PostgreSQL-based identity (users, roles, sessions, audit logs, API keys), Redis session caching, RBAC permission control, secure authentication middleware, and audit/security tracking, all aligned across services and routes. production grades you implemented in the  codes you build.
+
+
+
+2  follow bushmarket   CORRECT ALIGNMENT  where applicable:
+
+DB Models
+
+user.py
+role.py
+session.py
+audit_log.py
+api_key.py
+
+Sevices
+
+auth_service.py          → signup/login
+session_service.py       → redis session lifecycle
+permission_service.py    → role checks (RBAC)
+audit_service.py         → logs user actions
+
+Routes
+
+auth.py                  → login/signup/logout
+users.py                 → profile
+admin.py                 → admin actions
+agent.py                 → agent workflows
+
+And  also Consistency
+
+3. name file so I can easy place in repo.
+
+
+4. you must list out names of  files that are extended, or corrected  or replace by the newly created codes
+
+
+5. make sure there are no function conflicts, the codes must align with each other.
+
+
+
+app summary:
+
+If a user can sign up or sign in into the app and can create  cooperative or decide to shop normally for product in the App market,  or create Market Agent account that must be approved by bushmarket admin, that deligates duties like product sourcing and other real live responsibilities to agent, that is what Bushmarket app look like
+
+BushMarket cooperative Definition:
+
+Bushmarket cooperative is a group of buyers who are interested in a product or products and pull money together to buy.
+
+Use Bushmarket features  to
+BUILD  the cooperative CORE SYSTEM:
+DB + rules + service logic  of  BushMarket Cooperative System.
+
+🧩 1. Cooperative Creation Features ;  existing  Users on the Bushmarke system or app can create cooperative from the user dashboard. For User to successfully create a  cooperative, creator must select a specific product  or   products  but not exceeding three products per single cooperative, the creator must also define: quantity of product targeted, Number membership target. Life span of cooperative not exceeding 60 days, target product(s) contribution amount per member funding target. Creator cannot duplicate the same cooperative for the same product(s) repeatedly (anti-spam rule) Cooperative has a lifecycle status: draft → active → funded → purchasing → closed
+👥 2. Membership System Users  join by paying a mandatory contribution fee Membership is only activated after successful payment  Users can only join once per cooperative Membership states: pending active failed refunded, user can join multiple cooperatives
+💰 3. Cooperative Pooling Wallet (Core Feature) All member contributions go into a shared pooled wallet Wallet is fully integrated with financial_core Wallet supports: contribution deposits escrow holding bulk purchase funding refund handling Real-time pool balance tracking 📊 4. Cooperative Dashboard Displays real-time cooperative progress: total members active members target amount current pool balance percentage completion remaining amount estimated purchase date Shows member contribution history Shows cooperative status (active, funded, purchasing, closed) 🛒 5. Bulk Purchasing System Cooperative can trigger bulk buying when target is reached System aggregates pooled funds to purchase in bulk Bulk buying enables: discounted pricing reduced logistics cost optimized supply chain ordering 🧾 6. Order & Purchase Integration Cooperative can place group orders Orders are linked to: cooperative_id pooled wallet System ensures: no purchase without sufficient funds no duplicate bulk orders 🔐 7. Escrow Protection System All cooperative funds are held in escrow Funds are NOT released until: delivery is confirmed OR auto-confirmation timeout expires OR admin dispute resolution Prevents fraud and failed delivery issues 📦 8. Product & Marketplace Integration other Users and cooperative members can still shop normally  (non-cooperative mode) in the Marketplace
+
+Marketplace remains open (cooperative is optional, not required)
+
+🤖 9. AI Notification System AI sends real-time updates to members: membership success confirmation funding progress updates (25%, 50%, 100%) bulk purchase initiation alerts delivery status updates Smart alerts based on cooperative activity events 📡 10. Event-Driven System System triggers based on events: member joined contribution received funding milestone reached purchase executed delivery completed Events power: notifications dashboard updates financial logs 💳 11. Financial Core Integration All cooperative transactions flow through financial_core Unified ledger system tracks: contributions escrow holds bulk purchase spending Full transaction traceability per user 🔁 12.  Failure Handling: If cooperative fails to reach target or If cooperative is slow: System automatically: merges similar cooperatives, or redirects new users into it, if that fails, system initiate PARTIAL PROCUREMENT SYSTEM (VERY IMPORTANT.
+
+⏳ 13. Cooperative Lifecycle Management Each cooperative follows a lifecycle: Created Funding Funded Purchasing Delivered Close/Expired Lifecycle determines available actions 🧠 14. Smart Matching System :  System can group users automatically based on: product interest location buying power AI suggests cooperatives to users 🚚 15. Delivery Coordination Bulk delivery system for cooperative purchases Can split deliveries per member Tracks delivery status per cooperative order 🛡️ 16. Security & Fraud Prevention Prevent duplicate memberships Wallet balance validation Rate limiting on cooperative creation Anti multi-account contribution checks Admin override for disputes only 📈 17. Analytics & Reporting Cooperative performance reports: success rate average funding time member activity purchase savings achieved Financial transparency reports 🔔 18. Membership Notifications Alerts for: successful join failed payment contribution updates cooperative milestones purchase execution delivery completion
