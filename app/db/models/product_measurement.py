@@ -2,6 +2,8 @@ import uuid
 
 from sqlalchemy import (
     String,
+    Boolean,
+    Float,
     ForeignKey,
     DateTime,
     func
@@ -29,13 +31,41 @@ class ProductMeasurement(Base):
     product_id: Mapped[str] = mapped_column(
         String,
         ForeignKey("products.id"),
-        nullable=False
+        nullable=False,
+        index=True
     )
 
     measurement_unit_id: Mapped[str] = mapped_column(
         String,
         ForeignKey("measurement_units.id"),
-        nullable=False
+        nullable=False,
+        index=True
+    )
+
+    # optional conversion
+    equivalent_kg: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True
+    )
+
+    cooperative_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True
+    )
+
+    cart_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True
+    )
+
+    is_default: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False
+    )
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True
     )
 
     created_at: Mapped[DateTime] = mapped_column(
@@ -49,5 +79,6 @@ class ProductMeasurement(Base):
     )
 
     measurement_unit = relationship(
-        "MeasurementUnit"
+        "MeasurementUnit",
+        back_populates="product_measurements"
     )
