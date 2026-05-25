@@ -864,3 +864,34 @@ Bushmarket is:
 Plain text
 trusted market intelligence platform
 So trust verification becomes one of the MOST important systems in the entire architecture.
+
+
+
+
+
+
+
+You do NOT yet have:
+1. Volatility rules table
+No DB table like:
+normal threshold
+suspicious threshold
+critical threshold
+per product rules
+per market rules
+2. Admin configuration service
+No service like:
+volatility_rule_service.py
+3. Admin API endpoints
+No routes like:
+update thresholds
+view system risk rules
+override market sensitivity
+4. Runtime rule engine
+System is currently:
+hard-coded logic (conceptually)
+
+
+
+
+
