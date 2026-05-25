@@ -682,3 +682,185 @@ Payment + Wallet System
 Cooperative Marketplace Integration
 AI Shopping Assistant
 Analytics + History System
+
+
+
+
+
+
+
+✅ Listing Verification & Trust System
+Because in Bushmarket:
+agents control market data
+users trust Bushmarket prices
+cooperatives may spend millions
+fake listings can destroy trust
+So listing verification becomes CRITICAL.
+REAL LIVE AUTHENTICATION FLOW
+1. Agent Identity Verification
+Before agent can list products:
+Admin verifies:
+NIN/BVN
+face verification
+phone verification
+market association
+physical address
+market location assignment
+Stored in:
+Plain text
+market_agent_profiles
+Agent becomes:
+Plain text
+verified_agent = True
+Only verified agents can create listings.
+2. Market Assignment Restriction
+Agent only lists inside assigned markets.
+Example:
+Plain text
+Agent A → Mile12 only
+Agent B → Oil Mill only
+System validates:
+Python
+if listing.market_id not in agent.allowed_markets:
+    deny()
+Prevents fake remote listings.
+3. GPS / Location Validation
+When agent updates listing:
+capture GPS
+compare with market GPS
+Example:
+Plain text
+Agent claims Mile12
+GPS shows Abuja
+→ suspicious
+System flags fraud risk.
+4. Listing Evidence Upload
+Agent uploads:
+market photos
+short videos
+voice notes
+receipt snapshots
+Attached to listing update.
+Example:
+Plain text
+rice_stock_video.mp4
+This becomes:
+Plain text
+listing evidence
+5. Multi-Agent Price Consensus
+Bushmarket should NEVER trust one agent alone.
+Example:
+3 agents in Mile12 report:
+Plain text
+Rice:
+₦84k
+₦85k
+₦84.5k
+One agent reports:
+Plain text
+₦65k
+System detects anomaly:
+Plain text
+possible fraud
+6. Volatility Engine
+Your existing:
+Plain text
+listing_volatility_logs
+already supports this.
+System checks:
+abnormal price swings
+impossible stock jumps
+suspicious updates frequency
+Example:
+Plain text
+Rice:
+₦85k → ₦40k in 2 mins
+Auto freeze listing.
+7. AI Fraud Detection Layer
+Future AI checks:
+unusual pricing
+repeated fake stock
+agent behavior patterns
+fake market activity
+suspicious cooperative manipulation
+AI risk score:
+Plain text
+safe
+warning
+critical
+8. Admin Moderation Queue
+Suspicious listings go to:
+Plain text
+admin review queue
+Admin can:
+approve
+reject
+suspend agent
+freeze market
+request verification
+9. Reputation System
+Every agent gets:
+trust score
+accuracy score
+successful sourcing count
+complaint count
+delivery success rate
+Bad agents lose:
+Plain text
+listing privileges
+10. Audit Trail
+Your existing:
+Plain text
+audit_logs
+already supports this.
+Every action logged:
+price update
+stock change
+listing creation
+market change
+deletion
+So Bushmarket can investigate fraud later.
+11. Inventory Verification
+Before checkout:
+system may require live reconfirmation
+especially for large cooperative orders
+Example:
+Plain text
+Confirm 500 bags still available
+Agent must reconfirm.
+12. Cooperative Protection
+Large cooperative purchases:
+escrow locked
+supplier validation
+delivery confirmation
+admin override only if dispute
+This protects pooled funds.
+WHAT YOU STILL NEED TO BUILD
+You now need future systems for:
+New DB Models
+Plain text
+listing_verifications.py
+agent_reputation.py
+listing_evidence.py
+fraud_alerts.py
+market_presence_logs.py
+New Services
+Plain text
+listing_verification_service.py
+fraud_detection_service.py
+agent_reputation_service.py
+gps_validation_service.py
+New Integrations
+Plain text
+GPS validation
+image/video upload
+AI anomaly detection
+face verification
+FINAL REALITY
+Bushmarket is NOT:
+Plain text
+seller uploads products
+Bushmarket is:
+Plain text
+trusted market intelligence platform
+So trust verification becomes one of the MOST important systems in the entire architecture.
