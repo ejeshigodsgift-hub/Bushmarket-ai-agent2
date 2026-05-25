@@ -1130,9 +1130,43 @@ auth_service.py          → signup/login session_service.py       → redis ses
    
 Routes  
    
-auth.py                  → login/signup/logout users.py                 → profile admin.py                 → admin actions agent.py
+auth.py                  → login/signup/logout users.py                 → profile admin.py                 → admin
+ actions agent.py
 
 
 
+
+
+
+
+
+It is consistent with:
+
+authentication/session system
+RBAC permission system
+admin listing routes
+agent verification flow
+listing validation service
+PostgreSQL ORM structure
+audit logging flow
+Redis/Kafka marketplace flow
+cooperative integration readiness
+cart/inventory structure
+marketplace location system
+measurement unit system
+Naming consistency is also correct:
+market_id
+product_id
+measurement_unit_id
+assigned_agent_id
+available_stock
+unit_price
+status
+These align with:
+listing_validation_service.py
+market_listing_service.py
+admin_listings.py
+agent workflow logic
+future cart/order systems
 
 
