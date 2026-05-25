@@ -1135,13 +1135,7 @@ auth.py                  → login/signup/logout users.py                 → pr
  actions agent.py
 
 
-
-
-
-
-
-
-It is consistent with:
+ consistent with:
 
 authentication/session system
 RBAC permission system
