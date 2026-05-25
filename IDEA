@@ -895,3 +895,244 @@ hard-coded logic (conceptually)
 
 
 
+
+
+Use the Bushmarket marketplace  information  written  below to BUILD real live production  
+   
+✅ Listing Verification & Trust System
+Because in Bushmarket:
+agents control market data
+users trust Bushmarket prices
+cooperatives may spend millions
+fake listings can destroy trust
+So listing verification becomes CRITICAL.
+REAL LIVE AUTHENTICATION FLOW
+1. Agent Identity Verification
+Before agent can list products:
+Admin verifies:
+NIN/BVN
+face verification
+phone verification
+market association
+physical address
+market location assignment
+Stored in:
+Plain text
+market_agent_profiles
+Agent becomes:
+Plain text
+verified_agent = True
+Only verified agents can create listings.
+2. Market Assignment Restriction
+Agent only lists inside assigned markets.
+Example:
+Plain text
+Agent A → Mile12 only
+Agent B → Oil Mill only
+System validates:
+Python
+if listing.market_id not in agent.allowed_markets:
+    deny()
+Prevents fake remote listings.
+3. GPS / Location Validation
+When agent updates listing:
+capture GPS
+compare with market GPS
+Example:
+Plain text
+Agent claims Mile12
+GPS shows Abuja
+→ suspicious
+System flags fraud risk.
+4. Listing Evidence Upload
+Agent uploads:
+market photos
+short videos
+voice notes
+receipt snapshots
+Attached to listing update.
+Example:
+Plain text
+rice_stock_video.mp4
+This becomes:
+Plain text
+listing evidence
+5. Multi-Agent Price Consensus
+Bushmarket should NEVER trust one agent alone.
+Example:
+3 agents in Mile12 report:
+Plain text
+Rice:
+₦84k
+₦85k
+₦84.5k
+One agent reports:
+Plain text
+₦65k
+System detects anomaly:
+Plain text
+possible fraud
+6. Volatility Engine
+Your existing:
+Plain text
+listing_volatility_logs
+already supports this.
+System checks:
+abnormal price swings
+impossible stock jumps
+suspicious updates frequency
+Example:
+Plain text
+Rice:
+₦85k → ₦40k in 2 mins
+Auto freeze listing.
+7. AI Fraud Detection Layer
+Future AI checks:
+unusual pricing
+repeated fake stock
+agent behavior patterns
+fake market activity
+suspicious cooperative manipulation
+AI risk score:
+Plain text
+safe
+warning
+critical
+8. Admin Moderation Queue
+Suspicious listings go to:
+Plain text
+admin review queue
+Admin can:
+approve
+reject
+suspend agent
+freeze market
+request verification
+9. Reputation System
+Every agent gets:
+trust score
+accuracy score
+successful sourcing count
+complaint count
+delivery success rate
+Bad agents lose:
+Plain text
+listing privileges
+10. Audit Trail
+Your existing:
+Plain text
+audit_logs
+already supports this.
+Every action logged:
+price update
+stock change
+listing creation
+market change
+deletion
+So Bushmarket can investigate fraud later.
+11. Inventory Verification
+Before checkout:
+system may require live reconfirmation
+especially for large cooperative orders
+ 
+   
+A) Bushmarket Marketplace context:  
+   
+Marketplace will not allow sellers to Access  buyers,  sellers can only  interact through bushmarket agent. Users  only do the following on app:  
+   
+   
+1. Shop in Marketplace manually or engage Ai shopping asistant through natural conversation like chatgpt to shop, Ai does the search brings user request then user manually does the add to cart . 2)  Create cooperative for bulk buying,  
+   
+  
+   
+3). Apply  for agent account which is ultimately dependent on bushmarket admin'd approval. no direct contact with seller, sellers do not sign-up on the app, they only interact real live with bushmarket agents.  
+   
+B) 1️⃣ Marketplace Product System  flow  
+   
+User Sees  product categories  (Grains, tubers, Spices, fluid and liquid )  gallery, shop with Ai prompt and  join live Market  prompts ' taps on  a product  category (Grain) in product categories gallery  or  directly search product  by name in search bar ' taps a product  image in   category of interest ,  Grain (Rice Beans,  Garri, Maize, Millet, Soybean Groundnut) for instance , Sees market locations ↓ Selects location ( example Mile12 market ) ↓ Sees:  
+   
+product variant  
+   
+quantity units  
+   
+pricing  
+   
+market fee  
+   
+stock ↓ Adds to cart ↓ Bushmarket fee applied  per product added to cart.,  If product remove from cart fee is also cancel ↓ Checkout  
+   
+Or  
+   
+User taps shop with Ai , Sees chat space with chatgpt resemblance. ' Types or use audio to communicate intension ' Ai processes user information and reponse accordingly, giving preference to  market related conversation. ' User add product from ai  to cart or may reject product. ' Bushmarket fee applied  per product added to cart.,  If product remove from cart fee is also cancel  
+   
+Or  
+   
+user taps live market , Sees market locations , Select location to join stream " Can interact with bushmarket agent to get market situation.  
+   
+C). PRODUCTs  
+   
+Rice Beans Garri Maize Millet Soybean Groundnut Dry pepper  
+   
+🌿 Spices Ginger Garlic Turmeric Cloves 🛢️ Liquid Products Palm oil Groundnut oil Honey  
+   
+🥔 Tubers Yam Potatoes Irish  
+   
+MARKET LOCATION LAYER (VERY IMPORTANT):  
+   
+Not hard corded  
+   
+QUANTITY MEASUREMENT SYSTEM  
+   
+Should not be hard coded, admin should have control over the measurements unit  
+   
+This unit must be displayed whenever any grains product is selected per bag per paint bucket per kg  
+   
+per liter per gallon per keg  
+   
+Yam per tuber per bundle  
+   
+Honey per liter  
+   
+MARKET FEE SYSTEM Gate_fee (not hard coded)  
+   
+🧩 6. DELIVERY ESTIMATION  
+   
+   
+1. MARKET AGENT INTEGRATION  
+   
+  
+   
+LIVE PRICE VOLATILITY  
+   
+SYSTEM CART STRUCTURE  
+   
+🧩 10. COOPERATIVE INTEGRATION READY  
+   
+INVENTORY OWNERSHIP MODEL  
+   
+history  
+   
+Rules to guide you:  
+   
+Align marketplace with existing Bushmarket codes  where applicable.  
+   
+Only hardcore where applicable  
+   
+Consider CORRECT ALIGNMENT where applicable  
+   
+DB Models  
+   
+user.py role.py session.py audit_log.py api_key.py  
+   
+Sevices  
+   
+auth_service.py          → signup/login session_service.py       → redis session lifecycle permission_service.py    → role checks (RBAC) audit_service.py         → logs user actions  
+   
+Routes  
+   
+auth.py                  → login/signup/logout users.py                 → profile admin.py                 → admin actions agent.py
+
+
+
+
+
