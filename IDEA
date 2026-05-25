@@ -654,3 +654,13 @@ freeze market
 reject fraudulent updates
 rollback bad prices
 suspend agents
+
+# Above who should update implementation is in
+
+market_product_price.py
+market_pricing_service.py
+agent_task_service.py
+agent.py
+admin.py
+permission_service.py
+audit_service.py
