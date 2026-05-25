@@ -22,10 +22,11 @@ def get_market_listings(
     db: Session = Depends(get_db)
 ):
 
-    return market_listing_service.get_market_listings(
-        db,
-        market_id
-    )
+    return db.query(MarketProductListing).filter(
+        MarketProductListing.market_id == market_id,
+        MarketProductListing.status == "active",
+        MarketProductListing.is_active == True
+    ).all()
 
 
 # =========================
