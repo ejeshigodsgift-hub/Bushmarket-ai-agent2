@@ -1,10 +1,8 @@
 from sqlalchemy.orm import Session
 
-from app.db.models.market_listing import MarketListing
-
+from app.db.models.market_product_listing import MarketProductListing
 from app.services.listing_validation_service import ListingValidationService
 from app.services.audit_service import AuditService
-
 from app.integrations.kafka_client import event_bus
 from app.integrations.redis_client import redis_client
 
@@ -12,12 +10,11 @@ from app.integrations.redis_client import redis_client
 class MarketListingService:
 
     def __init__(self):
-
         self.validator = ListingValidationService()
         self.audit = AuditService()
 
     # =========================
-    # CREATE LISTING (AGENT ONLY - SAFE VERSION)
+    # CREATE LISTING (AGENT ONLY)
     # =========================
     def create_listing(
         self,
@@ -27,11 +24,22 @@ class MarketListingService:
         ip: str
     ):
 
-        # 🔐 AGENT GATE
-        if not agent.is_verified_agent or agent.status != "approved":
+        # 🔐 AGENT GATE (STRICT)
+        if not getattr(agent, "is_verified_agent", False) or agent.status != "approved":
             raise Exception("Agent not authorized")
 
-        listing = MarketListing(
+        # 🧠 VALIDATION GATE
+        self.validator.validate_listing_dependencies(
+            db=db,
+            agent_id=agent.id,
+            market_id=data["market_id"],
+            product_id=data["product_id"],
+            unit_id=data["measurement_unit_id"],
+            price=data["unit_price"],
+            stock=data["available_stock"]
+        )
+
+        listing = MarketProductListing(
             product_id=data["product_id"],
             market_id=data["market_id"],
             measurement_unit_id=data["measurement_unit_id"],
@@ -45,7 +53,7 @@ class MarketListingService:
         db.commit()
         db.refresh(listing)
 
-        # 🔐 AUDIT LOG
+        # 📜 AUDIT
         self.audit.log(
             db=db,
             user_id=agent.user_id,
@@ -56,7 +64,7 @@ class MarketListingService:
             ip=ip
         )
 
-        # 📡 EVENT BUS (Kafka)
+        # 📡 EVENT STREAM
         event_bus.publish("listing.created", {
             "listing_id": listing.id,
             "agent_id": agent.id
@@ -65,22 +73,21 @@ class MarketListingService:
         return listing
 
     # =========================
-    # PUBLISH LISTING (ADMIN / AGENT APPROVED FLOW)
+    # PUBLISH LISTING
     # =========================
     def publish_listing(self, db: Session, listing_id: str):
 
-        listing = db.query(MarketListing).filter(
-            MarketListing.id == listing_id
+        listing = db.query(MarketProductListing).filter(
+            MarketProductListing.id == listing_id
         ).first()
 
-        # 🧠 FULL VALIDATION GATE
-        self.validator.validate_listing(listing)
+        if not listing:
+            raise Exception("Listing not found")
 
         listing.status = "active"
 
         db.commit()
 
-        # ⚡ REALTIME MARKET UPDATE
         redis_client.publish("market.listing.active", {
             "listing_id": listing.id,
             "market_id": listing.market_id
@@ -89,46 +96,31 @@ class MarketListingService:
         return listing
 
     # =========================
-    # GET MARKET LISTINGS (APP + AI + LIVE MARKET)
+    # GET LISTINGS
     # =========================
-    def get_market_listings(
-        self,
-        db: Session,
-        market_id: str
-    ):
+    def get_market_listings(self, db: Session, market_id: str):
 
-        return db.query(MarketListing).filter(
-            MarketListing.market_id == market_id,
-            MarketListing.status == "active"
+        return db.query(MarketProductListing).filter(
+            MarketProductListing.market_id == market_id,
+            MarketProductListing.status == "active"
         ).all()
 
     # =========================
-    # SEARCH MARKET LISTINGS (AI SEARCH ENGINE)
+    # SEARCH LISTINGS
     # =========================
-    def search_market_listings(
-        self,
-        db: Session,
-        keyword: str
-    ):
+    def search_market_listings(self, db: Session, keyword: str):
 
-        return db.query(MarketListing).filter(
-            MarketListing.status == "active",
-            MarketListing.product_id.ilike(f"%{keyword}%")
+        return db.query(MarketProductListing).filter(
+            MarketProductListing.status == "active",
+            MarketProductListing.title.ilike(f"%{keyword}%")
         ).all()
 
     # =========================
-    # MARKET FEED (AI + LIVE MARKET VIEW)
+    # MARKET FEED
     # =========================
-    def get_market_feed(
-        self,
-        db: Session,
-        market_id: str
-    ):
+    def get_market_feed(self, db: Session, market_id: str):
 
-        listings = db.query(MarketListing).filter(
-            MarketListing.market_id == market_id,
-            MarketListing.status == "active"
-        ).all()
+        listings = self.get_market_listings(db, market_id)
 
         return [
             {
@@ -141,3 +133,6 @@ class MarketListingService:
             }
             for l in listings
         ]
+
+
+market_listing_service = MarketListingService()
