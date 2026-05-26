@@ -1,18 +1,18 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     String,
-    Float,
-    Boolean,
     DateTime,
     ForeignKey,
-    func,
+    Numeric,
+    func
 )
 
 from sqlalchemy.orm import (
     Mapped,
     mapped_column,
-    relationship,
+    relationship
 )
 
 from app.db.base import Base
@@ -34,35 +34,43 @@ class Cart(Base):
         index=True
     )
 
-    subtotal: Mapped[float] = mapped_column(
-        Float,
+    status: Mapped[str] = mapped_column(
+        String(30),
+        default="active",
+        nullable=False
+    )
+    # active
+    # checked_out
+    # abandoned
+
+    subtotal_amount: Mapped[float] = mapped_column(
+        Numeric(12, 2),
         default=0
     )
 
-    total_gate_fee: Mapped[float] = mapped_column(
-        Float,
+    total_market_fee: Mapped[float] = mapped_column(
+        Numeric(12, 2),
         default=0
     )
 
     total_amount: Mapped[float] = mapped_column(
-        Float,
+        Numeric(12, 2),
         default=0
     )
 
-    is_checked_out: Mapped[bool] = mapped_column(
-        Boolean,
-        default=False
-    )
-
-    created_at: Mapped[str] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now()
     )
 
-    updated_at: Mapped[str] = mapped_column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now()
     )
 
-    user = relationship("User")
+    items = relationship(
+        "CartItem",
+        back_populates="cart",
+        cascade="all, delete-orphan"
+    )
