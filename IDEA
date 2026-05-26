@@ -1162,6 +1162,22 @@ listing_validation_service.py
 market_listing_service.py
 admin_listings.py
 agent workflow logic
-future cart/order systems
 
 
+
+
+#THINGS TO DEFINE BEFORE CART SYSTEM BUILD
+
+
+2. CORE SERVICE LAYER ORDER
+listing_validation_service
+cart_service
+market_listing_service
+volatility_rule_service
+agent_verification_service
+
+3. THEN ONLY:
+cooperative system
+AI assistant
+analytics
+delivery
