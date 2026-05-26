@@ -1,109 +1,42 @@
-from fastapi import (
-    APIRouter,
-    Depends,
-    Request,
-    HTTPException
-)
-
+from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.services.market_listing_service import market_listing_service
+from app.services.permission_service import PermissionService
+from app.services.audit_service import AuditService
+from app.services.listing_validation_service import listing_validation_service
+from app.services.agent_verification_service import agent_verification_service
 
-from app.services.market_listing_service import (
-    market_listing_service
-)
-
-from app.services.permission_service import (
-    PermissionService
-)
-
-from app.services.agent_verification_service import (
-    agent_verification_service
-)
-
-from app.services.listing_validation_service import (
-    listing_validation_service
-)
-
-from app.services.listing_guard_service import (
-    listing_guard_service
-)
-
-from app.services.audit_service import (
-    AuditService
-)
-
-router = APIRouter(
-    prefix="/admin/listings",
-    tags=["Admin Listings"]
-)
+router = APIRouter(prefix="/admin/listings")
 
 permission_service = PermissionService()
-
 audit_service = AuditService()
 
 
 # =========================
-# CREATE MARKET LISTING
+# CREATE LISTING (ADMIN/AGENT ONLY)
 # =========================
 @router.post("/")
-def create_listing(
-    payload: dict,
-    request: Request,
-    db: Session = Depends(get_db)
-):
+def create_listing(payload: dict, request: Request, db: Session = Depends(get_db)):
 
-    # =========================
-    # AUTHENTICATION CHECK
-    # =========================
     user = request.state.user
 
     if not user:
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized"
-        )
+        raise HTTPException(401, "Unauthorized")
 
-    user_id = user.get("id")
-
+    user_id = user["id"]
     roles = user.get("roles", [])
 
-    # =========================
-    # GLOBAL RBAC VALIDATION
-    # =========================
-    permission_service.validate_permission(
-        roles,
-        "*"
-    )
+    # RBAC
+    permission_service.validate_permission(roles, "create_listing")
 
-    # =========================
-    # LISTING ACCESS CONTROL
-    # =========================
-    listing_guard_service.enforce_listing_permission(
-        roles
-    )
-
-    # =========================
-    # VERIFIED AGENT CHECK
-    # =========================
+    # AGENT VALIDATION
     if "agent" in roles:
+        if not agent_verification_service.is_valid_agent(db, user_id):
+            raise HTTPException(403, "Agent not approved")
 
-        is_valid_agent = (
-            agent_verification_service.is_valid_agent(
-                db=db,
-                user_id=user_id
-            )
-        )
-
-        if not is_valid_agent:
-            raise HTTPException(
-                status_code=403,
-                detail="Agent not approved"
-            )
-
-    # =========================
     # LISTING VALIDATION
-    # =========================
     listing_validation_service.validate_listing_dependencies(
         db=db,
         agent_id=user_id,
@@ -114,42 +47,27 @@ def create_listing(
         stock=payload["available_stock"]
     )
 
-    # =========================
-    # CREATE MARKET LISTING
-    # =========================
-    listing_payload = {
-        **payload,
-        "assigned_agent_id": user_id,
-        "status": "active"
-    }
-
+    # CREATE
     listing = market_listing_service.create_listing(
         db=db,
-        payload=listing_payload
-    )
-
-    # =========================
-    # AUDIT LOGGING
-    # =========================
-    audit_service.log(
-        db=db,
-        user_id=user_id,
-        action="create_market_listing",
-        entity_type="market_listing",
-        entity_id=listing.id,
-        metadata={
-            "market_id": payload["market_id"],
-            "product_id": payload["product_id"],
-            "measurement_unit_id": payload["measurement_unit_id"]
-        },
+        agent=user,
+        data=payload,
         ip=request.client.host
     )
 
-    # =========================
-    # RESPONSE
-    # =========================
+    # AUDIT
+    audit_service.log(
+        db=db,
+        user_id=user_id,
+        action="create_listing",
+        entity_type="market_listing",
+        entity_id=listing.id,
+        metadata=payload,
+        ip=request.client.host
+    )
+
     return {
         "status": "success",
         "listing_id": listing.id,
-        "listing_status": listing.status
+        "status_state": listing.status
     }
