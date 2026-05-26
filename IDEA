@@ -1181,3 +1181,134 @@ cooperative system
 AI assistant
 analytics
 delivery
+
+
+
+
+
+
+
+
+Yes — some already exist conceptually in your Bushmarket architecture discussions, but most are not yet fully implemented production-grade services.
+Status Check
+Service
+Exists?
+Status
+listing_validation_service.py
+Partially
+Needs full production implementation
+cart_service.py
+No
+Must be built
+market_listing_service.py
+Partially
+Needs full runtime implementation
+volatility_rule_service.py
+Partially
+Needs real runtime engine
+agent_verification_service.py
+Partially
+Needs centralized production implementation
+1. listing_validation_service.py
+Current status
+You already referenced:
+listing validation
+stock checks
+market checks
+agent checks
+But not fully built yet.
+Missing production features
+centralized reusable validation engine
+PostgreSQL transactional validation
+Redis cached listing validation
+cart validation integration
+cooperative validation
+Kafka event emission
+volatility validation hook
+2. cart_service.py
+Current status
+Does NOT exist yet.
+You only designed:
+cart
+cart_item
+No actual runtime service yet.
+Must handle
+add/remove items
+stock reservation
+fee calculations
+Redis cart cache
+listing validation
+cart totals
+cooperative-ready grouping
+checkout preparation
+3. market_listing_service.py
+Current status
+Partially exists conceptually.
+You already discussed:
+listing ownership
+listing active status
+stock validation
+price validation
+agent restrictions
+But not implemented as centralized service.
+Missing production features
+transactional listing updates
+Kafka publishing
+Redis cache invalidation
+listing synchronization
+volatility integration
+admin override flow
+audit logging integration
+4. volatility_rule_service.py
+Current status
+Partially exists conceptually.
+You already designed:
+volatility_rule table
+threshold logic
+market sensitivity
+But runtime rule engine does not exist yet.
+Missing production features
+live threshold evaluation
+Redis caching
+abnormal market detection
+dynamic rule overrides
+market-level rule resolution
+product-level rule resolution
+Kafka alerts
+5. agent_verification_service.py
+Current status
+Partially exists conceptually.
+You already implemented:
+agent approval ideas
+RBAC
+admin workflow
+But verification is still scattered.
+Missing production features
+centralized verification service
+reusable verification checks
+suspension handling
+listing access control
+live market access validation
+admin override logic
+Redis verification cache
+Kafka verification events
+Final Conclusion
+Fully existing production services:
+None yet.
+Partially designed:
+listing_validation_service.py
+market_listing_service.py
+volatility_rule_service.py
+agent_verification_service.py
+Completely missing:
+cart_service.py
+So the next correct step is building these 5 services properly before:
+checkout
+payment
+delivery
+AI shopping
+cooperative procurement
+escrow
+inventory sync
+analytics
+supplier integrations
