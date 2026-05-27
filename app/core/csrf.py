@@ -1,18 +1,40 @@
+import hmac
 import secrets
-from fastapi import Request, HTTPException
+import hashlib
+
+from fastapi import (
+    Request,
+    HTTPException
+)
+
+from app.core.config import settings
 
 
-CSRF_HEADER = "x-csrf-token"
+CSRF_HEADER = settings.CSRF_HEADER_NAME
 
 
 def generate_csrf_token():
-    return secrets.token_urlsafe(32)
+
+    raw = secrets.token_urlsafe(32)
+
+    signature = hmac.new(
+        settings.SECRET_KEY.encode(),
+        raw.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    return f"{raw}.{signature}"
 
 
 def validate_csrf(request: Request):
 
-    csrf_cookie = request.cookies.get("csrf_token")
-    csrf_header = request.headers.get(CSRF_HEADER)
+    csrf_cookie = request.cookies.get(
+        settings.CSRF_COOKIE_NAME
+    )
+
+    csrf_header = request.headers.get(
+        CSRF_HEADER
+    )
 
     if not csrf_cookie or not csrf_header:
         raise HTTPException(
@@ -24,4 +46,29 @@ def validate_csrf(request: Request):
         raise HTTPException(
             status_code=403,
             detail="Invalid CSRF token"
+        )
+
+    try:
+
+        raw, signature = csrf_cookie.split(".")
+
+    except ValueError:
+        raise HTTPException(
+            status_code=403,
+            detail="Malformed CSRF token"
+        )
+
+    expected = hmac.new(
+        settings.SECRET_KEY.encode(),
+        raw.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(
+        signature,
+        expected
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid CSRF signature"
         )
