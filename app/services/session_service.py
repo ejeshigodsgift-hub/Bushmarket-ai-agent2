@@ -1,18 +1,15 @@
-import json
-import secrets
-
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
 
 from app.db.models.session import Session
 from app.integrations.redis_client import redis_client
-
 from app.core.security import (
     generate_session_token,
-    generate_refresh_token
+    generate_refresh_token,
+    generate_device_fingerprint
 )
-
 from app.core.config import settings
 
 
@@ -23,19 +20,22 @@ class SessionService:
     # =========================
     # CREATE SESSION
     # =========================
-
-    def create_session(
+    async def create_session(
         self,
-        db: DBSession,
+        db: AsyncSession,
         user_id: str,
         meta: dict
     ):
 
-        session_token = generate_session_token()
-
-        refresh_token = generate_refresh_token()
-
         now = datetime.now(timezone.utc)
+
+        fingerprint = generate_device_fingerprint(
+            meta.get("ip_address"),
+            meta.get("user_agent")
+        )
+
+        session_token = generate_session_token()
+        refresh_token = generate_refresh_token()
 
         expires_at = now + timedelta(
             seconds=settings.SESSION_EXPIRE_SECONDS
@@ -45,49 +45,37 @@ class SessionService:
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
         )
 
-        # =========================
-        # POSTGRESQL PERSISTENCE
-        # =========================
-
         db_session = Session(
             user_id=user_id,
-
             session_token=session_token,
             refresh_token=refresh_token,
 
             device_id=meta.get("device_id"),
             device_name=meta.get("device_name"),
-
             user_agent=meta.get("user_agent"),
             ip_address=meta.get("ip_address"),
+
+            fingerprint=fingerprint,
 
             expires_at=expires_at,
             refresh_expires_at=refresh_expires_at,
 
             is_active=True,
             is_revoked=False,
-
             last_seen_at=now
         )
 
         db.add(db_session)
-        db.commit()
-        db.refresh(db_session)
+        await db.commit()
+        await db.refresh(db_session)
 
-        # =========================
-        # REDIS CACHE
-        # =========================
-
-        session_data = {
-            "session_id": db_session.id,
-            "user_id": user_id,
-            "device_id": db_session.device_id,
-            "is_revoked": False
-        }
-
-        redis_client.set(
+        await redis_client.set(
             self.SESSION_PREFIX + session_token,
-            session_data,
+            {
+                "session_id": db_session.id,
+                "user_id": user_id,
+                "fingerprint": fingerprint
+            },
             ttl=settings.SESSION_EXPIRE_SECONDS
         )
 
@@ -96,44 +84,26 @@ class SessionService:
     # =========================
     # GET SESSION
     # =========================
-
-    def get_session(
+    async def get_session(
         self,
-        db: DBSession,
-        token: str
+        db: AsyncSession,
+        token: str,
+        ip: str = None,
+        user_agent: str = None
     ):
 
-        # =========================
-        # REDIS FAST LOOKUP
-        # =========================
-
-        cached = redis_client.get(
+        cached = await redis_client.get(
             self.SESSION_PREFIX + token
         )
 
-        if cached:
-
-            db_session = db.query(Session).filter(
-                Session.session_token == token,
-                Session.is_active == True,
-                Session.is_revoked == False
-            ).first()
-
-            if db_session:
-                db_session.last_seen_at = datetime.now(timezone.utc)
-                db.commit()
-
-            return db_session
-
-        # =========================
-        # POSTGRESQL FALLBACK
-        # =========================
-
-        db_session = db.query(Session).filter(
+        stmt = select(Session).where(
             Session.session_token == token,
             Session.is_active == True,
             Session.is_revoked == False
-        ).first()
+        )
+
+        result = await db.execute(stmt)
+        db_session = result.scalar_one_or_none()
 
         if not db_session:
             return None
@@ -142,37 +112,56 @@ class SessionService:
             return None
 
         # =========================
-        # REHYDRATE REDIS
+        # FINGERPRINT CHECK
         # =========================
+        if ip and user_agent:
 
-        redis_client.set(
-            self.SESSION_PREFIX + token,
-            {
-                "session_id": db_session.id,
-                "user_id": db_session.user_id
-            },
-            ttl=settings.SESSION_EXPIRE_SECONDS
-        )
+            current = generate_device_fingerprint(
+                ip,
+                user_agent
+            )
 
+            if db_session.fingerprint and current != db_session.fingerprint:
+                return None
+
+        # =========================
+        # UPDATE LAST SEEN
+        # =========================
         db_session.last_seen_at = datetime.now(timezone.utc)
+        await db.commit()
 
-        db.commit()
+        # =========================
+        # REHYDRATE CACHE IF MISS
+        # =========================
+        if not cached:
+
+            await redis_client.set(
+                self.SESSION_PREFIX + token,
+                {
+                    "session_id": db_session.id,
+                    "user_id": db_session.user_id,
+                    "fingerprint": db_session.fingerprint
+                },
+                ttl=settings.SESSION_EXPIRE_SECONDS
+            )
 
         return db_session
 
     # =========================
     # DESTROY SESSION
     # =========================
-
-    def destroy_session(
+    async def destroy_session(
         self,
-        db: DBSession,
+        db: AsyncSession,
         token: str
     ):
 
-        db_session = db.query(Session).filter(
+        stmt = select(Session).where(
             Session.session_token == token
-        ).first()
+        )
+
+        result = await db.execute(stmt)
+        db_session = result.scalar_one_or_none()
 
         if not db_session:
             return
@@ -181,78 +170,73 @@ class SessionService:
         db_session.is_revoked = True
         db_session.revoked_at = datetime.now(timezone.utc)
 
-        db.commit()
+        await db.commit()
 
-        redis_client.delete(
+        await redis_client.delete(
             self.SESSION_PREFIX + token
         )
 
     # =========================
     # REFRESH SESSION
     # =========================
-
-    def refresh_session(
+    async def refresh_session(
         self,
-        db: DBSession,
+        db: AsyncSession,
         refresh_token: str
     ):
 
-        existing = db.query(Session).filter(
+        stmt = select(Session).where(
             Session.refresh_token == refresh_token,
             Session.is_active == True,
             Session.is_revoked == False
-        ).first()
+        )
 
-        if not existing:
+        result = await db.execute(stmt)
+        session = result.scalar_one_or_none()
+
+        if not session:
             return None
 
-        if existing.refresh_expires_at < datetime.now(timezone.utc):
+        if session.refresh_expires_at < datetime.now(timezone.utc):
             return None
-
-        # =========================
-        # ROTATE TOKENS
-        # =========================
 
         new_session_token = generate_session_token()
-
         new_refresh_token = generate_refresh_token()
 
-        existing.session_token = new_session_token
-        existing.refresh_token = new_refresh_token
+        session.session_token = new_session_token
+        session.refresh_token = new_refresh_token
+        session.last_seen_at = datetime.now(timezone.utc)
 
-        existing.last_seen_at = datetime.now(timezone.utc)
+        await db.commit()
 
-        db.commit()
-
-        # =========================
-        # REDIS CACHE UPDATE
-        # =========================
-
-        redis_client.set(
+        await redis_client.set(
             self.SESSION_PREFIX + new_session_token,
             {
-                "session_id": existing.id,
-                "user_id": existing.user_id
+                "session_id": session.id,
+                "user_id": session.user_id,
+                "fingerprint": session.fingerprint
             },
             ttl=settings.SESSION_EXPIRE_SECONDS
         )
 
-        return existing
+        return session
 
     # =========================
-    # REVOKE ALL USER SESSIONS
+    # REVOKE USER SESSIONS
     # =========================
-
-    def revoke_user_sessions(
+    async def revoke_user_sessions(
         self,
-        db: DBSession,
+        db: AsyncSession,
         user_id: str
     ):
 
-        sessions = db.query(Session).filter(
+        stmt = select(Session).where(
             Session.user_id == user_id,
             Session.is_active == True
-        ).all()
+        )
+
+        result = await db.execute(stmt)
+        sessions = result.scalars().all()
 
         for session in sessions:
 
@@ -260,8 +244,8 @@ class SessionService:
             session.is_revoked = True
             session.revoked_at = datetime.now(timezone.utc)
 
-            redis_client.delete(
+            await redis_client.delete(
                 self.SESSION_PREFIX + session.session_token
             )
 
-        db.commit()
+        await db.commit()
