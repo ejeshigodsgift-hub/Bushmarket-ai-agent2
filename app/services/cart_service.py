@@ -10,6 +10,8 @@ from app.services.cart_pricing_service import CartPricingService
 
 from app.integrations.redis_client import redis_client
 from app.integrations.kafka_client import event_bus
+from app.services.inventory_service import InventoryService
+from app.db.models.inventory import Inventory
 
 
 class CartService:
