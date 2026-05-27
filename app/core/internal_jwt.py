@@ -1,20 +1,33 @@
+import uuid
 import jwt
 
 from datetime import (
     datetime,
-    timedelta
+    timedelta,
+    timezone
 )
+
+from fastapi import HTTPException
 
 from app.core.config import settings
 
 
-def generate_internal_token(
-    service_name: str
-):
+ISSUER = "bushmarket-auth"
+AUDIENCE = "internal-services"
+
+
+def generate_internal_token(service_name: str):
+
+    now = datetime.now(timezone.utc)
 
     payload = {
-        "service": service_name,
-        "exp": datetime.utcnow() + timedelta(
+        "jti": str(uuid.uuid4()),
+        "iss": ISSUER,
+        "aud": AUDIENCE,
+        "sub": service_name,
+        "iat": now,
+        "nbf": now,
+        "exp": now + timedelta(
             minutes=settings.INTERNAL_JWT_EXPIRE_MINUTES
         )
     }
@@ -26,12 +39,20 @@ def generate_internal_token(
     )
 
 
-def verify_internal_token(
-    token: str
-):
+def verify_internal_token(token: str):
 
-    return jwt.decode(
-        token,
-        settings.SECRET_KEY,
-        algorithms=[settings.JWT_ALGORITHM]
-    )
+    try:
+
+        return jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            audience=AUDIENCE,
+            issuer=ISSUER,
+            algorithms=[settings.JWT_ALGORITHM]
+        )
+
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid internal token"
+        )
