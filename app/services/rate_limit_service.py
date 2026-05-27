@@ -1,28 +1,27 @@
 from fastapi import HTTPException
+
 from app.integrations.redis_client import redis_client
 
 
 class RateLimitService:
 
-    def check_limit(
+    async def check_limit(
         self,
         key: str,
         limit: int = 5,
         ttl: int = 60
     ):
 
-        existing = redis_client.get(key)
+        current = await redis_client.client.incr(key)
 
-        count = int(existing) if existing else 0
+        if current == 1:
+            await redis_client.client.expire(
+                key,
+                ttl
+            )
 
-        if count >= limit:
+        if current > limit:
             raise HTTPException(
                 status_code=429,
                 detail="Too many attempts"
             )
-
-        redis_client.set(
-            key,
-            str(count + 1),
-            ttl=ttl
-        )
