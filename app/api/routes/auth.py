@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Request, Response, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.services.auth_service import auth_service
@@ -22,9 +22,12 @@ audit_service = AuditService()
 # SIGNUP
 # =========================
 @router.post("/signup")
-def signup(payload: dict, db: Session = Depends(get_db)):
+async def signup(
+    payload: dict,
+    db: AsyncSession = Depends(get_db)
+):
 
-    user = auth_service.signup(db, payload)
+    user = await auth_service.signup(db, payload)
 
     return {
         "user_id": user.id,
@@ -33,14 +36,14 @@ def signup(payload: dict, db: Session = Depends(get_db)):
 
 
 # =========================
-# LOGIN (FULL HYBRID SESSION)
+# LOGIN
 # =========================
 @router.post("/login")
-def login(
+async def login(
     payload: dict,
     request: Request,
     response: Response,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
 
     ip = request.client.host
@@ -48,7 +51,7 @@ def login(
     # -------------------------
     # RATE LIMIT
     # -------------------------
-    rate_limit_service.check_limit(
+    await rate_limit_service.check_limit(
         key=f"login:{ip}",
         limit=5,
         ttl=60
@@ -67,7 +70,7 @@ def login(
     # -------------------------
     # AUTH LOGIN
     # -------------------------
-    result = auth_service.login(
+    result = await auth_service.login(
         db,
         payload["email"],
         payload["password"],
@@ -79,15 +82,17 @@ def login(
 
     session = result["session"]
 
-    # -------------------------
-    # SESSION COOKIE
-    # -------------------------
+    # =========================
+    # SESSION COOKIE (FIXED PART)
+    # =========================
     response.set_cookie(
         key=settings.COOKIE_NAME,
         value=session.session_token,
+
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite=settings.COOKIE_SAMESITE,
+
         max_age=settings.SESSION_EXPIRE_SECONDS
     )
 
@@ -99,6 +104,7 @@ def login(
     response.set_cookie(
         key=settings.CSRF_COOKIE_NAME,
         value=csrf_token,
+
         httponly=False,
         secure=settings.COOKIE_SECURE,
         samesite="strict"
@@ -107,7 +113,7 @@ def login(
     # -------------------------
     # AUDIT LOG
     # -------------------------
-    audit_service.log(
+    await audit_service.log(
         db=db,
         user_id=session.user_id,
         action="LOGIN_SUCCESS",
@@ -126,25 +132,25 @@ def login(
 
 
 # =========================
-# LOGOUT (FULL REVOCATION)
+# LOGOUT
 # =========================
 @router.post("/logout")
-def logout(
+async def logout(
     request: Request,
     response: Response,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
 
     session_token = request.cookies.get(settings.COOKIE_NAME)
 
     if session_token:
 
-        session_service.revoke_session(
+        await session_service.revoke_session(
             db=db,
             token=session_token
         )
 
-        audit_service.log(
+        await audit_service.log(
             db=db,
             user_id="unknown",
             action="LOGOUT",
