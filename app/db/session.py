@@ -1,38 +1,32 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    AsyncSession,
+    async_sessionmaker
+)
+
 from app.core.config import settings
 
 
-engine = create_engine(
-    settings.DATABASE_URL,
+engine = create_async_engine(
+    settings.DATABASE_URL.replace(
+        "postgresql+psycopg2",
+        "postgresql+asyncpg"
+    ),
 
     pool_pre_ping=True,
-    pool_size=20,
-    max_overflow=40,
-
-    pool_recycle=1800,
-
-    future=True
+    pool_size=50,
+    max_overflow=100,
+    pool_recycle=1800
 )
 
-SessionLocal = sessionmaker(
+SessionLocal = async_sessionmaker(
     bind=engine,
-    autoflush=False,
-    autocommit=False,
+    class_=AsyncSession,
+    expire_on_commit=False
 )
 
 
-def get_db():
+async def get_db():
 
-    db = SessionLocal()
-
-    try:
+    async with SessionLocal() as db:
         yield db
-        db.commit()
-
-    except Exception:
-        db.rollback()
-        raise
-
-    finally:
-        db.close()
