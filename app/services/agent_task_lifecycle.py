@@ -10,16 +10,10 @@ from app.db.models.agent_task import AgentTask
 from app.integrations.kafka_client import event_bus
 from app.integrations.redis_client import redis_client
 
+from app.core.task_state_machine import TaskStateMachine
+
 
 class AgentTaskLifecycle:
-
-    VALID_STATUS = [
-        "assigned",
-        "in_progress",
-        "completed",
-        "failed",
-        "cancelled"
-    ]
 
     async def update_status(
         self,
@@ -27,9 +21,6 @@ class AgentTaskLifecycle:
         task_id: str,
         new_status: str
     ):
-
-        if new_status not in self.VALID_STATUS:
-            raise HTTPException(400, "Invalid status")
 
         result = await db.execute(
             select(AgentTask).where(
@@ -42,9 +33,21 @@ class AgentTaskLifecycle:
         if not task:
             raise HTTPException(404, "Task not found")
 
+        # =========================================
+        # STATE VALIDATION
+        # =========================================
+
+        TaskStateMachine.validate_transition(
+            task.status,
+            new_status
+        )
+
         task.status = new_status
 
-        if new_status in ["completed", "failed"]:
+        if new_status in [
+            "completed",
+            "failed"
+        ]:
             task.completed_at = datetime.now(
                 timezone.utc
             )
@@ -53,7 +56,9 @@ class AgentTaskLifecycle:
 
         await redis_client.set(
             f"agent_task:{task.id}",
-            {"status": new_status},
+            {
+                "status": task.status
+            },
             ttl=86400
         )
 
@@ -61,7 +66,7 @@ class AgentTaskLifecycle:
             "agent.task.updated",
             {
                 "task_id": task.id,
-                "status": new_status
+                "status": task.status
             }
         )
 
