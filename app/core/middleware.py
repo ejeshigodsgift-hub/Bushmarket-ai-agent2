@@ -14,25 +14,29 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
 
         request.state.user = None
+        request.state.db = getattr(request.state, "db", None)
 
         session_token = request.cookies.get(
             settings.COOKIE_NAME
         )
 
-        # DB must be injected before this middleware in app setup
-        db = getattr(request.state, "db", None)
+        db = request.state.db
 
+        # If DB not injected, continue safely (no crash)
         if session_token and db:
 
             ip = request.client.host
             user_agent = request.headers.get("user-agent")
 
-            db_session = await self.session_service.get_session(
-                db=db,
-                token=session_token,
-                ip=ip,
-                user_agent=user_agent
-            )
+            try:
+                db_session = await self.session_service.get_session(
+                    db=db,
+                    token=session_token,
+                    ip=ip,
+                    user_agent=user_agent
+                )
+            except Exception:
+                db_session = None
 
             if db_session:
 
