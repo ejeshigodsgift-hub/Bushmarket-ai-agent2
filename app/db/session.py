@@ -15,8 +15,8 @@ DATABASE_URL = settings.DATABASE_URL.replace(
 engine = create_async_engine(
     DATABASE_URL,
     pool_pre_ping=True,
-    pool_size=10,        # FIXED (safe production baseline)
-    max_overflow=20,     # FIXED
+    pool_size=10,
+    max_overflow=20,
     pool_recycle=1800,
     echo=False
 )
@@ -29,7 +29,16 @@ SessionLocal = async_sessionmaker(
 )
 
 
+# =========================================
+# SAFE DB DEPENDENCY
+# =========================================
 async def get_db():
 
     async with SessionLocal() as db:
-        yield db
+        try:
+            yield db
+        except Exception:
+            await db.rollback()
+            raise
+        finally:
+            await db.close()
