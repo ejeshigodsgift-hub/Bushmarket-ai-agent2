@@ -1,41 +1,85 @@
 import uuid
-from sqlalchemy import String, DateTime, JSON, ForeignKey, func
+
+from datetime import datetime
+
+from sqlalchemy import (
+    String,
+    JSON,
+    DateTime,
+    ForeignKey,
+    func
+)
+
+from sqlalchemy.orm import (
+    Mapped,
+    mapped_column
+)
+
 from app.db.base import Base
 
 
 class AgentTask(Base):
+
     __tablename__ = "agent_tasks"
 
-    id = Base.metadata.tables.get("id", None)  # placeholder safety removed in real migration
+    id: Mapped[str] = mapped_column(
+        String,
+        primary_key=True,
+        default=lambda: str(uuid.uuid4())
+    )
 
-    id = Base.metadata.tables.get("id") or None  # ignored fallback
+    agent_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
 
-    id = Base.metadata.tables.get("id")
+    admin_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("users.id"),
+        nullable=False
+    )
 
-# (REAL IMPLEMENTATION BELOW)
+    cooperative_id: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True
+    )
 
-from sqlalchemy.orm import Mapped, mapped_column
+    task_type: Mapped[str] = mapped_column(
+        String,
+        nullable=False
+    )
 
+    status: Mapped[str] = mapped_column(
+        String,
+        default="assigned",
+        nullable=False,
+        index=True
+    )
 
-class AgentTask(Base):
-    __tablename__ = "agent_tasks"
+    payload: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=False
+    )
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    retry_count: Mapped[int] = mapped_column(
+        default=0,
+        nullable=False
+    )
 
-    agent_id: Mapped[str] = mapped_column(String, index=True)
-    admin_id: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now()
+    )
 
-    cooperative_id: Mapped[str] = mapped_column(String, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now()
+    )
 
-    task_type: Mapped[str] = mapped_column(String)  # validated enum in service layer
-
-    status: Mapped[str] = mapped_column(String, default="assigned")
-    # assigned → in_progress → completed → failed → cancelled
-
-    payload: Mapped[dict] = mapped_column(JSON)
-
-    retry_count: Mapped[int] = mapped_column(default=0)
-
-    created_at = mapped_column(DateTime, server_default=func.now())
-    updated_at = mapped_column(DateTime, onupdate=func.now())
-    completed_at = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
