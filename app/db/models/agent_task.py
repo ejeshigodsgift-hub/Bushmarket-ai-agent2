@@ -30,7 +30,7 @@ class AgentTask(Base):
 
     agent_id: Mapped[str] = mapped_column(
         String,
-        ForeignKey("market_agent.id", ondelete="CASCADE"),
+        ForeignKey("market_agents.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
