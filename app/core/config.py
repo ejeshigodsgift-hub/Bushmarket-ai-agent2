@@ -1,152 +1,82 @@
-from pydantic import BaseModel
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
+from pydantic_settings import BaseSettings
 
 
-class Settings(BaseModel):
+class Settings(BaseSettings):
 
     # =========================================
     # APP
     # =========================================
-    APP_NAME: str = os.getenv(
-        "APP_NAME",
-        "Bushmarket"
-    )
+    APP_NAME: str = "Bushmarket"
 
-    ENV: str = os.getenv(
-        "ENV",
-        "development"
-    )
+    ENV: str = "development"
 
     # =========================================
     # DATABASE
     # =========================================
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL"
-    )
+    DATABASE_URL: str
 
     # =========================================
     # REDIS
     # =========================================
-    REDIS_URL: str = os.getenv(
-        "REDIS_URL"
-    )
+    REDIS_URL: str
 
     # =========================================
     # KAFKA
     # =========================================
-    KAFKA_BOOTSTRAP_SERVERS: str = os.getenv(
-        "KAFKA_BOOTSTRAP_SERVERS"
-    )
+    KAFKA_BOOTSTRAP_SERVERS: str
 
-    KAFKA_CLIENT_ID: str = os.getenv(
-        "KAFKA_CLIENT_ID"
-    )
+    KAFKA_CLIENT_ID: str
 
-    KAFKA_AGENT_TASK_TOPIC: str = os.getenv(
-        "KAFKA_AGENT_TASK_TOPIC",
+    KAFKA_AGENT_TASK_TOPIC: str = (
         "agent.task.created"
     )
 
-    KAFKA_AGENT_UPDATE_TOPIC: str = os.getenv(
-        "KAFKA_AGENT_UPDATE_TOPIC",
+    KAFKA_AGENT_UPDATE_TOPIC: str = (
         "agent.task.updated"
     )
 
     # =========================================
     # SECURITY
     # =========================================
-    SECRET_KEY: str = os.getenv(
-        "SECRET_KEY"
-    )
+    SECRET_KEY: str
 
-    JWT_ALGORITHM: str = os.getenv(
-        "JWT_ALGORITHM",
-        "HS256"
-    )
+    JWT_ALGORITHM: str = "HS256"
 
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
-        os.getenv(
-            "ACCESS_TOKEN_EXPIRE_MINUTES",
-            60
-        )
-    )
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
-    REFRESH_TOKEN_EXPIRE_DAYS: int = int(
-        os.getenv(
-            "REFRESH_TOKEN_EXPIRE_DAYS",
-            7
-        )
-    )
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    INTERNAL_JWT_EXPIRE_MINUTES: int = int(
-        os.getenv(
-            "INTERNAL_JWT_EXPIRE_MINUTES",
-            30
-        )
-    )
+    INTERNAL_JWT_EXPIRE_MINUTES: int = 30
 
     # =========================================
     # SESSION
     # =========================================
-    SESSION_EXPIRE_SECONDS: int = int(
-        os.getenv(
-            "SESSION_EXPIRE_SECONDS",
-            86400
-        )
-    )
+    SESSION_EXPIRE_SECONDS: int = 86400
 
-    COOKIE_NAME: str = os.getenv(
-        "COOKIE_NAME",
-        "bushmarket_session"
-    )
+    COOKIE_NAME: str = "bushmarket_session"
 
-    COOKIE_SECURE: bool = os.getenv(
-        "COOKIE_SECURE",
-        "true"
-    ).lower() == "true"
+    COOKIE_SECURE: bool = False
 
-    COOKIE_SAMESITE: str = os.getenv(
-        "COOKIE_SAMESITE",
-        "lax"
-    )
+    COOKIE_SAMESITE: str = "lax"
 
-    COOKIE_DOMAIN: str = os.getenv(
-        "COOKIE_DOMAIN",
-        "localhost"
-    )
+    COOKIE_DOMAIN: str = "localhost"
 
     # =========================================
     # CSRF
     # =========================================
-    CSRF_COOKIE_NAME: str = os.getenv(
-        "CSRF_COOKIE_NAME",
-        "csrf_token"
-    )
+    CSRF_COOKIE_NAME: str = "csrf_token"
 
-    CSRF_HEADER_NAME: str = os.getenv(
-        "CSRF_HEADER_NAME",
-        "x-csrf-token"
-    )
+    CSRF_HEADER_NAME: str = "x-csrf-token"
 
     # =========================================
     # RATE LIMITING
     # =========================================
-    LOGIN_RATE_LIMIT: int = int(
-        os.getenv(
-            "LOGIN_RATE_LIMIT",
-            5
-        )
-    )
+    LOGIN_RATE_LIMIT: int = 5
 
-    LOGIN_RATE_LIMIT_WINDOW: int = int(
-        os.getenv(
-            "LOGIN_RATE_LIMIT_WINDOW",
-            60
-        )
-    )
+    LOGIN_RATE_LIMIT_WINDOW: int = 60
+
+    class Config:
+        env_file = ".env"
 
 
 settings = Settings()
