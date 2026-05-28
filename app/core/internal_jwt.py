@@ -13,12 +13,20 @@ from app.core.config import settings
 
 
 ISSUER = "bushmarket-auth"
+
 AUDIENCE = "internal-services"
 
 
-def generate_internal_token(service_name: str):
+# =========================================
+# GENERATE INTERNAL TOKEN
+# =========================================
+def generate_internal_token(
+    service_name: str
+):
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(
+        timezone.utc
+    )
 
     payload = {
         "jti": str(uuid.uuid4()),
@@ -32,26 +40,45 @@ def generate_internal_token(service_name: str):
         )
     }
 
-    return jwt.encode(
+    token = jwt.encode(
         payload,
         settings.SECRET_KEY,
         algorithm=settings.JWT_ALGORITHM
     )
 
+    return token
 
-def verify_internal_token(token: str):
+
+# =========================================
+# VERIFY INTERNAL TOKEN
+# =========================================
+def verify_internal_token(
+    token: str
+):
 
     try:
 
-        return jwt.decode(
+        payload = jwt.decode(
             token,
             settings.SECRET_KEY,
             audience=AUDIENCE,
             issuer=ISSUER,
-            algorithms=[settings.JWT_ALGORITHM]
+            algorithms=[
+                settings.JWT_ALGORITHM
+            ]
         )
 
-    except jwt.PyJWTError:
+        return payload
+
+    except jwt.ExpiredSignatureError:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Internal token expired"
+        )
+
+    except jwt.InvalidTokenError:
+
         raise HTTPException(
             status_code=401,
             detail="Invalid internal token"
