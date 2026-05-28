@@ -23,6 +23,9 @@ class KafkaEventBus:
 
     async def publish(self, topic: str, event: dict):
 
+        if not event:
+            return
+
         await self.producer.send_and_wait(
             topic,
             event
