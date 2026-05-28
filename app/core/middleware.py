@@ -19,14 +19,16 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
             settings.COOKIE_NAME
         )
 
-        if session_token:
+        # DB must be injected before this middleware in app setup
+        db = getattr(request.state, "db", None)
 
-            # extract request metadata (for fingerprint validation)
+        if session_token and db:
+
             ip = request.client.host
             user_agent = request.headers.get("user-agent")
 
             db_session = await self.session_service.get_session(
-                db=request.state.db,  # injected async DB dependency
+                db=db,
                 token=session_token,
                 ip=ip,
                 user_agent=user_agent
@@ -44,6 +46,4 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
                     ]
                 }
 
-        response = await call_next(request)
-
-        return response
+        return await call_next(request)
