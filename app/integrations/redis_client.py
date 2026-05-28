@@ -39,7 +39,7 @@ class RedisClient:
         try:
             return json.loads(value)
 
-        except:
+        except Exception:
             return value
 
     async def delete(self, key: str):
