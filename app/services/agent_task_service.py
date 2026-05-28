@@ -12,6 +12,8 @@ from app.integrations.redis_client import redis_client
 from app.services.audit_service import AuditService
 from app.services.permission_service import PermissionService
 
+from app.core.logger import logger
+
 
 class AgentTaskService:
 
@@ -37,7 +39,10 @@ class AgentTaskService:
         )
 
         if task_type not in self.VALID_TASKS:
-            raise HTTPException(400, "Invalid task type")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid task type"
+            )
 
         role_stmt = select(Role).where(
             Role.user_id == agent_id,
@@ -49,7 +54,27 @@ class AgentTaskService:
         agent_role = role_result.scalar_one_or_none()
 
         if not agent_role:
-            raise HTTPException(404, "Agent not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Agent not found"
+            )
+
+        # =========================================
+        # OBSERVABILITY LOGGING
+        # =========================================
+
+        logger.info(
+            "Creating agent task",
+            extra={
+                "agent_id": agent_id,
+                "task_type": task_type,
+                "admin_id": admin_user["id"]
+            }
+        )
+
+        # =========================================
+        # CREATE TASK
+        # =========================================
 
         task = AgentTask(
             agent_id=agent_id,
@@ -63,13 +88,24 @@ class AgentTaskService:
         db.add(task)
 
         await db.commit()
+
         await db.refresh(task)
+
+        # =========================================
+        # REDIS CACHE
+        # =========================================
 
         await redis_client.set(
             f"agent_task:{task.id}",
-            {"status": task.status},
+            {
+                "status": task.status
+            },
             ttl=86400
         )
+
+        # =========================================
+        # EVENT BUS
+        # =========================================
 
         await event_bus.publish(
             "agent.task.created",
@@ -79,6 +115,10 @@ class AgentTaskService:
                 "task_type": task.task_type
             }
         )
+
+        # =========================================
+        # AUDIT LOG
+        # =========================================
 
         await AuditService().log(
             db=db,
