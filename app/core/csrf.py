@@ -13,6 +13,9 @@ from app.core.config import settings
 CSRF_HEADER = settings.CSRF_HEADER_NAME
 
 
+# =========================================
+# GENERATE CSRF TOKEN
+# =========================================
 def generate_csrf_token():
 
     raw = secrets.token_urlsafe(32)
@@ -26,6 +29,9 @@ def generate_csrf_token():
     return f"{raw}.{signature}"
 
 
+# =========================================
+# VALIDATE CSRF TOKEN
+# =========================================
 def validate_csrf(request: Request):
 
     csrf_cookie = request.cookies.get(
@@ -37,12 +43,14 @@ def validate_csrf(request: Request):
     )
 
     if not csrf_cookie or not csrf_header:
+
         raise HTTPException(
             status_code=403,
             detail="CSRF token missing"
         )
 
     if csrf_cookie != csrf_header:
+
         raise HTTPException(
             status_code=403,
             detail="Invalid CSRF token"
@@ -53,12 +61,13 @@ def validate_csrf(request: Request):
         raw, signature = csrf_cookie.split(".")
 
     except ValueError:
+
         raise HTTPException(
             status_code=403,
             detail="Malformed CSRF token"
         )
 
-    expected = hmac.new(
+    expected_signature = hmac.new(
         settings.SECRET_KEY.encode(),
         raw.encode(),
         hashlib.sha256
@@ -66,8 +75,9 @@ def validate_csrf(request: Request):
 
     if not hmac.compare_digest(
         signature,
-        expected
+        expected_signature
     ):
+
         raise HTTPException(
             status_code=403,
             detail="Invalid CSRF signature"
