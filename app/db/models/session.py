@@ -86,6 +86,16 @@ class Session(Base):
     )
 
     # =========================
+    # SECURITY FIX (MISSING FIELD ADDED)
+    # =========================
+
+    fingerprint: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+        index=True
+    )
+
+    # =========================
     # SESSION STATUS
     # =========================
 
