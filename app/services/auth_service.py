@@ -14,23 +14,26 @@ from app.services.session_service import SessionService
 
 class AuthService:
 
-    async def signup(
-        self,
-        db: AsyncSession,
-        data: dict
-    ):
+    # =========================================
+    # SIGNUP (FIXED DUPLICATE EMAIL BUG)
+    # =========================================
+    async def signup(self, db: AsyncSession, data: dict):
+
+        existing = await db.execute(
+            select(User).where(User.email == data["email"])
+        )
+
+        if existing.scalar_one_or_none():
+            return None  # or raise HTTPException in controller
 
         user = User(
             full_name=data["full_name"],
             email=data["email"],
             phone=data.get("phone"),
-            password_hash=hash_password(
-                data["password"]
-            )
+            password_hash=hash_password(data["password"])
         )
 
         db.add(user)
-
         await db.commit()
         await db.refresh(user)
 
@@ -40,11 +43,13 @@ class AuthService:
         )
 
         db.add(role)
-
         await db.commit()
 
         return user
 
+    # =========================================
+    # LOGIN (SESSION SAFE)
+    # =========================================
     async def login(
         self,
         db: AsyncSession,
@@ -54,9 +59,7 @@ class AuthService:
     ):
 
         result = await db.execute(
-            select(User).where(
-                User.email == email
-            )
+            select(User).where(User.email == email)
         )
 
         user = result.scalar_one_or_none()
@@ -64,10 +67,7 @@ class AuthService:
         if not user:
             return None
 
-        if not verify_password(
-            password,
-            user.password_hash
-        ):
+        if not verify_password(password, user.password_hash):
             return None
 
         session = await SessionService().create_session(
