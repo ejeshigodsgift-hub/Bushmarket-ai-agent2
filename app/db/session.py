@@ -29,9 +29,6 @@ SessionLocal = async_sessionmaker(
 )
 
 
-# =========================================
-# SAFE DB DEPENDENCY
-# =========================================
 async def get_db():
 
     async with SessionLocal() as db:
