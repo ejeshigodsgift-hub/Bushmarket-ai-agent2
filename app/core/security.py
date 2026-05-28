@@ -7,7 +7,7 @@ from app.core.config import settings
 
 
 # =========================================
-# PASSWORD SECURITY
+# PASSWORD SECURITY (SYNC but isolated)
 # =========================================
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(
@@ -35,7 +35,7 @@ def generate_refresh_token() -> str:
 
 
 # =========================================
-# API KEY HASHING
+# API KEYS
 # =========================================
 def hash_api_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
