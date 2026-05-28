@@ -1,60 +1,65 @@
-from fastapi import APIRouter, Depends, Request, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import (
+    APIRouter,
+    Depends,
+    Request,
+    HTTPException
+)
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.services.agent_task_service import AgentTaskService
+
 from app.services.permission_service import PermissionService
+from app.services.agent_task_service import AgentTaskService
 
 
-router = APIRouter(prefix="/admin")
+router = APIRouter(
+    prefix="/admin",
+    tags=["Admin"]
+)
 
 permission_service = PermissionService()
 
 
-# =========================
-# ADMIN DASHBOARD
-# =========================
 @router.get("/dashboard")
-def admin_dashboard(request: Request):
+async def admin_dashboard(
+    request: Request
+):
 
     user = request.state.user
 
     if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        raise HTTPException(401, "Unauthorized")
 
-    roles = user.get("roles", [])
-
-    permission_service.validate_permission(roles, "admin_access")
+    permission_service.validate_permission(
+        user["roles"],
+        "admin_access"
+    )
 
     return {
         "message": "Admin dashboard",
-        "user_id": user.get("id")
+        "user_id": user["id"]
     }
 
 
-# =========================
-# ASSIGN AGENT TASK
-# =========================
 @router.post("/assign-task")
-def assign_task(
+async def assign_task(
     payload: dict,
     request: Request,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
 
     admin_user = request.state.user
 
     if not admin_user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        raise HTTPException(401, "Unauthorized")
 
-    roles = admin_user.get("roles", [])
+    permission_service.validate_permission(
+        admin_user["roles"],
+        "assign_agent_task"
+    )
 
-    # STRICT ADMIN VALIDATION
-    permission_service.validate_permission(roles, "*")
-
-    task_service = AgentTaskService()
-
-    task = task_service.create_task(
+    task = await AgentTaskService().create_task(
         db=db,
         admin_user=admin_user,
         agent_id=payload["agent_id"],
@@ -65,5 +70,5 @@ def assign_task(
 
     return {
         "task_id": task.id,
-        "status": "assigned"
+        "status": task.status
     }
