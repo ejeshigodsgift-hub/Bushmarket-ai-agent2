@@ -1,9 +1,6 @@
 import json
 
-from aiokafka import (
-    AIOKafkaProducer,
-    AIOKafkaConsumer
-)
+from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
 
 from app.core.config import settings
 
@@ -24,30 +21,20 @@ class KafkaEventBus:
     async def stop(self):
         await self.producer.stop()
 
-    async def publish(
-        self,
-        topic: str,
-        event: dict
-    ):
+    async def publish(self, topic: str, event: dict):
 
         await self.producer.send_and_wait(
             topic,
             event
         )
 
-    async def create_consumer(
-        self,
-        topic: str,
-        group_id: str
-    ):
+    async def create_consumer(self, topic: str, group_id: str):
 
         consumer = AIOKafkaConsumer(
             topic,
             bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
             group_id=group_id,
-            value_deserializer=lambda m: json.loads(
-                m.decode("utf-8")
-            )
+            value_deserializer=lambda m: json.loads(m.decode("utf-8"))
         )
 
         await consumer.start()
