@@ -1,11 +1,16 @@
+# =====================================
+# FILE: app/services/audit_service.py
+# =====================================
+
 from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.audit_log import AuditLog
 
-from app.integrations.kafka_client import event_bus
 from app.integrations.redis_client import redis_client
+
+from app.services.outbox_service import outbox_service
 
 
 class AuditService:
@@ -13,9 +18,10 @@ class AuditService:
     # =====================================
     # CREATE AUDIT LOG
     # =====================================
-    def log(
+
+    async def log(
         self,
-        db: DBSession,
+        db: AsyncSession,
         user_id: str,
         action: str,
         entity_type: str,
@@ -26,7 +32,7 @@ class AuditService:
         device_id: str | None = None
     ):
 
-        log = AuditLog(
+        audit_log = AuditLog(
 
             user_id=user_id,
 
@@ -36,7 +42,6 @@ class AuditService:
 
             entity_id=entity_id,
 
-            # CONSISTENT NAMING
             event_data=metadata,
 
             ip_address=ip,
@@ -48,17 +53,18 @@ class AuditService:
             created_at=datetime.now(timezone.utc)
         )
 
-        db.add(log)
-        db.commit()
-        db.refresh(log)
+        db.add(audit_log)
+
+        await db.flush()
 
         # =====================================
-        # REDIS AUDIT STREAM CACHE
+        # REDIS AUDIT STREAM
         # =====================================
 
-        redis_client.publish(
+        await redis_client.publish(
             "audit.events",
             {
+                "audit_id": audit_log.id,
                 "user_id": user_id,
                 "action": action,
                 "entity_type": entity_type,
@@ -67,13 +73,14 @@ class AuditService:
         )
 
         # =====================================
-        # KAFKA EVENT BUS
+        # OUTBOX EVENT
         # =====================================
 
-        event_bus.publish(
-            "audit.log.created",
-            {
-                "audit_id": log.id,
+        await outbox_service.queue_event(
+            db=db,
+            topic="audit.log.created",
+            payload={
+                "audit_id": audit_log.id,
                 "user_id": user_id,
                 "action": action,
                 "entity_type": entity_type,
@@ -81,22 +88,26 @@ class AuditService:
             }
         )
 
-        return log
+        await db.commit()
+
+        await db.refresh(audit_log)
+
+        return audit_log
 
     # =====================================
     # MARKETPLACE ORDER EVENTS
     # =====================================
 
-    def log_order_created(
+    async def log_order_created(
         self,
-        db: DBSession,
+        db: AsyncSession,
         user_id: str,
         order_id: str,
         total_amount: float,
         ip: str | None = None
     ):
 
-        return self.log(
+        return await self.log(
             db=db,
             user_id=user_id,
             action="order_created",
@@ -108,16 +119,16 @@ class AuditService:
             ip=ip
         )
 
-    def log_checkout_completed(
+    async def log_checkout_completed(
         self,
-        db: DBSession,
+        db: AsyncSession,
         user_id: str,
         order_id: str,
         cart_id: str,
         ip: str | None = None
     ):
 
-        return self.log(
+        return await self.log(
             db=db,
             user_id=user_id,
             action="checkout_completed",
@@ -129,16 +140,16 @@ class AuditService:
             ip=ip
         )
 
-    def log_payment_completed(
+    async def log_payment_completed(
         self,
-        db: DBSession,
+        db: AsyncSession,
         user_id: str,
         order_id: str,
         payment_reference: str,
         ip: str | None = None
     ):
 
-        return self.log(
+        return await self.log(
             db=db,
             user_id=user_id,
             action="payment_completed",
@@ -154,16 +165,16 @@ class AuditService:
     # INVENTORY EVENTS
     # =====================================
 
-    def log_inventory_reserved(
+    async def log_inventory_reserved(
         self,
-        db: DBSession,
+        db: AsyncSession,
         user_id: str,
         inventory_id: str,
         quantity: int,
         ip: str | None = None
     ):
 
-        return self.log(
+        return await self.log(
             db=db,
             user_id=user_id,
             action="inventory_reserved",
@@ -175,16 +186,16 @@ class AuditService:
             ip=ip
         )
 
-    def log_inventory_sold(
+    async def log_inventory_sold(
         self,
-        db: DBSession,
+        db: AsyncSession,
         user_id: str,
         inventory_id: str,
         quantity: int,
         ip: str | None = None
     ):
 
-        return self.log(
+        return await self.log(
             db=db,
             user_id=user_id,
             action="inventory_sold",
@@ -196,16 +207,16 @@ class AuditService:
             ip=ip
         )
 
-    def log_inventory_released(
+    async def log_inventory_released(
         self,
-        db: DBSession,
+        db: AsyncSession,
         user_id: str,
         inventory_id: str,
         quantity: int,
         ip: str | None = None
     ):
 
-        return self.log(
+        return await self.log(
             db=db,
             user_id=user_id,
             action="inventory_released",
