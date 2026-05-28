@@ -43,9 +43,12 @@ class RedisClient:
         return await self.client.exists(key)
 
     # =========================================
-    # FIXED: MISSING METHOD
+    # SAFE PUBLISH (IMPROVED)
     # =========================================
     async def publish(self, channel: str, message: dict):
+
+        if message is None:
+            return
 
         await self.client.publish(
             channel,
