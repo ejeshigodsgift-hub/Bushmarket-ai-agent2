@@ -1,4 +1,5 @@
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.user import User
 from app.db.models.role import Role
@@ -9,18 +10,13 @@ from app.core.security import (
 )
 
 from app.services.session_service import SessionService
-from app.services.audit_service import AuditService
 
 
 class AuthService:
 
-    # =========================
-    # SIGNUP
-    # =========================
-
-    def signup(
+    async def signup(
         self,
-        db: Session,
+        db: AsyncSession,
         data: dict
     ):
 
@@ -34,8 +30,9 @@ class AuthService:
         )
 
         db.add(user)
-        db.commit()
-        db.refresh(user)
+
+        await db.commit()
+        await db.refresh(user)
 
         role = Role(
             user_id=user.id,
@@ -43,36 +40,26 @@ class AuthService:
         )
 
         db.add(role)
-        db.commit()
 
-        AuditService().log(
-            db=db,
-            user_id=user.id,
-            action="USER_SIGNUP",
-            entity_type="user",
-            entity_id=user.id,
-            metadata={
-                "email": user.email
-            }
-        )
+        await db.commit()
 
         return user
 
-    # =========================
-    # LOGIN
-    # =========================
-
-    def login(
+    async def login(
         self,
-        db: Session,
+        db: AsyncSession,
         email: str,
         password: str,
         request_meta: dict
     ):
 
-        user = db.query(User).filter(
-            User.email == email
-        ).first()
+        result = await db.execute(
+            select(User).where(
+                User.email == email
+            )
+        )
+
+        user = result.scalar_one_or_none()
 
         if not user:
             return None
@@ -83,29 +70,15 @@ class AuthService:
         ):
             return None
 
-        session_service = SessionService()
-
-        db_session = session_service.create_session(
+        session = await SessionService().create_session(
             db=db,
             user_id=user.id,
             meta=request_meta
         )
 
-        AuditService().log(
-            db=db,
-            user_id=user.id,
-            action="LOGIN_SUCCESS",
-            entity_type="session",
-            entity_id=db_session.id,
-            metadata={
-                "ip_address": request_meta.get("ip_address"),
-                "device_name": request_meta.get("device_name")
-            }
-        )
-
         return {
-            "session_token": db_session.session_token,
-            "refresh_token": db_session.refresh_token,
+            "session_token": session.session_token,
+            "refresh_token": session.refresh_token,
             "user": user
         }
 
