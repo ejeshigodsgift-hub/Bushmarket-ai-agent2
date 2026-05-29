@@ -1,66 +1,104 @@
-from sqlalchemy.orm import Session
+# =========================================
+# FILE: app/services/volatility_rule_service.py
+# =========================================
 
-from app.db.models.market_volatility_rule import MarketVolatilityRule
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models.market_volatility_rule import (
+    MarketVolatilityRule
+)
 
 
 class VolatilityRuleService:
 
-    # =========================
-    # GET RULE (SMART FALLBACK CHAIN)
-    # =========================
-    def get_rule(
+    # =========================================
+    # GET ACTIVE RULE
+    # =========================================
+    async def get_rule(
         self,
-        db: Session,
-        product_id: str,
-        market_id: str
+        db: AsyncSession,
+        product_id: str | None,
+        market_id: str | None
     ) -> MarketVolatilityRule | None:
 
-        # 1. PRODUCT + MARKET (MOST SPECIFIC)
-        rule = db.query(MarketVolatilityRule).filter(
-            MarketVolatilityRule.product_id == product_id,
-            MarketVolatilityRule.market_id == market_id,
-            MarketVolatilityRule.is_active == True
-        ).first()
+        # =========================================
+        # PRODUCT + MARKET RULE
+        # =========================================
+        stmt = (
+            select(MarketVolatilityRule)
+            .where(
+                MarketVolatilityRule.product_id == product_id,
+                MarketVolatilityRule.market_id == market_id,
+                MarketVolatilityRule.is_active.is_(True)
+            )
+            .limit(1)
+        )
+
+        result = await db.execute(stmt)
+
+        rule = result.scalar_one_or_none()
 
         if rule:
             return rule
 
-        # 2. MARKET LEVEL RULE
-        rule = db.query(MarketVolatilityRule).filter(
-            MarketVolatilityRule.market_id == market_id,
-            MarketVolatilityRule.product_id.is_(None),
-            MarketVolatilityRule.is_active == True
-        ).first()
+        # =========================================
+        # MARKET DEFAULT RULE
+        # =========================================
+        stmt = (
+            select(MarketVolatilityRule)
+            .where(
+                MarketVolatilityRule.market_id == market_id,
+                MarketVolatilityRule.product_id.is_(None),
+                MarketVolatilityRule.is_active.is_(True)
+            )
+            .limit(1)
+        )
+
+        result = await db.execute(stmt)
+
+        rule = result.scalar_one_or_none()
 
         if rule:
             return rule
 
-        # 3. GLOBAL SYSTEM DEFAULT
-        return db.query(MarketVolatilityRule).filter(
-            MarketVolatilityRule.market_id.is_(None),
-            MarketVolatilityRule.product_id.is_(None),
-            MarketVolatilityRule.is_active == True
-        ).first()
+        # =========================================
+        # GLOBAL DEFAULT
+        # =========================================
+        stmt = (
+            select(MarketVolatilityRule)
+            .where(
+                MarketVolatilityRule.market_id.is_(None),
+                MarketVolatilityRule.product_id.is_(None),
+                MarketVolatilityRule.is_active.is_(True)
+            )
+            .limit(1)
+        )
 
-    # =========================
-    # CLASSIFY PRICE VOLATILITY
-    # =========================
-    def evaluate(
+        result = await db.execute(stmt)
+
+        return result.scalar_one_or_none()
+
+    # =========================================
+    # EVALUATE VOLATILITY
+    # =========================================
+    async def evaluate(
         self,
-        rule: MarketVolatilityRule,
-        price_change: float
+        rule: MarketVolatilityRule | None,
+        percentage_change: float
     ) -> str:
 
         if not rule:
             return "unknown"
 
-        # 🧠 apply market sensitivity multiplier (core Bushmarket logic)
-        adjusted_change = abs(price_change) * float(rule.sensitivity_multiplier or 1)
+        adjusted_change = abs(
+            percentage_change
+        ) * float(rule.sensitivity_multiplier)
 
-        if adjusted_change >= rule.critical_threshold:
+        if adjusted_change >= float(rule.critical_threshold):
             return "critical"
 
-        if adjusted_change >= rule.suspicious_threshold:
+        if adjusted_change >= float(rule.suspicious_threshold):
             return "suspicious"
 
         return "normal"
