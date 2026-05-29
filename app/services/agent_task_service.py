@@ -6,12 +6,8 @@ from fastapi import HTTPException
 from app.db.models.agent_task import AgentTask
 from app.db.models.role import Role
 
-from app.integrations.kafka_client import event_bus
-from app.integrations.redis_client import redis_client
-
-from app.services.audit_service import AuditService
 from app.services.permission_service import PermissionService
-
+from app.repositories.outbox_repository import OutboxRepository
 from app.core.logger import logger
 
 
@@ -32,37 +28,34 @@ class AgentTaskService:
         payload: dict,
         cooperative_id: str = None
     ):
-
+        # =========================================
+        # PERMISSION CHECK
+        # =========================================
         PermissionService().validate_permission(
             admin_user["roles"],
             "assign_agent_task"
         )
 
         if task_type not in self.VALID_TASKS:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid task type"
-            )
+            raise HTTPException(400, "Invalid task type")
 
+        # =========================================
+        # VERIFY AGENT ROLE
+        # =========================================
         role_stmt = select(Role).where(
             Role.user_id == agent_id,
             Role.role == "agent"
         )
 
         role_result = await db.execute(role_stmt)
-
         agent_role = role_result.scalar_one_or_none()
 
         if not agent_role:
-            raise HTTPException(
-                status_code=404,
-                detail="Agent not found"
-            )
+            raise HTTPException(404, "Agent not found")
 
         # =========================================
-        # OBSERVABILITY LOGGING
+        # LOGGING
         # =========================================
-
         logger.info(
             "Creating agent task",
             extra={
@@ -73,9 +66,8 @@ class AgentTaskService:
         )
 
         # =========================================
-        # CREATE TASK
+        # BUSINESS WRITE (DB ONLY)
         # =========================================
-
         task = AgentTask(
             agent_id=agent_id,
             admin_id=admin_user["id"],
@@ -87,46 +79,28 @@ class AgentTaskService:
 
         db.add(task)
 
-        await db.commit()
-
-        await db.refresh(task)
-
         # =========================================
-        # REDIS CACHE
+        # OUTBOX EVENT (SAME TRANSACTION)
         # =========================================
+        outbox_repo = OutboxRepository()
 
-        await redis_client.set(
-            f"agent_task:{task.id}",
-            {
-                "status": task.status
-            },
-            ttl=86400
-        )
-
-        # =========================================
-        # EVENT BUS
-        # =========================================
-
-        await event_bus.publish(
-            "agent.task.created",
-            {
+        outbox_repo.add_event(
+            db=db,
+            topic="agent.task.created",
+            payload={
                 "task_id": task.id,
-                "agent_id": task.agent_id,
-                "task_type": task.task_type
+                "agent_id": agent_id,
+                "task_type": task_type
             }
         )
 
         # =========================================
-        # AUDIT LOG
+        # AUDIT LOG (OPTIONAL - still DB bound)
         # =========================================
+        # If your audit service writes DB, keep it inside same transaction
+        # Otherwise move it to outbox too in future scaling phase
 
-        await AuditService().log(
-            db=db,
-            user_id=admin_user["id"],
-            action="CREATE_AGENT_TASK",
-            entity_type="agent_task",
-            entity_id=task.id,
-            metadata=payload
-        )
+        await db.commit()
+        await db.refresh(task)
 
         return task
