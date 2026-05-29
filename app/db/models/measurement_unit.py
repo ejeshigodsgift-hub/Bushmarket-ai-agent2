@@ -1,11 +1,13 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     String,
     Boolean,
     DateTime,
-    Float,
-    func
+    func,
+    UniqueConstraint,
+    Index
 )
 
 from sqlalchemy.orm import (
@@ -21,62 +23,58 @@ class MeasurementUnit(Base):
 
     __tablename__ = "measurement_units"
 
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_measurement_units_code"),
+        UniqueConstraint("name", name="uq_measurement_units_name"),
+        Index("idx_measurement_units_code", "code"),
+    )
+
     id: Mapped[str] = mapped_column(
-        String,
+        String(36),
         primary_key=True,
         default=lambda: str(uuid.uuid4())
     )
 
-    # per bag
-    # per kg
-    # per tuber
-    # per gallon
-
     name: Mapped[str] = mapped_column(
         String(120),
-        unique=True,
         nullable=False,
-        index=True
+        unique=True
     )
 
-    slug: Mapped[str] = mapped_column(
-        String(120),
-        unique=True,
-        nullable=False
-    )
-
-    symbol: Mapped[str | None] = mapped_column(
-        String(30),
-        nullable=True
-    )
-
-    # weight
-    # liquid
-    # quantity
-    # tuber
-    category: Mapped[str] = mapped_column(
-        String(50),
+    code: Mapped[str] = mapped_column(
+        String(20),
         nullable=False,
-        index=True
+        unique=True
     )
 
-    # allows AI & conversion system
-    base_value: Mapped[float | None] = mapped_column(
-        Float,
+    description: Mapped[str | None] = mapped_column(
+        String(255),
         nullable=True
     )
 
     is_active: Mapped[bool] = mapped_column(
         Boolean,
-        default=True
+        nullable=False,
+        default=True,
+        index=True
     )
 
-    created_at: Mapped[DateTime] = mapped_column(
-        DateTime,
-        server_default=func.now()
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
     )
 
-    product_measurements = relationship(
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False
+    )
+
+    products = relationship(
         "ProductMeasurement",
-        back_populates="measurement_unit"
+        back_populates="measurement_unit",
+        cascade="all, delete-orphan",
+        lazy="selectin"
     )
