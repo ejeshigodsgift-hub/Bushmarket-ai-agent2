@@ -1,107 +1,116 @@
 # =========================================
-# FILE: app/services/volatility_rule_service.py
+# FILE: app/db/models/market_volatility_rule.py
 # =========================================
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import uuid
 
-from app.db.models.market_volatility_rule import (
-    MarketVolatilityRule
+from sqlalchemy import (
+    String,
+    Float,
+    Boolean,
+    DateTime,
+    func,
+    Index
 )
 
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
 
-class VolatilityRuleService:
+from app.db.base import Base
 
-    # =========================================
-    # GET ACTIVE RULE
-    # =========================================
-    async def get_rule(
-        self,
-        db: AsyncSession,
-        product_id: str | None,
-        market_id: str | None
-    ) -> MarketVolatilityRule | None:
 
-        # =========================================
-        # PRODUCT + MARKET RULE
-        # =========================================
-        stmt = (
-            select(MarketVolatilityRule)
-            .where(
-                MarketVolatilityRule.product_id == product_id,
-                MarketVolatilityRule.market_id == market_id,
-                MarketVolatilityRule.is_active.is_(True)
-            )
-            .limit(1)
-        )
+class MarketVolatilityRule(Base):
 
-        result = await db.execute(stmt)
-
-        rule = result.scalar_one_or_none()
-
-        if rule:
-            return rule
-
-        # =========================================
-        # MARKET DEFAULT RULE
-        # =========================================
-        stmt = (
-            select(MarketVolatilityRule)
-            .where(
-                MarketVolatilityRule.market_id == market_id,
-                MarketVolatilityRule.product_id.is_(None),
-                MarketVolatilityRule.is_active.is_(True)
-            )
-            .limit(1)
-        )
-
-        result = await db.execute(stmt)
-
-        rule = result.scalar_one_or_none()
-
-        if rule:
-            return rule
-
-        # =========================================
-        # GLOBAL DEFAULT
-        # =========================================
-        stmt = (
-            select(MarketVolatilityRule)
-            .where(
-                MarketVolatilityRule.market_id.is_(None),
-                MarketVolatilityRule.product_id.is_(None),
-                MarketVolatilityRule.is_active.is_(True)
-            )
-            .limit(1)
-        )
-
-        result = await db.execute(stmt)
-
-        return result.scalar_one_or_none()
+    __tablename__ = "market_volatility_rules"
 
     # =========================================
-    # EVALUATE VOLATILITY
+    # PRIMARY KEY
     # =========================================
-    async def evaluate(
-        self,
-        rule: MarketVolatilityRule | None,
-        percentage_change: float
-    ) -> str:
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
 
-        if not rule:
-            return "unknown"
+    # =========================================
+    # SCOPE (OPTIONAL FILTERING)
+    # =========================================
+    product_id: Mapped[str | None] = mapped_column(
+        String(120),
+        nullable=True,
+        index=True
+    )
 
-        adjusted_change = abs(
-            percentage_change
-        ) * float(rule.sensitivity_multiplier)
+    market_id: Mapped[str | None] = mapped_column(
+        String(120),
+        nullable=True,
+        index=True
+    )
 
-        if adjusted_change >= float(rule.critical_threshold):
-            return "critical"
+    # =========================================
+    # THRESHOLDS
+    # =========================================
+    normal_threshold: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=0.05
+    )
 
-        if adjusted_change >= float(rule.suspicious_threshold):
-            return "suspicious"
+    suspicious_threshold: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=0.15
+    )
 
-        return "normal"
+    critical_threshold: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=0.30
+    )
 
+    # =========================================
+    # SENSITIVITY
+    # =========================================
+    sensitivity_multiplier: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=1.0
+    )
 
-volatility_rule_service = VolatilityRuleService()
+    # =========================================
+    # STATUS
+    # =========================================
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        index=True
+    )
+
+    # =========================================
+    # TIMESTAMPS
+    # =========================================
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False
+    )
+
+    # =========================================
+    # INDEXES (OPTIMIZED LOOKUPS)
+    # =========================================
+    __table_args__ = (
+        Index(
+            "idx_volatility_rule_scope",
+            "product_id",
+            "market_id",
+            "is_active"
+        ),
+    )
