@@ -1,105 +1,120 @@
 import uuid
-from datetime import datetime
 
 from sqlalchemy import (
-    String,
     Integer,
+    Boolean,
     DateTime,
     ForeignKey,
-    func
+    func,
+    Index,
+    CheckConstraint,
+    UniqueConstraint
 )
 
-from sqlalchemy.orm import (
-    Mapped,
-    mapped_column,
-    relationship
-)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
 
 class Inventory(Base):
-
     __tablename__ = "inventories"
 
-    id: Mapped[str] = mapped_column(
-        String,
+    __table_args__ = (
+        UniqueConstraint(
+            "listing_id",
+            name="uq_inventory_listing"
+        ),
+        Index("idx_inventory_listing", "listing_id"),
+        Index("idx_inventory_active", "is_active"),
+        CheckConstraint(
+            "available_stock >= 0",
+            name="ck_inventory_available_stock"
+        ),
+        CheckConstraint(
+            "reserved_stock >= 0",
+            name="ck_inventory_reserved_stock"
+        ),
+        CheckConstraint(
+            "sold_stock >= 0",
+            name="ck_inventory_sold_stock"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    product_id: Mapped[str] = mapped_column(
-        String,
-        ForeignKey("market_products.id"),
-        nullable=False,
-        index=True
-    )
-
-    market_id: Mapped[str] = mapped_column(
-        String,
-        ForeignKey("market_locations.id"),
-        nullable=False,
-        index=True
-    )
-
-    assigned_agent_id: Mapped[str] = mapped_column(
-        String,
-        ForeignKey("market_agents.id"),
-        nullable=False,
-        index=True
-    )
-
-    measurement_unit_id: Mapped[str] = mapped_column(
-        String,
-        ForeignKey("measurement_units.id"),
+    listing_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("market_product_listings.id", ondelete="CASCADE"),
         nullable=False
     )
 
     available_stock: Mapped[int] = mapped_column(
         Integer,
+        nullable=False,
         default=0,
-        nullable=False
+        server_default="0"
     )
 
     reserved_stock: Mapped[int] = mapped_column(
         Integer,
+        nullable=False,
         default=0,
-        nullable=False
+        server_default="0"
     )
 
     sold_stock: Mapped[int] = mapped_column(
         Integer,
+        nullable=False,
         default=0,
-        nullable=False
+        server_default="0"
     )
 
-    damaged_stock: Mapped[int] = mapped_column(
-        Integer,
-        default=0,
-        nullable=False
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true"
     )
 
-    status: Mapped[str] = mapped_column(
-        String(30),
-        default="active"
-    )
-    # active
-    # low_stock
-    # out_of_stock
-    # disabled
-
-    created_at: Mapped[datetime] = mapped_column(
+    last_restocked_at: Mapped[DateTime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True
+    )
+
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
         server_default=func.now()
     )
 
-    updated_at: Mapped[datetime] = mapped_column(
+    updated_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True),
+        nullable=False,
         server_default=func.now(),
         onupdate=func.now()
     )
 
+    listing = relationship(
+        "MarketProductListing",
+        back_populates="inventory",
+        lazy="joined"
+    )
+
     transactions = relationship(
         "InventoryTransaction",
-        back_populates="inventory"
+        back_populates="inventory",
+        lazy="selectin",
+        cascade="all, delete-orphan"
+    )
+
+    histories = relationship(
+        "InventoryHistory",
+        back_populates="inventory",
+        lazy="selectin",
+        cascade="all, delete-orphan"
     )
