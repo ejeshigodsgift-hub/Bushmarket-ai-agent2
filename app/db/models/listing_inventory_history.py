@@ -1,54 +1,102 @@
 import uuid
 
 from sqlalchemy import (
-    String,
     Integer,
-    ForeignKey,
     DateTime,
-    func
+    ForeignKey,
+    func,
+    Index,
+    Text
 )
 
-from sqlalchemy.orm import (
-    Mapped,
-    mapped_column
-)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
 
-class ListingInventoryHistory(Base):
+class InventoryHistory(Base):
+    __tablename__ = "inventory_histories"
 
-    __tablename__ = "listing_inventory_history"
+    __table_args__ = (
+        Index("idx_inventory_history_inventory", "inventory_id"),
+        Index("idx_inventory_history_created", "created_at"),
+    )
 
-    id: Mapped[str] = mapped_column(
-        String,
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    listing_id: Mapped[str] = mapped_column(
-        String,
-        ForeignKey("market_product_listings.id"),
+    inventory_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("inventories.id", ondelete="CASCADE"),
         nullable=False
     )
 
-    previous_stock: Mapped[int] = mapped_column(
+    previous_available_stock: Mapped[int] = mapped_column(
         Integer,
         nullable=False
     )
 
-    new_stock: Mapped[int] = mapped_column(
+    new_available_stock: Mapped[int] = mapped_column(
         Integer,
         nullable=False
     )
 
-    updated_by_agent_id: Mapped[str] = mapped_column(
-        String,
-        ForeignKey("users.id"),
-        nullable=False
+    previous_reserved_stock: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0"
+    )
+
+    new_reserved_stock: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0"
+    )
+
+    previous_sold_stock: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0"
+    )
+
+    new_sold_stock: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0"
+    )
+
+    change_reason: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True
+    )
+
+    changed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
     )
 
     created_at: Mapped[DateTime] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
+        nullable=False,
         server_default=func.now()
+    )
+
+    inventory = relationship(
+        "Inventory",
+        back_populates="histories",
+        lazy="joined"
+    )
+
+    changer = relationship(
+        "User",
+        lazy="joined"
     )
