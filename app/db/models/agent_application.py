@@ -1,34 +1,172 @@
-CREATE TABLE agent_applications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+# =========================================
+# FILE: app/db/models/agent_application.py
+# =========================================
 
-    -- applicant (required)
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+import uuid
+from datetime import datetime
 
-    motivation TEXT,
-    experience TEXT,
+from sqlalchemy import (
+    String,
+    Text,
+    DateTime,
+    ForeignKey,
+    CheckConstraint,
+    UniqueConstraint,
+    Index,
+    func
+)
 
-    -- strict lifecycle status
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+from sqlalchemy.dialects.postgresql import UUID
 
-    -- admin review tracking
-    reviewed_by UUID REFERENCES users(id),
-    reviewed_at TIMESTAMP,
+from sqlalchemy.orm import (
+    Mapped,
+    mapped_column,
+    relationship
+)
 
-    created_at TIMESTAMP DEFAULT NOW(),
-
-    -- =========================
-    -- CONSTRAINTS (BUSINESS RULE)
-    -- =========================
-    CONSTRAINT chk_agent_application_status
-        CHECK (status IN ('pending', 'approved', 'rejected'))
-);
+from app.db.base import Base
 
 
--- =========================
--- INDEXES (PERFORMANCE CRITICAL)
--- =========================
-CREATE INDEX idx_agent_applications_user_id
-    ON agent_applications(user_id);
+class AgentApplication(Base):
 
-CREATE INDEX idx_agent_applications_status
-    ON agent_applications(status);
+    __tablename__ = "agent_applications"
+
+    # =========================================
+    # PRIMARY KEY
+    # =========================================
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # =========================================
+    # APPLICANT USER
+    # =========================================
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "users.id",
+            ondelete="CASCADE"
+        ),
+        nullable=False,
+        index=True
+    )
+
+    # =========================================
+    # APPLICATION DETAILS
+    # =========================================
+    motivation: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True
+    )
+
+    experience: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True
+    )
+
+    # =========================================
+    # APPLICATION STATUS
+    # =========================================
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+        index=True
+    )
+
+    # pending
+    # approved
+    # rejected
+    # suspended
+
+    # =========================================
+    # REVIEW METADATA
+    # =========================================
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "users.id",
+            ondelete="SET NULL"
+        ),
+        nullable=True
+    )
+
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    rejection_reason: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True
+    )
+
+    # =========================================
+    # AUDIT / LIFECYCLE
+    # =========================================
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False
+    )
+
+    # =========================================
+    # RELATIONSHIPS
+    # =========================================
+    applicant = relationship(
+        "User",
+        foreign_keys=[user_id],
+        lazy="joined"
+    )
+
+    reviewer = relationship(
+        "User",
+        foreign_keys=[reviewed_by],
+        lazy="joined"
+    )
+
+    # =========================================
+    # TABLE CONSTRAINTS
+    # =========================================
+    __table_args__ = (
+
+        # STRICT STATUS CONTROL
+        CheckConstraint(
+            """
+            status IN (
+                'pending',
+                'approved',
+                'rejected',
+                'suspended'
+            )
+            """,
+            name="chk_agent_application_status"
+        ),
+
+        # PREVENT MULTIPLE ACTIVE APPLICATIONS
+        UniqueConstraint(
+            "user_id",
+            name="uq_agent_application_user"
+        ),
+
+        # PERFORMANCE INDEXES
+        Index(
+            "idx_agent_application_created_at",
+            "created_at"
+        ),
+
+        Index(
+            "idx_agent_application_reviewed_by",
+            "reviewed_by"
+        ),
+    )
