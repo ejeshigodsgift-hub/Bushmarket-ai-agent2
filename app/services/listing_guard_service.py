@@ -1,23 +1,58 @@
+# =========================================
+# FILE: app/services/listing_guard_service.py
+# =========================================
+
 from fastapi import HTTPException
 
 
 class ListingGuardService:
 
-    # =========================
-    # ROLE CHECK
-    # =========================
-    def enforce_listing_permission(self, roles: list):
+    """
+    Centralized RBAC enforcement
+    for listing operations.
+    """
 
-        if "admin" in roles:
-            return True
+    # =========================================
+    # CREATE LISTING ACCESS
+    # =========================================
+    async def enforce_create_permission(
+        self,
+        roles: list[str]
+    ) -> bool:
 
-        if "agent" in roles:
-            return True
+        allowed_roles = {
+            "admin",
+            "agent"
+        }
 
-        raise HTTPException(
-            status_code=403,
-            detail="Only agents or admins can create listings"
-        )
+        if not set(roles).intersection(allowed_roles):
+
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Only approved agents "
+                    "or admins can create listings"
+                )
+            )
+
+        return True
+
+    # =========================================
+    # ADMIN ACCESS
+    # =========================================
+    async def enforce_admin_access(
+        self,
+        roles: list[str]
+    ) -> bool:
+
+        if "admin" not in roles:
+
+            raise HTTPException(
+                status_code=403,
+                detail="Admin access required"
+            )
+
+        return True
 
 
 listing_guard_service = ListingGuardService()
