@@ -8,7 +8,6 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-
 from app.services.agent_task_lifecycle import AgentTaskLifecycle
 
 
@@ -18,14 +17,27 @@ router = APIRouter(
 )
 
 
+# =========================================
+# GET TASKS
+# =========================================
 @router.get("/tasks")
-async def get_tasks():
+async def get_tasks(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
 
+    if not request.state.user:
+        raise HTTPException(401, "Unauthorized")
+
+    # Placeholder (later: repository fetch with filters/pagination)
     return {
         "tasks": []
     }
 
 
+# =========================================
+# START TASK
+# =========================================
 @router.post("/task/{task_id}/start")
 async def start_task(
     task_id: str,
@@ -38,13 +50,21 @@ async def start_task(
 
     lifecycle = AgentTaskLifecycle()
 
-    return await lifecycle.update_status(
-        db,
-        task_id,
-        "in_progress"
+    task = await lifecycle.update_status(
+        db=db,
+        task_id=task_id,
+        new_status="in_progress"
     )
 
+    return {
+        "task_id": task.id,
+        "status": task.status
+    }
 
+
+# =========================================
+# COMPLETE TASK (UoW + OUTBOX SAFE)
+# =========================================
 @router.post("/task/{task_id}/complete")
 async def complete_task(
     task_id: str,
@@ -57,8 +77,13 @@ async def complete_task(
 
     lifecycle = AgentTaskLifecycle()
 
-    return await lifecycle.update_status(
-        db,
-        task_id,
-        "completed"
+    task = await lifecycle.update_status(
+        db=db,
+        task_id=task_id,
+        new_status="completed"
     )
+
+    return {
+        "task_id": task.id,
+        "status": task.status
+    }
