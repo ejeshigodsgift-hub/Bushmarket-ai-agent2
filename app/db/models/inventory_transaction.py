@@ -1,72 +1,91 @@
 import uuid
-from datetime import datetime
 
 from sqlalchemy import (
     String,
     Integer,
     DateTime,
     ForeignKey,
-    JSON,
-    func
+    func,
+    Index,
+    CheckConstraint,
+    Text
 )
 
-from sqlalchemy.orm import (
-    Mapped,
-    mapped_column,
-    relationship
-)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
 
 class InventoryTransaction(Base):
-
     __tablename__ = "inventory_transactions"
 
-    id: Mapped[str] = mapped_column(
-        String,
-        primary_key=True,
-        default=lambda: str(uuid.uuid4())
+    __table_args__ = (
+        Index("idx_inventory_transaction_inventory", "inventory_id"),
+        Index("idx_inventory_transaction_type", "transaction_type"),
+        Index("idx_inventory_transaction_created", "created_at"),
+        CheckConstraint(
+            "quantity > 0",
+            name="ck_inventory_transaction_quantity"
+        ),
     )
 
-    inventory_id: Mapped[str] = mapped_column(
-        String,
-        ForeignKey("inventories.id"),
-        nullable=False,
-        index=True
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    inventory_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("inventories.id", ondelete="CASCADE"),
+        nullable=False
     )
 
     transaction_type: Mapped[str] = mapped_column(
         String(50),
         nullable=False
     )
-    # stock_in
-    # reserve
-    # release
-    # sold
-    # damaged
 
     quantity: Mapped[int] = mapped_column(
         Integer,
         nullable=False
     )
 
-    metadata: Mapped[dict] = mapped_column(
-        JSON,
+    reference_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True
     )
 
-    created_by: Mapped[str | None] = mapped_column(
-        String,
+    reference_type: Mapped[str | None] = mapped_column(
+        String(50),
         nullable=True
     )
 
-    created_at: Mapped[datetime] = mapped_column(
+    notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True
+    )
+
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True),
+        nullable=False,
         server_default=func.now()
     )
 
     inventory = relationship(
         "Inventory",
-        back_populates="transactions"
+        back_populates="transactions",
+        lazy="joined"
+    )
+
+    creator = relationship(
+        "User",
+        lazy="joined"
     )
