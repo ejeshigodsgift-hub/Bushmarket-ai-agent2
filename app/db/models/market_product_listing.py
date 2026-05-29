@@ -1,99 +1,75 @@
 import uuid
-from datetime import datetime
 
 from sqlalchemy import (
     String,
-    Float,
-    Integer,
     Boolean,
-    ForeignKey,
     DateTime,
-    Text,
-    func
+    ForeignKey,
+    Numeric,
+    Integer,
+    func,
+    Index,
+    CheckConstraint,
+    Text
 )
 
-from sqlalchemy.orm import (
-    Mapped,
-    mapped_column,
-    relationship
-)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
 
 class MarketProductListing(Base):
-
     __tablename__ = "market_product_listings"
 
-    # =========================
-    # PRIMARY ID
-    # =========================
-    id: Mapped[str] = mapped_column(
-        String,
+    __table_args__ = (
+        Index("idx_listing_market", "market_id"),
+        Index("idx_listing_product", "product_id"),
+        Index("idx_listing_agent", "assigned_agent_id"),
+        Index("idx_listing_status", "status"),
+        CheckConstraint(
+            "unit_price > 0",
+            name="ck_listing_positive_price"
+        ),
+        CheckConstraint(
+            "available_stock >= 0",
+            name="ck_listing_non_negative_stock"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    # =========================
-    # MARKET RELATIONS
-    # =========================
-    market_id: Mapped[str] = mapped_column(
-        String,
-        ForeignKey(
-            "market_locations.id",
-            ondelete="CASCADE"
-        ),
-        nullable=False,
-        index=True
+    market_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("market_locations.id", ondelete="CASCADE"),
+        nullable=False
     )
 
-    product_id: Mapped[str] = mapped_column(
-        String,
-        ForeignKey(
-            "products.id",
-            ondelete="CASCADE"
-        ),
-        nullable=False,
-        index=True
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False
     )
 
-    variant_id: Mapped[str | None] = mapped_column(
-        String,
-        ForeignKey(
-            "product_variants.id",
-            ondelete="SET NULL"
-        ),
-        nullable=True,
-        index=True
+    measurement_unit_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("measurement_units.id", ondelete="RESTRICT"),
+        nullable=False
     )
 
-    measurement_unit_id: Mapped[str] = mapped_column(
-        String,
-        ForeignKey(
-            "measurement_units.id",
-            ondelete="RESTRICT"
-        ),
-        nullable=False,
-        index=True
+    assigned_agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
     )
 
-    assigned_agent_id: Mapped[str] = mapped_column(
-        String,
-        ForeignKey(
-            "users.id",
-            ondelete="CASCADE"
-        ),
-        nullable=False,
-        index=True
-    )
-
-    # =========================
-    # LISTING CONTENT
-    # =========================
     title: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        index=True
+        String(200),
+        nullable=False
     )
 
     description: Mapped[str | None] = mapped_column(
@@ -101,129 +77,108 @@ class MarketProductListing(Base):
         nullable=True
     )
 
-    # =========================
-    # PRICING
-    # =========================
     unit_price: Mapped[float] = mapped_column(
-        Float,
+        Numeric(14, 2),
         nullable=False
     )
 
     market_fee: Mapped[float] = mapped_column(
-        Float,
+        Numeric(14, 2),
+        nullable=False,
         default=0,
-        nullable=False
+        server_default="0"
     )
 
-    volatility_score: Mapped[float] = mapped_column(
-        Float,
-        default=0,
-        nullable=False
-    )
-
-    # =========================
-    # STOCK MANAGEMENT
-    # =========================
     available_stock: Mapped[int] = mapped_column(
         Integer,
+        nullable=False,
         default=0,
-        nullable=False
+        server_default="0"
     )
 
     reserved_stock: Mapped[int] = mapped_column(
         Integer,
+        nullable=False,
         default=0,
-        nullable=False
+        server_default="0"
     )
 
-    minimum_order_quantity: Mapped[int] = mapped_column(
+    sold_stock: Mapped[int] = mapped_column(
         Integer,
-        default=1,
-        nullable=False
+        nullable=False,
+        default=0,
+        server_default="0"
     )
 
-    # =========================
-    # MARKETPLACE FLAGS
-    # =========================
-    cooperative_enabled: Mapped[bool] = mapped_column(
-        Boolean,
-        default=True,
-        nullable=False
-    )
-
-    ai_visible: Mapped[bool] = mapped_column(
-        Boolean,
-        default=True,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="draft",
+        server_default="draft"
     )
 
     is_active: Mapped[bool] = mapped_column(
         Boolean,
+        nullable=False,
         default=True,
+        server_default="true"
+    )
+
+    expires_at: Mapped[DateTime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
         nullable=False,
-        index=True
+        server_default=func.now()
     )
 
-    # =========================
-    # LISTING STATUS
-    # =========================
-    status: Mapped[str] = mapped_column(
-        String(20),
-        default="draft",
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
         nullable=False,
-        index=True
-    )
-    # VALID:
-    # draft
-    # active
-    # disabled
-
-    # =========================
-    # TIMESTAMPS
-    # =========================
-    last_price_update_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
         server_default=func.now(),
-        nullable=False
+        onupdate=func.now()
     )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False
-    )
-
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False
-    )
-
-    # =========================
-    # RELATIONSHIPS
-    # =========================
     market = relationship(
         "MarketLocation",
-        backref="product_listings"
+        back_populates="listings",
+        lazy="joined"
     )
 
     product = relationship(
         "Product",
-        backref="market_listings"
-    )
-
-    variant = relationship(
-        "ProductVariant",
-        backref="market_listings"
+        lazy="joined"
     )
 
     measurement_unit = relationship(
         "MeasurementUnit",
-        backref="market_listings"
+        lazy="joined"
     )
 
-    assigned_agent = relationship(
-        "User",
-        backref="market_product_listings"
+    inventory = relationship(
+        "Inventory",
+        back_populates="listing",
+        uselist=False,
+        lazy="selectin"
+    )
+
+    cart_items = relationship(
+        "CartItem",
+        back_populates="listing",
+        lazy="selectin"
+    )
+
+    checkout_items = relationship(
+        "CheckoutItem",
+        back_populates="listing",
+        lazy="selectin"
+    )
+
+    order_items = relationship(
+        "OrderItem",
+        back_populates="listing",
+        lazy="selectin"
     )
