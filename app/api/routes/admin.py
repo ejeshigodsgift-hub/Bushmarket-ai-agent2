@@ -1,55 +1,92 @@
-from fastapi import (
-    APIRouter,
-    Depends,
-    Request,
-    HTTPException
-)
+# =========================================
+# FILE: app/api/admin/listings.py
+# =========================================
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, Request, HTTPException
+from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-
-from app.schemas.agent_task import AssignAgentTaskPayload
-
+from app.services.market_listing_service import market_listing_service
 from app.services.permission_service import PermissionService
-from app.services.agent_task_service import AgentTaskService
+from app.services.audit_service import AuditService
+from app.services.agent_verification_service import agent_verification_service
 
-
-router = APIRouter(
-    prefix="/admin",
-    tags=["Admin"]
-)
+router = APIRouter(prefix="/admin/listings")
 
 permission_service = PermissionService()
+audit_service = AuditService()
 
 
-@router.post("/assign-task")
-async def assign_task(
-    payload: AssignAgentTaskPayload,
+# =========================
+# CREATE LISTING (STRICT AGENT ONLY)
+# =========================
+@router.post("/")
+async def create_listing(
+    payload: dict,
     request: Request,
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
 
-    admin_user = request.state.user
+    user = request.state.user
 
-    if not admin_user:
-        raise HTTPException(401, "Unauthorized")
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
-    permission_service.validate_permission(
-        admin_user["roles"],
-        "assign_agent_task"
+    user_id = user["id"]
+    roles = user.get("roles", [])
+
+    # =====================================
+    # RBAC CHECK
+    # =====================================
+    permission_service.validate_permission(roles, "create_listing")
+
+    # =====================================
+    # CRITICAL FIX:
+    # ONLY APPROVED AGENTS CAN CREATE LISTINGS
+    # =====================================
+    is_agent_role = "agent" in roles
+
+    if not is_agent_role:
+        raise HTTPException(
+            status_code=403,
+            detail="Only approved agents can create listings"
+        )
+
+    if not agent_verification_service.is_valid_agent(db, user_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Agent not approved"
+        )
+
+    # =====================================
+    # SERVICE CALL (NO DUPLICATE VALIDATION)
+    # Validation is now handled INSIDE service layer
+    # =====================================
+    listing = await market_listing_service.create_listing(
+        db=db,
+        agent=user,
+        data=payload,
+        ip=request.client.host
     )
 
-    task = await AgentTaskService().create_task(
+    # =====================================
+    # AUDIT LOG
+    # =====================================
+    audit_service.log(
         db=db,
-        admin_user=admin_user,
-        agent_id=payload.agent_id,
-        task_type=payload.task_type,
-        payload=payload.payload,
-        cooperative_id=payload.cooperative_id
+        user_id=user_id,
+        action="create_listing",
+        entity_type="market_listing",
+        entity_id=listing.id,
+        metadata={
+            "listing_id": str(listing.id),
+            "market_id": payload["market_id"]
+        },
+        ip=request.client.host
     )
 
     return {
-        "task_id": task.id,
-        "status": task.status
+        "status": "success",
+        "listing_id": str(listing.id),
+        "status_state": listing.status
     }
