@@ -11,7 +11,6 @@ from app.db.models.listing_agent_activity import ListingAgentActivity
 
 from app.services.listing_validation_service import ListingValidationService
 from app.services.audit_service import AuditService
-
 from app.services.agent_permission_service import agent_permission_service
 
 from app.events.outbox_publisher import OutboxPublisher
@@ -36,7 +35,9 @@ class MarketListingService:
     ):
 
         # ====================================================
-        # CENTRALIZED AGENT CHECK (NEW RULE)
+        # OPTION 1: CENTRALIZED AGENT APPROVAL CHECK
+        # user_id = permission identity
+        # agent.id = business actor identity
         # ====================================================
         is_agent = await agent_permission_service.is_agent(
             db,
@@ -49,6 +50,9 @@ class MarketListingService:
                 detail="Agent not authorized"
             )
 
+        # ====================================================
+        # VALIDATION
+        # ====================================================
         self.validator.validate_listing_dependencies(
             db=db,
             agent_id=agent.id,
@@ -59,6 +63,9 @@ class MarketListingService:
             stock=data["available_stock"]
         )
 
+        # ====================================================
+        # LISTING CREATION
+        # ====================================================
         listing = MarketProductListing(
             market_id=data["market_id"],
             product_id=data["product_id"],
@@ -78,6 +85,9 @@ class MarketListingService:
         db.add(listing)
         db.flush()
 
+        # ====================================================
+        # INVENTORY INIT
+        # ====================================================
         inventory = Inventory(
             listing_id=listing.id,
             available_stock=data["available_stock"],
@@ -89,6 +99,9 @@ class MarketListingService:
         db.add(inventory)
         db.flush()
 
+        # ====================================================
+        # INVENTORY HISTORY
+        # ====================================================
         history = InventoryHistory(
             inventory_id=inventory.id,
             action="inventory_created",
@@ -101,6 +114,9 @@ class MarketListingService:
 
         db.add(history)
 
+        # ====================================================
+        # ACTIVITY LOG
+        # ====================================================
         activity = ListingAgentActivity(
             listing_id=listing.id,
             agent_id=agent.id,
@@ -111,6 +127,9 @@ class MarketListingService:
 
         db.add(activity)
 
+        # ====================================================
+        # AUDIT LOG
+        # ====================================================
         self.audit.log(
             db=db,
             user_id=agent.id,
@@ -121,6 +140,9 @@ class MarketListingService:
             ip=ip
         )
 
+        # ====================================================
+        # OUTBOX EVENT
+        # ====================================================
         OutboxPublisher.publish(
             db=db,
             event_type="listing.created",
