@@ -1,5 +1,8 @@
 import uuid
 
+from decimal import Decimal
+from datetime import datetime
+
 from sqlalchemy import (
     String,
     Boolean,
@@ -10,11 +13,16 @@ from sqlalchemy import (
     func,
     Index,
     CheckConstraint,
-    Text
+    Text,
+    UniqueConstraint
 )
 
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import (
+    Mapped,
+    mapped_column,
+    relationship
+)
 
 from app.db.base import Base
 
@@ -27,13 +35,38 @@ class MarketProductListing(Base):
         Index("idx_listing_product", "product_id"),
         Index("idx_listing_agent", "assigned_agent_id"),
         Index("idx_listing_status", "status"),
+
+        UniqueConstraint(
+            "market_id",
+            "product_id",
+            "variant_id",
+            "measurement_unit_id",
+            name="uq_market_product_variant_unit"
+        ),
+
         CheckConstraint(
             "unit_price > 0",
             name="ck_listing_positive_price"
         ),
+
         CheckConstraint(
             "available_stock >= 0",
             name="ck_listing_non_negative_stock"
+        ),
+
+        CheckConstraint(
+            "reserved_stock >= 0",
+            name="ck_listing_non_negative_reserved_stock"
+        ),
+
+        CheckConstraint(
+            "sold_stock >= 0",
+            name="ck_listing_non_negative_sold_stock"
+        ),
+
+        CheckConstraint(
+            "status IN ('draft','active','disabled','sold_out')",
+            name="ck_listing_status"
         ),
     )
 
@@ -45,25 +78,46 @@ class MarketProductListing(Base):
 
     market_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("market_locations.id", ondelete="CASCADE"),
+        ForeignKey(
+            "market_locations.id",
+            ondelete="CASCADE"
+        ),
         nullable=False
     )
 
     product_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("products.id", ondelete="CASCADE"),
+        ForeignKey(
+            "market_products.id",
+            ondelete="CASCADE"
+        ),
         nullable=False
+    )
+
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "product_variants.id",
+            ondelete="SET NULL"
+        ),
+        nullable=True
     )
 
     measurement_unit_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("measurement_units.id", ondelete="RESTRICT"),
+        ForeignKey(
+            "measurement_units.id",
+            ondelete="RESTRICT"
+        ),
         nullable=False
     )
 
     assigned_agent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
+        ForeignKey(
+            "users.id",
+            ondelete="SET NULL"
+        ),
         nullable=True
     )
 
@@ -77,15 +131,15 @@ class MarketProductListing(Base):
         nullable=True
     )
 
-    unit_price: Mapped[float] = mapped_column(
+    unit_price: Mapped[Decimal] = mapped_column(
         Numeric(14, 2),
         nullable=False
     )
 
-    market_fee: Mapped[float] = mapped_column(
+    market_fee: Mapped[Decimal] = mapped_column(
         Numeric(14, 2),
         nullable=False,
-        default=0,
+        default=Decimal("0.00"),
         server_default="0"
     )
 
@@ -124,23 +178,27 @@ class MarketProductListing(Base):
         server_default="true"
     )
 
-    expires_at: Mapped[DateTime | None] = mapped_column(
+    expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True
     )
 
-    created_at: Mapped[DateTime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now()
     )
 
-    updated_at: Mapped[DateTime] = mapped_column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
         onupdate=func.now()
     )
+
+    # =====================================================
+    # RELATIONSHIPS
+    # =====================================================
 
     market = relationship(
         "MarketLocation",
@@ -150,11 +208,25 @@ class MarketProductListing(Base):
 
     product = relationship(
         "Product",
+        back_populates="market_listings",
+        lazy="joined"
+    )
+
+    variant = relationship(
+        "ProductVariant",
+        back_populates="market_listings",
         lazy="joined"
     )
 
     measurement_unit = relationship(
         "MeasurementUnit",
+        back_populates="market_listings",
+        lazy="joined"
+    )
+
+    assigned_agent = relationship(
+        "User",
+        back_populates="market_product_listings",
         lazy="joined"
     )
 
