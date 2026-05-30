@@ -1,15 +1,37 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine
+)
 
-DATABASE_URL = "postgresql://user:pass@localhost/bushmarket"
-
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+from app.core.config import settings
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=20,
+    max_overflow=40,
+    pool_recycle=1800,
+    pool_timeout=30,
+    echo=False
+)
+
+SessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False
+)
+
+
+async def get_db():
+
+    async with SessionLocal() as db:
+
+        try:
+            yield db
+
+        except Exception:
+            await db.rollback()
+            raise
