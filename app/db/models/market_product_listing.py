@@ -234,8 +234,7 @@ class MarketProductListing(Base):
          "ListingAgentActivity",
          back_populates="listing",
          lazy="selectin",
-         cascade="all, 
-         delete-orphan"
+         cascade="all, delete-orphan"
     )
 
     inventory = relationship(
@@ -267,6 +266,5 @@ class MarketProductListing(Base):
         "ListingPriceHistory",
         back_populates="listing",
         lazy="selectin",
-        cascade="all, 
-        delete-orphan"
+        cascade="all, delete-orphan"
     )
