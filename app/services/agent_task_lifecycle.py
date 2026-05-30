@@ -16,7 +16,8 @@ class AgentTaskLifecycle:
         db: AsyncSession,
         task_id: str,
         new_status: str
-    ):
+    ) -> AgentTask:
+
         # =========================
         # FETCH TASK
         # =========================
@@ -29,39 +30,51 @@ class AgentTaskLifecycle:
         task = result.scalar_one_or_none()
 
         if not task:
-            raise HTTPException(404, "Task not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Task not found"
+            )
 
         # =========================
-        # STATE VALIDATION
+        # VALIDATE STATE TRANSITION
         # =========================
         TaskStateMachine.validate_transition(
             task.status,
             new_status
         )
 
+        old_status = task.status
+
         # =========================
-        # APPLY STATE CHANGE
+        # APPLY STATUS CHANGE
         # =========================
         task.status = new_status
 
-        if new_status in ["completed", "failed"]:
-            task.completed_at = datetime.now(timezone.utc)
+        if new_status in ("completed", "failed"):
+            task.completed_at = datetime.now(
+                timezone.utc
+            )
 
         # =========================
-        # OUTBOX EVENT (CRITICAL)
+        # CREATE OUTBOX EVENT
         # =========================
-        db.add(
-            OutboxEvent(
-                topic="agent.task.updated",
-                payload={
-                    "task_id": task.id,
-                    "status": task.status
-                }
-            )
+        outbox_event = OutboxEvent(
+            topic="agent.task.updated",
+            payload={
+                "task_id": task.id,
+                "agent_id": task.agent_id,
+                "old_status": old_status,
+                "new_status": new_status,
+                "updated_at": datetime.now(
+                    timezone.utc
+                ).isoformat()
+            }
         )
 
+        db.add(outbox_event)
+
         # =========================
-        # COMMIT ONCE (UNIT OF WORK)
+        # SINGLE TRANSACTION
         # =========================
         await db.commit()
 
