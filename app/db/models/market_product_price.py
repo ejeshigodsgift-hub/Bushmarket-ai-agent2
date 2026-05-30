@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     String,
@@ -17,24 +18,34 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 
-class MarketProductPrice(Base):
-    __tablename__ = "market_product_prices"
+class MarketPrice(Base):
+    __tablename__ = "market_prices"
 
     __table_args__ = (
-        Index("idx_market_product_price_market", "market_id"),
-        Index("idx_market_product_price_product", "product_id"),
-        Index("idx_market_product_price_created", "created_at"),
+        Index("idx_market_price_market", "market_id"),
+        Index("idx_market_price_product", "product_id"),
+        Index("idx_market_price_variant", "variant_id"),
+        Index("idx_market_price_unit", "measurement_unit_id"),
+        Index("idx_market_price_created", "created_at"),
+
         CheckConstraint(
             "unit_price > 0",
-            name="ck_market_product_price_positive"
+            name="ck_market_price_positive"
         ),
     )
 
+    # =====================================================
+    # PRIMARY KEY
+    # =====================================================
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4
     )
+
+    # =====================================================
+    # FOREIGN KEYS (CLEAN + CONSISTENT)
+    # =====================================================
 
     market_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -44,8 +55,14 @@ class MarketProductPrice(Base):
 
     product_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("products.id", ondelete="CASCADE"),
+        ForeignKey("market_products.id", ondelete="CASCADE"),
         nullable=False
+    )
+
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("product_variants.id", ondelete="SET NULL"),
+        nullable=True
     )
 
     measurement_unit_id: Mapped[uuid.UUID] = mapped_column(
@@ -53,6 +70,16 @@ class MarketProductPrice(Base):
         ForeignKey("measurement_units.id", ondelete="RESTRICT"),
         nullable=False
     )
+
+    recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # =====================================================
+    # PRICE DATA
+    # =====================================================
 
     unit_price: Mapped[float] = mapped_column(
         Numeric(14, 2),
@@ -66,10 +93,9 @@ class MarketProductPrice(Base):
         server_default="listing"
     )
 
-    recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        nullable=True
-    )
+    # =====================================================
+    # STATUS
+    # =====================================================
 
     is_active: Mapped[bool] = mapped_column(
         Boolean,
@@ -78,20 +104,34 @@ class MarketProductPrice(Base):
         server_default="true"
     )
 
-    created_at: Mapped[DateTime] = mapped_column(
+    # =====================================================
+    # TIMESTAMPS
+    # =====================================================
+
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now()
     )
 
+    # =====================================================
+    # RELATIONSHIPS
+    # =====================================================
+
     market = relationship(
         "MarketLocation",
-        back_populates="prices",
+        back_populates="market_prices",
         lazy="joined"
     )
 
     product = relationship(
         "Product",
+        back_populates="market_prices",
+        lazy="joined"
+    )
+
+    variant = relationship(
+        "ProductVariant",
         lazy="joined"
     )
 
