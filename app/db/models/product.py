@@ -13,17 +13,12 @@ from sqlalchemy import (
     UniqueConstraint
 )
 
-from sqlalchemy.orm import (
-    Mapped,
-    mapped_column,
-    relationship
-)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
 
 class Product(Base):
-
     __tablename__ = "market_products"
 
     __table_args__ = (
@@ -32,12 +27,18 @@ class Product(Base):
         Index("idx_market_products_category", "category"),
     )
 
+    # =========================
+    # PRIMARY KEY
+    # =========================
     id: Mapped[str] = mapped_column(
         String(36),
         primary_key=True,
         default=lambda: str(uuid.uuid4())
     )
 
+    # =========================
+    # CORE PRODUCT FIELDS
+    # =========================
     name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
@@ -85,6 +86,9 @@ class Product(Base):
         index=True
     )
 
+    # =========================
+    # TIMESTAMPS
+    # =========================
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -97,6 +101,10 @@ class Product(Base):
         onupdate=func.now(),
         nullable=False
     )
+
+    # =========================
+    # RELATIONSHIPS
+    # =========================
 
     variants = relationship(
         "ProductVariant",
@@ -114,6 +122,13 @@ class Product(Base):
 
     inventories = relationship(
         "Inventory",
+        back_populates="product",
+        lazy="selectin"
+    )
+
+    # 🔥 THIS FIXES YOUR MARKET PRODUCT LISTING ALIGNMENT
+    market_product_listings = relationship(
+        "MarketProductListing",
         back_populates="product",
         lazy="selectin"
     )
