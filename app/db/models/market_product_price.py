@@ -14,6 +14,7 @@ from sqlalchemy import (
 
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from decimal import Decimal
 
 from app.db.base import Base
 
@@ -81,7 +82,7 @@ class MarketPrice(Base):
     # PRICE DATA
     # =====================================================
 
-    unit_price: Mapped[float] = mapped_column(
+    unit_price: Mapped[Decimal] = mapped_column(
         Numeric(14, 2),
         nullable=False
     )
