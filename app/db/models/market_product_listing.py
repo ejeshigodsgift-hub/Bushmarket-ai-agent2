@@ -231,7 +231,7 @@ class MarketProductListing(Base):
     )
     
     agent_activities = relationship(
-        "ListingAgentActivity",
+         "ListingAgentActivity",
          back_populates="listing",
          lazy="selectin",
          cascade="all, 
@@ -261,4 +261,12 @@ class MarketProductListing(Base):
         "OrderItem",
         back_populates="listing",
         lazy="selectin"
+    )
+
+    price_histories = relationship(
+        "ListingPriceHistory",
+        back_populates="listing",
+        lazy="selectin",
+        cascade="all, 
+        delete-orphan"
     )
