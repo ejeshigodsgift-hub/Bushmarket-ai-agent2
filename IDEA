@@ -1474,3 +1474,1782 @@ Remember to replace the current market_volatitility_rule.py
 
 
 
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+
+from app.db.models.market_location import MarketLocation
+from app.db.models.products import Product
+from app.db.models.measurement_unit import MeasurementUnit
+from app.db.models.market_listing import MarketListing
+
+class ListingValidationService:
+
+# =========================    
+# 1. PRE-CREATION VALIDATION (STRICT DB GATE)    
+# =========================    
+def validate_listing_dependencies(    
+    self,    
+    db: Session,    
+    agent_id: str,    
+    market_id: str,    
+    product_id: str,    
+    unit_id: str,    
+    price: float,    
+    stock: int    
+):    
+
+    if price <= 0:    
+        raise HTTPException(400, "Invalid price")    
+
+    if stock <= 0:    
+        raise HTTPException(400, "Invalid stock")    
+
+    if not db.query(Product).filter(Product.id == product_id).first():    
+        raise HTTPException(404, "Invalid product")    
+
+    if not db.query(MarketLocation).filter(MarketLocation.id == market_id).first():    
+        raise HTTPException(404, "Invalid market")    
+
+    if not db.query(MeasurementUnit).filter(    
+        MeasurementUnit.id == unit_id    
+    ).first():    
+        raise HTTPException(404, "Invalid measurement unit")    
+
+    return True    
+
+# =========================    
+# 2. RUNTIME LISTING VALIDATION (MARKET SAFE GATE)    
+# =========================    
+def validate_listing(self, listing: MarketListing):    
+
+    if not listing:    
+        raise HTTPException(404, "Listing not found")    
+
+    if listing.status != "active":    
+        raise HTTPException(400, "Listing is not active")    
+
+    # 🧩 AGENT GATE    
+    if not listing.assigned_agent_id:    
+        raise HTTPException(400, "No agent assigned")    
+
+    if not listing.agent:    
+        raise HTTPException(400, "Agent missing")    
+
+    if not listing.agent.is_verified_agent:    
+        raise HTTPException(403, "Agent not verified")    
+
+    if listing.agent.status != "approved":    
+        raise HTTPException(403, "Agent not approved")    
+
+    # 🧩 MARKET SAFETY    
+    if not listing.market_id:    
+        raise HTTPException(400, "Invalid market location")    
+
+    # 🧩 PRODUCT SAFETY    
+    if not listing.product_id:    
+        raise HTTPException(400, "Invalid product")    
+
+    # 🧩 UNIT SAFETY    
+    if not listing.measurement_unit_id:    
+        raise HTTPException(400, "Invalid measurement unit")    
+
+    # 🧩 PRICE SAFETY    
+    if listing.unit_price is None or listing.unit_price <= 0:    
+        raise HTTPException(400, "Invalid price")    
+
+    # 🧩 STOCK SAFETY    
+    if listing.available_stock is None or listing.available_stock <= 0:    
+        raise HTTPException(400, "Out of stock")    
+
+    return True
+
+listing_validation_service = ListingValidationService()
+
+from fastapi import HTTPException
+
+class ListingGuardService:
+
+# =========================    
+# ROLE CHECK    
+# =========================    
+def enforce_listing_permission(self, roles: list):    
+
+    if "admin" in roles:    
+        return True    
+
+    if "agent" in roles:    
+        return True    
+
+    raise HTTPException(    
+        status_code=403,    
+        detail="Only agents or admins can create listings"    
+    )
+
+listing_guard_service = ListingGuardService()
+
+from fastapi import HTTPException
+
+class InventoryValidationService:
+
+def validate_stock(    
+    self,    
+    inventory,    
+    quantity: int    
+):    
+
+    if not inventory:    
+        raise HTTPException(    
+            status_code=404,    
+            detail="Inventory not found"    
+        )    
+
+    if inventory.status == "disabled":    
+        raise HTTPException(    
+            status_code=400,    
+            detail="Inventory disabled"    
+        )    
+
+    if inventory.available_stock < quantity:    
+        raise HTTPException(    
+            status_code=400,    
+            detail="Insufficient stock"    
+        )    
+
+    return True
+
+from sqlalchemy.orm import Session
+from fastapi import HTTPException
+
+from app.db.models.inventory import Inventory
+from app.db.models.inventory_transaction import InventoryTransaction
+
+from app.services.inventory_validation_service import InventoryValidationService
+from app.services.audit_service import AuditService
+
+from app.integrations.redis_client import redis_client
+from app.integrations.kafka_client import event_bus
+
+class InventoryService:
+
+def __init__(self):    
+    self.validator = InventoryValidationService()    
+    self.audit = AuditService()    
+
+# =====================================    
+# GET INVENTORY    
+# =====================================    
+def get_inventory(self, db: Session, inventory_id: str):    
+
+    inventory = (    
+        db.query(Inventory)    
+        .filter(Inventory.id == inventory_id)    
+        .first()    
+    )    
+
+    if not inventory:    
+        raise HTTPException(status_code=404, detail="Inventory not found")    
+
+    return inventory    
+
+# =====================================    
+# RESERVE STOCK (CART / CHECKOUT PREP)    
+# =====================================    
+def reserve_stock(    
+    self,    
+    db: Session,    
+    inventory_id: str,    
+    quantity: int,    
+    user_id: str,    
+    ip: str    
+):    
+
+    inventory = (    
+        db.query(Inventory)    
+        .filter(Inventory.id == inventory_id)    
+        .with_for_update()    
+        .first()    
+    )    
+
+    if not inventory:    
+        raise HTTPException(status_code=404, detail="Inventory not found")    
+
+    self.validator.validate_stock(inventory=inventory, quantity=quantity)    
+
+    inventory.available_stock -= quantity    
+    inventory.reserved_stock += quantity    
+
+    tx = InventoryTransaction(    
+        inventory_id=inventory.id,    
+        transaction_type="reserve",    
+        quantity=quantity,    
+        created_by=user_id    
+    )    
+
+    db.add(tx)    
+    db.commit()    
+    db.refresh(inventory)    
+
+    self._emit_inventory_event(    
+        event="inventory_reserved",    
+        inventory=inventory,    
+        quantity=quantity,    
+        user_id=user_id    
+    )    
+
+    self._audit(    
+        db, user_id, "inventory_reserved",    
+        inventory, quantity, ip    
+    )    
+
+    return inventory    
+
+# =====================================    
+# CONFIRM SALE (POST PAYMENT / ORDER FINALIZATION)    
+# =====================================    
+def confirm_sale(    
+    self,    
+    db: Session,    
+    inventory_id: str,    
+    quantity: int,    
+    user_id: str,    
+    ip: str    
+):    
+
+    inventory = (    
+        db.query(Inventory)    
+        .filter(Inventory.id == inventory_id)    
+        .with_for_update()    
+        .first()    
+    )    
+
+    if not inventory:    
+        raise HTTPException(status_code=404, detail="Inventory not found")    
+
+    if inventory.reserved_stock < quantity:    
+        raise HTTPException(status_code=400, detail="Reserved stock insufficient")    
+
+    inventory.reserved_stock -= quantity    
+    inventory.sold_stock += quantity    
+
+    tx = InventoryTransaction(    
+        inventory_id=inventory.id,    
+        transaction_type="sold",    
+        quantity=quantity,    
+        created_by=user_id    
+    )    
+
+    db.add(tx)    
+    db.commit()    
+    db.refresh(inventory)    
+
+    self._emit_inventory_event(    
+        event="inventory_sold",    
+        inventory=inventory,    
+        quantity=quantity,    
+        user_id=user_id    
+    )    
+
+    self._audit(    
+        db, user_id, "inventory_sold",    
+        inventory, quantity, ip    
+    )    
+
+    return inventory    
+
+# =====================================    
+# RELEASE RESERVED STOCK (CANCELLED ORDER / FAILED PAYMENT)    
+# =====================================    
+def release_reserved_stock(    
+    self,    
+    db: Session,    
+    inventory_id: str,    
+    quantity: int,    
+    user_id: str,    
+    ip: str    
+):    
+
+    inventory = (    
+        db.query(Inventory)    
+        .filter(Inventory.id == inventory_id)    
+        .with_for_update()    
+        .first()    
+    )    
+
+    if not inventory:    
+        raise HTTPException(status_code=404, detail="Inventory not found")    
+
+    if inventory.reserved_stock < quantity:    
+        raise HTTPException(status_code=400, detail="Reserved stock insufficient")    
+
+    inventory.reserved_stock -= quantity    
+    inventory.available_stock += quantity    
+
+    tx = InventoryTransaction(    
+        inventory_id=inventory.id,    
+        transaction_type="release",    
+        quantity=quantity,    
+        created_by=user_id    
+    )    
+
+    db.add(tx)    
+    db.commit()    
+    db.refresh(inventory)    
+
+    self._emit_inventory_event(    
+        event="inventory_released",    
+        inventory=inventory,    
+        quantity=quantity,    
+        user_id=user_id    
+    )    
+
+    self._audit(    
+        db, user_id, "inventory_released",    
+        inventory, quantity, ip    
+    )    
+
+    return inventory    
+
+# =====================================    
+# REDUCE STOCK (ADMIN / EMERGENCY ADJUSTMENT)    
+# =====================================    
+def reduce_stock(    
+    self,    
+    db: Session,    
+    inventory_id: str,    
+    quantity: int,    
+    user_id: str,    
+    ip: str    
+):    
+
+    inventory = (    
+        db.query(Inventory)    
+        .filter(Inventory.id == inventory_id)    
+        .with_for_update()    
+        .first()    
+    )    
+
+    if not inventory:    
+        raise HTTPException(status_code=404, detail="Inventory not found")    
+
+    self.validator.validate_stock(inventory=inventory, quantity=quantity)    
+
+    inventory.available_stock -= quantity    
+
+    tx = InventoryTransaction(    
+        inventory_id=inventory.id,    
+        transaction_type="manual_reduce",    
+        quantity=quantity,    
+        created_by=user_id    
+    )    
+
+    db.add(tx)    
+    db.commit()    
+    db.refresh(inventory)    
+
+    self._emit_inventory_event(    
+        event="inventory_reduced",    
+        inventory=inventory,    
+        quantity=quantity,    
+        user_id=user_id    
+    )    
+
+    self._audit(    
+        db, user_id, "inventory_reduced",    
+        inventory, quantity, ip    
+    )    
+
+    return inventory    
+
+# =====================================    
+# 🆕 CHECKOUT FINALIZATION (BUSHMARKET CORE EXTENSION)    
+# THIS CONNECTS:    
+# cart → payment → inventory → order system    
+# =====================================    
+def finalize_checkout(    
+    self,    
+    db: Session,    
+    inventory_id: str,    
+    quantity: int,    
+    user_id: str,    
+    ip: str,    
+    order_id: str    
+):    
+
+    inventory = (    
+        db.query(Inventory)    
+        .filter(Inventory.id == inventory_id)    
+        .with_for_update()    
+        .first()    
+    )    
+
+    if not inventory:    
+        raise HTTPException(status_code=404, detail="Inventory not found")    
+
+    if inventory.reserved_stock < quantity:    
+        raise HTTPException(status_code=400, detail="Reserved stock insufficient for checkout")    
+
+    # convert reserved → sold    
+    inventory.reserved_stock -= quantity    
+    inventory.sold_stock += quantity    
+
+    tx = InventoryTransaction(    
+        inventory_id=inventory.id,    
+        transaction_type="checkout_finalized",    
+        quantity=quantity,    
+        created_by=user_id    
+    )    
+
+    db.add(tx)    
+    db.commit()    
+    db.refresh(inventory)    
+
+    self._emit_inventory_event(    
+        event="checkout_completed",    
+        inventory=inventory,    
+        quantity=quantity,    
+        user_id=user_id,    
+        extra={"order_id": order_id}    
+    )    
+
+    self._audit(    
+        db, user_id, "checkout_completed",    
+        inventory, quantity, ip    
+    )    
+
+    return inventory    
+
+# =====================================    
+# INTERNAL: EVENT EMITTER    
+# =====================================    
+def _emit_inventory_event(self, event, inventory, quantity, user_id, extra=None):    
+
+    payload = {    
+        "event": event,    
+        "inventory_id": inventory.id,    
+        "quantity": quantity,    
+        "user_id": user_id,    
+        "available_stock": inventory.available_stock,    
+        "reserved_stock": inventory.reserved_stock,    
+        "sold_stock": inventory.sold_stock,    
+        "extra": extra or {}    
+    }    
+
+    redis_client.publish("inventory.updated", payload)    
+
+    event_bus.publish("inventory-events", payload)    
+
+# =====================================    
+# INTERNAL: AUDIT LOGGER    
+# =====================================    
+def _audit(self, db, user_id, action, inventory, quantity, ip):    
+
+    self.audit.log(    
+        db=db,    
+        user_id=user_id,    
+        action=action,    
+        entity_type="inventory",    
+        entity_id=inventory.id,    
+        metadata={    
+            "quantity": quantity,    
+            "available_stock": inventory.available_stock,    
+            "reserved_stock": inventory.reserved_stock,    
+            "sold_stock": inventory.sold_stock    
+        },    
+        ip=ip    
+    )
+
+from sqlalchemy.orm import Session
+
+from app.db.models.measurement_conversion import MeasurementConversion
+
+class ConversionService:
+
+def convert(    
+    self,    
+    db: Session,    
+    from_unit_id: str,    
+    to_unit_id: str,    
+    value: float    
+):    
+
+    conversion = db.query(    
+        MeasurementConversion    
+    ).filter(    
+        MeasurementConversion.from_measurement_unit_id == from_unit_id,    
+        MeasurementConversion.to_measurement_unit_id == to_unit_id,    
+        MeasurementConversion.is_active == True    
+    ).first()    
+
+    if not conversion:    
+        return None    
+
+    return value * conversion.conversion_factor
+
+conversion_service = ConversionService()
+
+from fastapi import HTTPException
+
+class CheckoutValidationService:
+
+def validate_cart(self, cart):    
+
+    if not cart:    
+        raise HTTPException(404, "Cart not found")    
+
+    if not cart.items:    
+        raise HTTPException(400, "Cart is empty")    
+
+    for item in cart.items:    
+
+        listing = item.listing    
+
+        if listing.status != "active":    
+            raise HTTPException(400, "Inactive listing")    
+
+        if listing.available_stock < item.quantity:    
+            raise HTTPException(400, "Insufficient stock")    
+
+        if listing.unit_price <= 0:    
+            raise HTTPException(400, "Invalid price")    
+
+        if not listing.measurement_unit_id:    
+            raise HTTPException(400, "Missing measurement unit")    
+
+        if not listing.market_id:    
+            raise HTTPException(400, "Missing market location")
+
+import uuid
+
+from sqlalchemy.orm import Session
+
+from app.db.models.checkout import Checkout
+from app.db.models.checkout_item import CheckoutItem
+
+from app.services.checkout_validation_service import CheckoutValidationService
+from app.services.inventory_service import InventoryService
+from app.services.audit_service import AuditService
+
+from app.integrations.kafka_client import event_bus
+from app.integrations.redis_client import redis_client
+
+class CheckoutService:
+
+def __init__(self):    
+
+    self.validator = CheckoutValidationService()    
+    self.inventory = InventoryService()    
+    self.audit = AuditService()    
+
+def create_checkout(self, db: Session, user_id: str, cart):    
+
+    self.validator.validate_cart(cart)    
+
+    subtotal = 0    
+    fee_total = 0    
+    delivery_fee = 0    
+
+    checkout = Checkout(    
+        user_id=user_id,    
+        cart_id=cart.id,    
+        subtotal=0,    
+        market_fee_total=0,    
+        delivery_fee=0,    
+        total=0    
+    )    
+
+    db.add(checkout)    
+    db.flush()    
+
+    for item in cart.items:    
+
+        listing = item.listing    
+
+        line_total = item.quantity * float(item.unit_price)    
+        fee = item.quantity * float(item.market_fee)    
+
+        subtotal += line_total    
+        fee_total += fee    
+
+        checkout_item = CheckoutItem(    
+            checkout_id=checkout.id,    
+            listing_id=listing.id,    
+            product_id=listing.product_id,    
+            market_id=listing.market_id,    
+            quantity=item.quantity,    
+            unit_price=item.unit_price,    
+            market_fee=fee,    
+            total_price=line_total + fee    
+        )    
+
+        db.add(checkout_item)    
+
+        # reserve stock (pre-order lock)    
+        self.inventory.reserve_stock(    
+            db,    
+            listing.id,    
+            item.quantity    
+        )    
+
+    checkout.subtotal = subtotal    
+    checkout.market_fee_total = fee_total    
+    checkout.delivery_fee = delivery_fee    
+    checkout.total = subtotal + fee_total    
+
+    cart.status = "checkout_locked"    
+
+    db.commit()    
+    db.refresh(checkout)    
+
+    # Redis lock (prevents double checkout)    
+    redis_client.set(f"checkout:{user_id}", checkout.id, ttl=900)    
+
+    # Kafka event    
+    event_bus.publish(    
+        "marketplace.checkout.created",    
+        {    
+            "checkout_id": checkout.id,    
+            "user_id": user_id,    
+            "total": float(checkout.total)    
+        }    
+    )    
+
+    # Audit    
+    self.audit.log(    
+        db=db,    
+        user_id=user_id,    
+        action="checkout_created",    
+        entity_type="checkout",    
+        entity_id=checkout.id,    
+        metadata={    
+            "subtotal": float(subtotal),    
+            "fee": float(fee_total)    
+        }    
+    )    
+
+    return checkout
+
+from fastapi import HTTPException
+
+from app.db.models.market_listing import MarketListing
+
+class CartValidationService:
+
+def validate_listing_for_cart(    
+    self,    
+    listing: MarketListing    
+):    
+
+    if not listing:    
+        raise HTTPException(    
+            status_code=404,    
+            detail="Listing not found"    
+        )    
+
+    if listing.status != "active":    
+        raise HTTPException(    
+            status_code=400,    
+            detail="Listing inactive"    
+        )    
+
+    if listing.available_stock <= 0:    
+        raise HTTPException(    
+            status_code=400,    
+            detail="Out of stock"    
+        )    
+
+    if listing.unit_price <= 0:    
+        raise HTTPException(    
+            status_code=400,    
+            detail="Invalid price"    
+        )    
+
+    if not listing.measurement_unit_id:    
+        raise HTTPException(    
+            status_code=400,    
+            detail="Measurement unit missing"    
+        )    
+
+    if not listing.market_id:    
+        raise HTTPException(    
+            status_code=400,    
+            detail="Market missing"    
+        )
+
+=========================================
+
+FILE: app/services/cart_service.py
+
+=========================================
+
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from fastapi import HTTPException
+
+from app.db.models.cart import Cart
+from app.db.models.cart_item import CartItem
+from app.db.models.market_listing import MarketListing
+from app.db.models.inventory import Inventory
+
+from app.services.audit_service import AuditService
+from app.services.cart_validation_service import CartValidationService
+from app.services.cart_pricing_service import CartPricingService
+from app.services.inventory_service import InventoryService
+
+from app.integrations.redis_client import redis_client
+from app.integrations.kafka_client import event_bus
+
+class CartService:
+
+def __init__(self):    
+    self.audit_service = AuditService()    
+    self.validation_service = CartValidationService()    
+    self.pricing_service = CartPricingService()    
+    self.inventory_service = InventoryService()    
+
+# =========================================    
+# GET OR CREATE CART    
+# =========================================    
+def get_or_create_cart(self, db: Session, user_id: str):    
+
+    cart = db.query(Cart).filter(    
+        Cart.user_id == user_id,    
+        Cart.status == "active"    
+    ).first()    
+
+    if cart:    
+        return cart    
+
+    cart = Cart(    
+        user_id=user_id,    
+        status="active",    
+        subtotal_amount=0,    
+        total_market_fee=0,    
+        total_delivery_fee=0,    
+        total_amount=0    
+    )    
+
+    db.add(cart)    
+    db.commit()    
+    db.refresh(cart)    
+
+    return cart    
+
+# =========================================    
+# ADD TO CART    
+# =========================================    
+def add_to_cart(    
+    self,    
+    db: Session,    
+    user_id: str,    
+    listing_id: str,    
+    quantity: int,    
+    ip_address: str    
+):    
+
+    try:    
+
+        # =========================    
+        # VALIDATE QUANTITY    
+        # =========================    
+        if quantity <= 0:    
+            raise HTTPException(    
+                status_code=400,    
+                detail="Quantity must be greater than zero"    
+            )    
+
+        # =========================    
+        # GET LISTING    
+        # =========================    
+        listing = db.query(MarketListing).filter(    
+            MarketListing.id == listing_id    
+        ).first()    
+
+        if not listing:    
+            raise HTTPException(    
+                status_code=404,    
+                detail="Listing not found"    
+            )    
+
+        # =========================    
+        # LISTING VALIDATION GATE (Bushmarket Rule)    
+        # =========================    
+        self.validation_service.validate_listing_for_cart(listing)    
+
+        # =========================    
+        # LOCK INVENTORY (transaction safety)    
+        # =========================    
+        inventory = db.query(Inventory).filter(    
+            Inventory.listing_id == listing.id,    
+            Inventory.is_active == True    
+        ).with_for_update().first()    
+
+        if not inventory:    
+            raise HTTPException(    
+                status_code=404,    
+                detail="Inventory not found"    
+            )    
+
+        self.inventory_service.validate_inventory_for_cart(    
+            inventory=inventory,    
+            requested_quantity=quantity    
+        )    
+
+        # =========================    
+        # GET CART    
+        # =========================    
+        cart = self.get_or_create_cart(db, user_id)    
+
+        # =========================    
+        # EXISTING ITEM CHECK    
+        # =========================    
+        existing_item = db.query(CartItem).filter(    
+            CartItem.cart_id == cart.id,    
+            CartItem.listing_id == listing.id    
+        ).first()    
+
+        final_quantity = quantity    
+
+        if existing_item:    
+            final_quantity += existing_item.quantity    
+
+        self.inventory_service.validate_inventory_for_cart(    
+            inventory=inventory,    
+            requested_quantity=final_quantity    
+        )    
+
+        # =========================    
+        # PRICING ENGINE (NO FLOAT DRIFT)    
+        # =========================    
+        pricing = self.pricing_service.calculate_item_total(    
+            quantity=quantity,    
+            unit_price=listing.unit_price,    
+            market_fee=listing.market_fee    
+        )    
+
+        # =========================    
+        # UPSERT CART ITEM    
+        # =========================    
+        if existing_item:    
+
+            existing_item.quantity = final_quantity    
+
+            existing_item.unit_price = listing.unit_price    
+
+            existing_item.market_fee = (    
+                existing_item.market_fee + pricing["market_fee"]    
+            )    
+
+            existing_item.total_price = (    
+                existing_item.total_price + pricing["total"]    
+            )    
+
+            item = existing_item    
+
+        else:    
+
+            item = CartItem(    
+                cart_id=cart.id,    
+                listing_id=listing.id,    
+                product_id=listing.product_id,    
+                market_id=listing.market_id,    
+                measurement_unit_id=listing.measurement_unit_id,    
+
+                quantity=quantity,    
+                unit_price=listing.unit_price,    
+
+                market_fee=pricing["market_fee"],    
+                delivery_fee=0,  # reserved for checkout engine    
+
+                total_price=pricing["total"],    
+
+                status="active"    
+            )    
+
+            db.add(item)    
+
+        # =========================    
+        # CART TOTALS (SAFE AGGREGATION)    
+        # =========================    
+        cart.subtotal_amount = cart.subtotal_amount + pricing["subtotal"]    
+
+        cart.total_market_fee = cart.total_market_fee + pricing["market_fee"]    
+
+        cart.total_amount = cart.subtotal_amount + cart.total_market_fee    
+
+        # =========================    
+        # INVENTORY RESERVATION    
+        # =========================    
+        self.inventory_service.reserve_inventory(    
+            db=db,    
+            inventory=inventory,    
+            quantity=quantity    
+        )    
+
+        db.commit()    
+
+        # =========================    
+        # REDIS EVENT    
+        # =========================    
+        redis_client.publish(    
+            "cart.updated",    
+            {    
+                "cart_id": cart.id,    
+                "user_id": user_id,    
+                "listing_id": listing.id    
+            }    
+        )    
+
+        # =========================    
+        # KAFKA EVENT    
+        # =========================    
+        event_bus.publish(    
+            "cart-events",    
+            {    
+                "event": "cart_item_added",    
+                "cart_id": cart.id,    
+                "listing_id": listing.id,    
+                "product_id": listing.product_id,    
+                "quantity": quantity    
+            }    
+        )    
+
+        # =========================    
+        # AUDIT LOG    
+        # =========================    
+        self.audit_service.log(    
+            db=db,    
+            user_id=user_id,    
+            action="cart_item_added",    
+            entity_type="cart",    
+            entity_id=cart.id,    
+            metadata={    
+                "listing_id": listing.id,    
+                "product_id": listing.product_id,    
+                "quantity": quantity,    
+                "market_id": listing.market_id    
+            },    
+            ip=ip_address    
+        )    
+
+        return item    
+
+    except HTTPException:    
+        db.rollback()    
+        raise    
+
+    except SQLAlchemyError:    
+        db.rollback()    
+        raise HTTPException(    
+            status_code=500,    
+            detail="Database transaction failed"    
+        )    
+
+    except Exception:    
+        db.rollback()    
+        raise HTTPException(    
+            status_code=500,    
+            detail="Unable to add item to cart"    
+        )    
+
+# =========================================    
+# CHECKOUT PREPARATION (NEW EXTENSION)    
+# =========================================    
+def prepare_checkout(self, db: Session, user_id: str):    
+
+    cart = self.get_or_create_cart(db, user_id)    
+
+    if not cart:    
+        raise HTTPException(    
+            status_code=404,    
+            detail="Cart not found"    
+        )    
+
+    if cart.total_amount <= 0:    
+        raise HTTPException(    
+            status_code=400,    
+            detail="Cart is empty"    
+        )    
+
+    return {    
+        "cart_id": cart.id,    
+        "subtotal": cart.subtotal_amount,    
+        "market_fee": cart.total_market_fee,    
+        "delivery_fee": cart.total_delivery_fee,    
+        "total": cart.total_amount,    
+        "status": "ready_for_checkout"    
+    }
+
+class CartPricingService:
+
+def calculate_item_total(    
+    self,    
+    quantity: int,    
+    unit_price: float,    
+    market_fee: float    
+):    
+
+    subtotal = quantity * float(unit_price)    
+
+    total_fee = quantity * float(market_fee)    
+
+    return {    
+        "subtotal": subtotal,    
+        "market_fee": total_fee,    
+        "total": subtotal + total_fee    
+    }
+
+from sqlalchemy.orm import Session
+
+from app.db.models.market_volatility_rule import MarketVolatilityRule
+
+class VolatilityRuleService:
+
+# =========================    
+# GET RULE (SMART FALLBACK CHAIN)    
+# =========================    
+def get_rule(    
+    self,    
+    db: Session,    
+    product_id: str,    
+    market_id: str    
+) -> MarketVolatilityRule | None:    
+
+    # 1. PRODUCT + MARKET (MOST SPECIFIC)    
+    rule = db.query(MarketVolatilityRule).filter(    
+        MarketVolatilityRule.product_id == product_id,    
+        MarketVolatilityRule.market_id == market_id,    
+        MarketVolatilityRule.is_active == True    
+    ).first()    
+
+    if rule:    
+        return rule    
+
+    # 2. MARKET LEVEL RULE    
+    rule = db.query(MarketVolatilityRule).filter(    
+        MarketVolatilityRule.market_id == market_id,    
+        MarketVolatilityRule.product_id.is_(None),    
+        MarketVolatilityRule.is_active == True    
+    ).first()    
+
+    if rule:    
+        return rule    
+
+    # 3. GLOBAL SYSTEM DEFAULT    
+    return db.query(MarketVolatilityRule).filter(    
+        MarketVolatilityRule.market_id.is_(None),    
+        MarketVolatilityRule.product_id.is_(None),    
+        MarketVolatilityRule.is_active == True    
+    ).first()    
+
+# =========================    
+# CLASSIFY PRICE VOLATILITY    
+# =========================    
+def evaluate(    
+    self,    
+    rule: MarketVolatilityRule,    
+    price_change: float    
+) -> str:    
+
+    if not rule:    
+        return "unknown"    
+
+    # 🧠 apply market sensitivity multiplier (core Bushmarket logic)    
+    adjusted_change = abs(price_change) * float(rule.sensitivity_multiplier or 1)    
+
+    if adjusted_change >= rule.critical_threshold:    
+        return "critical"    
+
+    if adjusted_change >= rule.suspicious_threshold:    
+        return "suspicious"    
+
+    return "normal"
+
+volatility_rule_service = VolatilityRuleService()
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.services.product_service import product_service
+
+router = APIRouter(prefix="/products")
+
+=========================
+
+SEARCH PRODUCTS
+
+=========================
+
+@router.get("/search")
+def search_products(
+keyword: str,
+db: Session = Depends(get_db)
+):
+
+products = product_service.search_products(    
+    db,    
+    keyword    
+)    
+
+return products
+
+from fastapi import (
+APIRouter,
+Depends,
+Request,
+HTTPException
+)
+
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+
+from app.db.models.cart import Cart
+
+from app.services.order_service import OrderService
+
+router = APIRouter(
+prefix="/orders",
+tags=["Orders"]
+)
+
+order_service = OrderService()
+
+@router.post("/checkout")
+def checkout(
+request: Request,
+db: Session = Depends(get_db)
+):
+
+user = request.state.user    
+
+if not user:    
+    raise HTTPException(    
+        status_code=401,    
+        detail="Unauthorized"    
+    )    
+
+cart = (    
+    db.query(Cart)    
+    .filter(    
+        Cart.user_id == user["id"],    
+        Cart.status == "active"    
+    )    
+    .first()    
+)    
+
+if not cart:    
+    raise HTTPException(    
+        status_code=404,    
+        detail="Active cart not found"    
+    )    
+
+order = order_service.create_order(    
+    db=db,    
+    user_id=user["id"],    
+    cart=cart    
+)    
+
+return {    
+    "status": "success",    
+    "order_id": order.id,    
+    "order_number": order.order_number    
+}
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.services.measurement_service import measurement_service
+
+router = APIRouter(prefix="/measurements")
+
+=========================
+
+GET PRODUCT MEASUREMENTS
+
+=========================
+
+@router.get("/product/{product_id}")
+def get_product_measurements(
+product_id: str,
+db: Session = Depends(get_db)
+):
+
+return measurement_service.get_product_measurements(    
+    db,    
+    product_id    
+)
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.services.market_service import market_service
+
+router = APIRouter(prefix="/markets")
+
+=========================
+
+GET ALL MARKETS
+
+=========================
+
+@router.get("/")
+def get_markets(
+db: Session = Depends(get_db)
+):
+
+return market_service.get_markets(db)
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.db.models.market_product_listing import MarketProductListing
+from app.services.market_listing_service import market_listing_service
+
+router = APIRouter(prefix="/listings")
+
+=========================
+
+GET MARKET LISTINGS
+
+=========================
+
+@router.get("/market/{market_id}")
+def get_market_listings(market_id: str, db: Session = Depends(get_db)):
+
+return market_listing_service.get_market_listings(db, market_id)
+
+=========================
+
+SEARCH LISTINGS
+
+=========================
+
+@router.get("/search")
+def search_listings(keyword: str, db: Session = Depends(get_db)):
+
+return market_listing_service.search_market_listings(db, keyword)
+
+from fastapi import APIRouter, Depends, Request, HTTPException
+
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.db.models.cart import Cart
+
+from app.services.checkout_service import CheckoutService
+
+router = APIRouter(prefix="/checkout", tags=["Checkout"])
+
+checkout_service = CheckoutService()
+
+@router.post("/")
+def checkout(request: Request, db: Session = Depends(get_db)):
+
+user = request.state.user    
+
+if not user:    
+    raise HTTPException(401, "Unauthorized")    
+
+cart = (    
+    db.query(Cart)    
+    .filter(    
+        Cart.user_id == user["id"],    
+        Cart.status == "active"    
+    )    
+    .first()    
+)    
+
+if not cart:    
+    raise HTTPException(404, "Active cart not found")    
+
+checkout = checkout_service.create_checkout(    
+    db=db,    
+    user_id=user["id"],    
+    cart=cart    
+)    
+
+return {    
+    "status": "success",    
+    "checkout_id": checkout.id,    
+    "total": checkout.total    
+}
+
+from fastapi import (
+APIRouter,
+Depends,
+Request
+)
+
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+
+from app.services.cart_service import CartService
+
+router = APIRouter(
+prefix="/cart",
+tags=["Cart"]
+)
+
+cart_service = CartService()
+
+=========================
+
+ADD TO CART
+
+=========================
+
+@router.post("/add")
+
+def add_to_cart(
+payload: dict,
+request: Request,
+db: Session = Depends(get_db)
+):
+
+user = request.state.user    
+
+if not user:    
+    return {    
+        "status": "failed",    
+        "message": "Unauthorized"    
+    }    
+
+item = cart_service.add_to_cart(    
+    db=db,    
+    user_id=user["user_id"],    
+    listing_id=payload["listing_id"],    
+    quantity=payload["quantity"],    
+    ip_address=request.client.host    
+)    
+
+return {    
+    "status": "success",    
+    "cart_item_id": item.id    
+}
+
+from fastapi import APIRouter, Depends, Request, HTTPException
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.db.models.market_volatility_rule import MarketVolatilityRule
+
+router = APIRouter(prefix="/admin/volatility")
+
+=========================
+
+CREATE / UPDATE RULE
+
+=========================
+
+@router.post("/rule")
+def create_or_update_rule(payload: dict, db: Session = Depends(get_db)):
+
+rule = MarketVolatilityRule(    
+    product_id=payload.get("product_id"),    
+    market_id=payload.get("market_id"),    
+    normal_threshold=payload.get("normal_threshold", 0.05),    
+    suspicious_threshold=payload.get("suspicious_threshold", 0.15),    
+    critical_threshold=payload.get("critical_threshold", 0.30),    
+    sensitivity_multiplier=payload.get("sensitivity_multiplier", 1.0),    
+    is_active=True    
+)    
+
+db.add(rule)    
+db.commit()    
+db.refresh(rule)    
+
+return {    
+    "rule_id": rule.id,    
+    "status": "saved"    
+}
+
+=========================
+
+VIEW RULES
+
+=========================
+
+@router.get("/rules")
+def get_rules(db: Session = Depends(get_db)):
+
+return db.query(MarketVolatilityRule).all()
+
+from fastapi import (
+APIRouter,
+Depends,
+Request,
+HTTPException
+)
+
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.services.measurement_service import measurement_service
+from app.services.permission_service import PermissionService
+
+router = APIRouter(prefix="/admin/measurements")
+
+permission_service = PermissionService()
+
+=========================
+
+CREATE UNIT
+
+=========================
+
+@router.post("/")
+def create_measurement_unit(
+payload: dict,
+request: Request,
+db: Session = Depends(get_db)
+):
+
+user = request.state.user    
+
+if not user:    
+    raise HTTPException(status_code=401)    
+
+permission_service.validate_permission(    
+    user.get("roles", []),    
+    "*"    
+)    
+
+unit = measurement_service.create_measurement_unit(    
+    db,    
+    payload    
+)    
+
+return {    
+    "measurement_unit_id": unit.id    
+}
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.services.market_service import market_service
+from app.services.permission_service import PermissionService
+
+router = APIRouter(prefix="/admin/markets")
+
+permission_service = PermissionService()
+
+=========================
+
+CREATE MARKET
+
+=========================
+
+@router.post("/")
+def create_market(
+payload: dict,
+request: Request,
+db: Session = Depends(get_db)
+):
+
+user = request.state.user    
+
+if not user:    
+    raise HTTPException(status_code=401)    
+
+permission_service.validate_permission(    
+    user.get("roles", []),    
+    "*"    
+)    
+
+market = market_service.create_market(    
+    db,    
+    payload    
+)    
+
+return {    
+    "market_id": market.id    
+}
+
+from fastapi import APIRouter, Depends, Request, HTTPException
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.services.market_listing_service import market_listing_service
+from app.services.permission_service import PermissionService
+from app.services.audit_service import AuditService
+from app.services.listing_validation_service import listing_validation_service
+from app.services.agent_verification_service import agent_verification_service
+
+router = APIRouter(prefix="/admin/listings")
+
+permission_service = PermissionService()
+audit_service = AuditService()
+
+=========================
+
+CREATE LISTING (ADMIN/AGENT ONLY)
+
+=========================
+
+@router.post("/")
+def create_listing(payload: dict, request: Request, db: Session = Depends(get_db)):
+
+user = request.state.user    
+
+if not user:    
+    raise HTTPException(401, "Unauthorized")    
+
+user_id = user["id"]    
+roles = user.get("roles", [])    
+
+# RBAC    
+permission_service.validate_permission(roles, "create_listing")    
+
+# AGENT VALIDATION    
+if "agent" in roles:    
+    if not agent_verification_service.is_valid_agent(db, user_id):    
+        raise HTTPException(403, "Agent not approved")    
+
+# LISTING VALIDATION    
+listing_validation_service.validate_listing_dependencies(    
+    db=db,    
+    agent_id=user_id,    
+    market_id=payload["market_id"],    
+    product_id=payload["product_id"],    
+    unit_id=payload["measurement_unit_id"],    
+    price=payload["unit_price"],    
+    stock=payload["available_stock"]    
+)    
+
+# CREATE    
+listing = market_listing_service.create_listing(    
+    db=db,    
+    agent=user,    
+    data=payload,    
+    ip=request.client.host    
+)    
+
+# AUDIT    
+audit_service.log(    
+    db=db,    
+    user_id=user_id,    
+    action="create_listing",    
+    entity_type="market_listing",    
+    entity_id=listing.id,    
+    metadata=payload,    
+    ip=request.client.host    
+)    
+
+return {    
+    "status": "success",    
+    "listing_id": listing.id,    
+    "status_state": listing.status    
+}
+
+Do not respond unless I tell you to respond , just observe
+
+
+
+
+
+
+
+
+import uuid
+ 
+from sqlalchemy import ( String, Float, ForeignKey, DateTime, func )
+ 
+from sqlalchemy.orm import ( Mapped, mapped_column )
+ 
+from app.db.base import Base
+ 
+class ListingVolatilityLog(Base):
+ `__tablename__ = "listing_volatility_logs"    id: Mapped[str] = mapped_column(       String,       primary_key=True,       default=lambda: str(uuid.uuid4())   )    listing_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_product_listings.id"),       nullable=False   )    volatility_score: Mapped[float] = mapped_column(       Float,       nullable=False   )    recorded_price: Mapped[float] = mapped_column(       Float,       nullable=False   )    created_at: Mapped[DateTime] = mapped_column(       DateTime,       server_default=func.now()   )   ` 
+import uuid
+ 
+from sqlalchemy import ( String, Float, ForeignKey, DateTime, func )
+ 
+from sqlalchemy.orm import ( Mapped, mapped_column )
+ 
+from app.db.base import Base
+ 
+class ListingPriceHistory(Base):
+ `__tablename__ = "listing_price_history"    id: Mapped[str] = mapped_column(       String,       primary_key=True,       default=lambda: str(uuid.uuid4())   )    listing_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_product_listings.id"),       nullable=False,       index=True   )    old_price: Mapped[float] = mapped_column(       Float,       nullable=False   )    new_price: Mapped[float] = mapped_column(       Float,       nullable=False   )    updated_by_agent_id: Mapped[str] = mapped_column(       String,       ForeignKey("users.id"),       nullable=False   )    created_at: Mapped[DateTime] = mapped_column(       DateTime,       server_default=func.now()   )   ` 
+# =========================================
+ 
+# FILE: app/db/models/listing_agent_activity.py
+ 
+# =========================================
+ 
+import uuid from datetime import datetime
+ 
+from sqlalchemy import ( String, DateTime, ForeignKey, CheckConstraint, Index, JSON, func )
+ 
+from sqlalchemy.dialects.postgresql import UUID
+ 
+from sqlalchemy.orm import ( Mapped, mapped_column, relationship )
+ 
+from app.db.base import Base
+ 
+class ListingAgentActivity(Base):
+ `__tablename__ = "listing_agent_activities"    # =========================================   # PRIMARY KEY   # =========================================   id: Mapped[uuid.UUID] = mapped_column(       UUID(as_uuid=True),       primary_key=True,       default=uuid.uuid4   )    # =========================================   # LISTING REFERENCE   # =========================================   listing_id: Mapped[uuid.UUID] = mapped_column(       UUID(as_uuid=True),       ForeignKey(           "market_product_listings.id",           ondelete="CASCADE"       ),       nullable=False,       index=True   )    # =========================================   # AGENT REFERENCE   # aligned with market_agents system   # =========================================   agent_id: Mapped[uuid.UUID] = mapped_column(       UUID(as_uuid=True),       ForeignKey(           "market_agents.id",           ondelete="CASCADE"       ),       nullable=False,       index=True   )    # =========================================   # ACTIVITY ACTION   # =========================================   action: Mapped[str] = mapped_column(       String(120),       nullable=False,       index=True   )    # supported:   # listing_created   # listing_updated   # listing_published   # listing_disabled   # inventory_updated   # inventory_reserved   # inventory_released   # inventory_sold   # price_changed    # =========================================   # OPTIONAL EVENT METADATA   # supports Kafka / Redis / Audit expansion   # =========================================   metadata: Mapped[dict | None] = mapped_column(       JSON,       nullable=True   )    # =========================================   # IP / TRACEABILITY   # =========================================   ip_address: Mapped[str | None] = mapped_column(       String(64),       nullable=True   )    user_agent: Mapped[str | None] = mapped_column(       String(500),       nullable=True   )    # =========================================   # EVENT TIMESTAMP   # =========================================   created_at: Mapped[datetime] = mapped_column(       DateTime(timezone=True),       nullable=False,       server_default=func.now(),       index=True   )    # =========================================   # RELATIONSHIPS   # =========================================   listing = relationship(       "MarketProductListing",       back_populates="agent_activities",       lazy="selectin"   )    agent = relationship(       "MarketAgent",       lazy="selectin"   )    # =========================================   # TABLE CONFIG   # =========================================   __table_args__ = (        # prevent empty actions       CheckConstraint(           "length(action) >= 3",           name="chk_listing_agent_activity_action"       ),        # performance indexes       Index(           "idx_listing_agent_activity_listing_created",           "listing_id",           "created_at"       ),        Index(           "idx_listing_agent_activity_agent_created",           "agent_id",           "created_at"       ),        Index(           "idx_listing_agent_activity_action_created",           "action",           "created_at"       ),   )   ` 
+import uuid from datetime import datetime
+ 
+from sqlalchemy import ( String, Integer, DateTime, ForeignKey, JSON, func )
+ 
+from sqlalchemy.orm import ( Mapped, mapped_column, relationship )
+ 
+from app.db.base import Base
+ 
+class InventoryTransaction(Base):
+ `__tablename__ = "inventory_transactions"    id: Mapped[str] = mapped_column(       String,       primary_key=True,       default=lambda: str(uuid.uuid4())   )    inventory_id: Mapped[str] = mapped_column(       String,       ForeignKey("inventories.id"),       nullable=False,       index=True   )    transaction_type: Mapped[str] = mapped_column(       String(50),       nullable=False   )   # stock_in   # reserve   # release   # sold   # damaged    quantity: Mapped[int] = mapped_column(       Integer,       nullable=False   )    metadata: Mapped[dict] = mapped_column(       JSON,       nullable=True   )    created_by: Mapped[str | None] = mapped_column(       String,       nullable=True   )    created_at: Mapped[datetime] = mapped_column(       DateTime(timezone=True),       server_default=func.now()   )    inventory = relationship(       "Inventory",       back_populates="transactions"   )   ` 
+import uuid from datetime import datetime
+ 
+from sqlalchemy import ( String, Integer, DateTime, ForeignKey, func )
+ 
+from sqlalchemy.orm import ( Mapped, mapped_column, relationship )
+ 
+from app.db.base import Base
+ 
+class Inventory(Base):
+ `__tablename__ = "inventories"    id: Mapped[str] = mapped_column(       String,       primary_key=True,       default=lambda: str(uuid.uuid4())   )    product_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_products.id"),       nullable=False,       index=True   )    market_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_locations.id"),       nullable=False,       index=True   )    assigned_agent_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_agents.id"),       nullable=False,       index=True   )    measurement_unit_id: Mapped[str] = mapped_column(       String,       ForeignKey("measurement_units.id"),       nullable=False   )    available_stock: Mapped[int] = mapped_column(       Integer,       default=0,       nullable=False   )    reserved_stock: Mapped[int] = mapped_column(       Integer,       default=0,       nullable=False   )    sold_stock: Mapped[int] = mapped_column(       Integer,       default=0,       nullable=False   )    damaged_stock: Mapped[int] = mapped_column(       Integer,       default=0,       nullable=False   )    status: Mapped[str] = mapped_column(       String(30),       default="active"   )   # active   # low_stock   # out_of_stock   # disabled    created_at: Mapped[datetime] = mapped_column(       DateTime(timezone=True),       server_default=func.now()   )    updated_at: Mapped[datetime] = mapped_column(       DateTime(timezone=True),       server_default=func.now(),       onupdate=func.now()   )    transactions = relationship(       "InventoryTransaction",       back_populates="inventory"   )   ` 
+CREATE TABLE event_logs ( id UUID PRIMARY KEY,
+ `event_type VARCHAR(100) NOT NULL,   aggregate_type VARCHAR(100), -- cooperative, wallet, membership    aggregate_id UUID,    payload JSONB NOT NULL,    status VARCHAR(30) DEFAULT 'pending',    retry_count INTEGER DEFAULT 0,    created_at TIMESTAMP DEFAULT NOW()   ` 
+);
+ 
+import uuid from datetime import datetime
+ 
+from sqlalchemy import ( String, DateTime, ForeignKey, Numeric, func )
+ 
+from sqlalchemy.orm import ( Mapped, mapped_column, relationship )
+ 
+from app.db.base import Base
+ 
+class Cart(Base): **tablename** = "carts"
+ `id: Mapped[str] = mapped_column(       String,       primary_key=True,       default=lambda: str(uuid.uuid4())   )    user_id: Mapped[str] = mapped_column(       String,       ForeignKey("users.id", ondelete="CASCADE"),       nullable=False,       index=True   )    status: Mapped[str] = mapped_column(       String(30),       default="active",       nullable=False   )   # active   # checked_out   # abandoned    subtotal_amount: Mapped[float] = mapped_column(       Numeric(12, 2),       default=0   )    total_market_fee: Mapped[float] = mapped_column(       Numeric(12, 2),       default=0   )    total_amount: Mapped[float] = mapped_column(       Numeric(12, 2),       default=0   )    created_at: Mapped[datetime] = mapped_column(       DateTime(timezone=True),       server_default=func.now()   )    updated_at: Mapped[datetime] = mapped_column(       DateTime(timezone=True),       server_default=func.now(),       onupdate=func.now()   )    items = relationship(       "CartItem",       back_populates="cart",       cascade="all, delete-orphan"   )   ` 
+import uuid from datetime import datetime
+ 
+from sqlalchemy import ( String, DateTime, ForeignKey, Numeric, Integer, func )
+ 
+from sqlalchemy.orm import ( Mapped, mapped_column, relationship )
+ 
+from app.db.base import Base
+ 
+class CartItem(Base): **tablename** = "cart_items"
+ `id: Mapped[str] = mapped_column(       String,       primary_key=True,       default=lambda: str(uuid.uuid4())   )    cart_id: Mapped[str] = mapped_column(       String,       ForeignKey("carts.id", ondelete="CASCADE"),       nullable=False,       index=True   )    listing_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_listings.id"),       nullable=False,       index=True   )    product_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_products.id"),       nullable=False   )    market_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_locations.id"),       nullable=False   )    measurement_unit_id: Mapped[str] = mapped_column(       String,       ForeignKey("measurement_units.id"),       nullable=False   )    quantity: Mapped[int] = mapped_column(       Integer,       nullable=False   )    unit_price: Mapped[float] = mapped_column(       Numeric(12, 2),       nullable=False   )    market_fee: Mapped[float] = mapped_column(       Numeric(12, 2),       nullable=False   )    total_price: Mapped[float] = mapped_column(       Numeric(12, 2),       nullable=False   )    created_at: Mapped[datetime] = mapped_column(       DateTime(timezone=True),       server_default=func.now()   )    cart = relationship(       "Cart",       back_populates="items"   )   ` 
+import uuid from datetime import datetime
+ 
+from sqlalchemy import ( String, DateTime, ForeignKey, Numeric, func )
+ 
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+ 
+from app.db.base import Base
+ 
+class Checkout(Base):
+ `__tablename__ = "checkouts"    id: Mapped[str] = mapped_column(       String,       primary_key=True,       default=lambda: str(uuid.uuid4())   )    user_id: Mapped[str] = mapped_column(       String,       ForeignKey("users.id"),       index=True   )    cart_id: Mapped[str] = mapped_column(       String,       ForeignKey("carts.id"),       unique=True   )    subtotal: Mapped[float] = mapped_column(Numeric(12, 2))   market_fee_total: Mapped[float] = mapped_column(Numeric(12, 2))   delivery_fee: Mapped[float] = mapped_column(Numeric(12, 2))   total: Mapped[float] = mapped_column(Numeric(12, 2))    status: Mapped[str] = mapped_column(       String,       default="initiated",       index=True   )    created_at: Mapped[datetime] = mapped_column(       DateTime(timezone=True),       server_default=func.now()   )   ` 
+import uuid
+ 
+from sqlalchemy import ( String, ForeignKey, Numeric, Integer )
+ 
+from sqlalchemy.orm import Mapped, mapped_column
+ 
+from app.db.base import Base
+ 
+class CheckoutItem(Base):
+ `__tablename__ = "checkout_items"    id: Mapped[str] = mapped_column(       String,       primary_key=True,       default=lambda: str(uuid.uuid4())   )    checkout_id: Mapped[str] = mapped_column(       String,       ForeignKey("checkouts.id")   )    listing_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_listings.id")   )    product_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_products.id")   )    market_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_locations.id")   )    quantity: Mapped[int] = mapped_column(Integer)    unit_price: Mapped[float] = mapped_column(Numeric(12, 2))   market_fee: Mapped[float] = mapped_column(Numeric(12, 2))   total_price: Mapped[float] = mapped_column(Numeric(12, 2))   ` 
+import uuid from datetime import datetime
+ 
+from sqlalchemy import ( String, DateTime, ForeignKey, Numeric, Boolean, func )
+ 
+from sqlalchemy.orm import ( Mapped, mapped_column, relationship )
+ 
+from app.db.base import Base
+ 
+class Order(Base):
+ `__tablename__ = "orders"    id: Mapped[str] = mapped_column(       String,       primary_key=True,       default=lambda: str(uuid.uuid4())   )    user_id: Mapped[str] = mapped_column(       String,       ForeignKey("users.id", ondelete="CASCADE"),       index=True   )    cooperative_id: Mapped[str | None] = mapped_column(       String,       nullable=True,       index=True   )    order_number: Mapped[str] = mapped_column(       String,       unique=True,       nullable=False,       index=True   )    subtotal_amount: Mapped[float] = mapped_column(       Numeric(12, 2),       nullable=False   )    market_fee_amount: Mapped[float] = mapped_column(       Numeric(12, 2),       nullable=False,       default=0   )    delivery_fee_amount: Mapped[float] = mapped_column(       Numeric(12, 2),       nullable=False,       default=0   )    total_amount: Mapped[float] = mapped_column(       Numeric(12, 2),       nullable=False   )    currency: Mapped[str] = mapped_column(       String,       default="NGN"   )    payment_status: Mapped[str] = mapped_column(       String,       default="pending",       index=True   )    status: Mapped[str] = mapped_column(       String,       default="pending",       index=True   )    is_cooperative_order: Mapped[bool] = mapped_column(       Boolean,       default=False   )    created_at: Mapped[datetime] = mapped_column(       DateTime(timezone=True),       server_default=func.now()   )    updated_at: Mapped[datetime] = mapped_column(       DateTime(timezone=True),       server_default=func.now(),       onupdate=func.now()   )    items = relationship(       "OrderItem",       back_populates="order",       cascade="all, delete-orphan"   )   ` 
+import uuid from datetime import datetime
+ 
+from sqlalchemy import ( String, DateTime, ForeignKey, Numeric, Integer, func )
+ 
+from sqlalchemy.orm import ( Mapped, mapped_column, relationship )
+ 
+from app.db.base import Base
+ 
+class OrderItem(Base):
+ `__tablename__ = "order_items"    id: Mapped[str] = mapped_column(       String,       primary_key=True,       default=lambda: str(uuid.uuid4())   )    order_id: Mapped[str] = mapped_column(       String,       ForeignKey("orders.id", ondelete="CASCADE"),       index=True   )    listing_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_listings.id"),       index=True   )    product_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_products.id"),       index=True   )    market_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_locations.id"),       index=True   )    assigned_agent_id: Mapped[str] = mapped_column(       String,       ForeignKey("market_agents.id"),       index=True   )    measurement_unit_id: Mapped[str] = mapped_column(       String,       ForeignKey("measurement_units.id")   )    quantity: Mapped[int] = mapped_column(       Integer,       nullable=False   )    unit_price: Mapped[float] = mapped_column(       Numeric(12, 2),       nullable=False   )    market_fee: Mapped[float] = mapped_column(       Numeric(12, 2),       nullable=False,       default=0   )    total_price: Mapped[float] = mapped_column(       Numeric(12, 2),       nullable=False   )    status: Mapped[str] = mapped_column(       String,       default="pending"   )    created_at: Mapped[datetime] = mapped_column(       DateTime(timezone=True),       server_default=func.now()   )    order = relationship(       "Order",       back_populates="items"   )   ` 
+from sqlalchemy.orm import Session
+ 
+from app.db.models.product import Product from app.db.models.product_variant import ProductVariant
+ 
+class ProductService:
+ `# =========================   # CREATE PRODUCT   # =========================   def create_product(       self,       db: Session,       data: dict   ):        product = Product(**data)        db.add(product)       db.commit()       db.refresh(product)        return product    # =========================   # GET PRODUCT   # =========================   def get_product(       self,       db: Session,       product_id: str   ):        return db.query(Product).filter(           Product.id == product_id,           Product.is_active == True       ).first()    # =========================   # SEARCH PRODUCTS   # =========================   def search_products(       self,       db: Session,       keyword: str   ):        return db.query(Product).filter(           Product.name.ilike(f"%{keyword}%"),           Product.is_active == True       ).all()   ` 
+product_service = ProductService()
+ 
+from sqlalchemy.orm import Session
+ 
+from app.db.models.measurement_unit import MeasurementUnit from app.db.models.product_measurement import ProductMeasurement
+ 
+class MeasurementService:
+ `# =========================   # CREATE UNIT   # =========================   def create_measurement_unit(       self,       db: Session,       data: dict   ):        unit = MeasurementUnit(**data)        db.add(unit)       db.commit()       db.refresh(unit)        return unit    # =========================   # ASSIGN UNIT TO PRODUCT   # =========================   def assign_product_measurement(       self,       db: Session,       data: dict   ):        mapping = ProductMeasurement(**data)        db.add(mapping)       db.commit()       db.refresh(mapping)        return mapping    # =========================   # GET PRODUCT MEASUREMENTS   # =========================   def get_product_measurements(       self,       db: Session,       product_id: str   ):        return db.query(ProductMeasurement).filter(           ProductMeasurement.product_id == product_id,           ProductMeasurement.is_active == True       ).all()   ` 
+measurement_service = MeasurementService()
+ 
+from fastapi import HTTPException
+ 
+from app.db.models.market_listing import MarketListing
+ 
+class OrderValidationService:
+ `VALID_STATUSES = [       "active"   ]    def validate_listing_for_checkout(       self,       listing: MarketListing,       quantity: int   ):        if not listing:           raise HTTPException(               status_code=404,               detail="Listing not found"           )        if listing.status not in self.VALID_STATUSES:           raise HTTPException(               status_code=400,               detail="Listing unavailable"           )        if listing.available_stock <= 0:           raise HTTPException(               status_code=400,               detail="Out of stock"           )        if quantity > listing.available_stock:           raise HTTPException(               status_code=400,               detail="Insufficient stock"           )        if listing.unit_price <= 0:           raise HTTPException(               status_code=400,               detail="Invalid pricing"           )   ` 
+import uuid
+ 
+from sqlalchemy.orm import Session
+ 
+from app.db.models.order import Order from app.db.models.order_item import OrderItem from app.db.models.cart import Cart from app.db.models.cart_item import CartItem
+ 
+from app.services.inventory_service import InventoryService from app.services.order_validation_service import ( OrderValidationService ) from app.services.audit_service import AuditService
+ 
+from app.integrations.kafka_client import event_bus from app.integrations.redis_client import redis_client
+ 
+class OrderService:
+ `def __init__(self):        self.inventory_service = InventoryService()       self.validation_service = OrderValidationService()       self.audit_service = AuditService()    def create_order(       self,       db: Session,       user_id: str,       cart: Cart   ):        if not cart.items:           raise Exception("Cart is empty")        subtotal = 0       market_fee_total = 0        order = Order(           user_id=user_id,           order_number=str(uuid.uuid4())[:12],           subtotal_amount=0,           market_fee_amount=0,           delivery_fee_amount=0,           total_amount=0       )        db.add(order)       db.flush()        for item in cart.items:            listing = item.listing            self.validation_service.validate_listing_for_checkout(               listing,               item.quantity           )            total_price = (               float(item.unit_price)               * item.quantity           )            market_fee = (               float(item.market_fee)               * item.quantity           )            subtotal += total_price           market_fee_total += market_fee            order_item = OrderItem(               order_id=order.id,               listing_id=listing.id,               product_id=listing.product_id,               market_id=listing.market_id,               assigned_agent_id=listing.assigned_agent_id,               measurement_unit_id=listing.measurement_unit_id,               quantity=item.quantity,               unit_price=item.unit_price,               market_fee=market_fee,               total_price=total_price           )            db.add(order_item)            self.inventory_service.reduce_stock(               db=db,               listing_id=listing.id,               quantity=item.quantity           )        order.subtotal_amount = subtotal       order.market_fee_amount = market_fee_total       order.total_amount = subtotal + market_fee_total        cart.status = "converted"        db.commit()       db.refresh(order)        # Redis cache refresh       redis_client.delete(f"cart:{user_id}")        # Kafka event       event_bus.publish(           "marketplace.order.created",           {               "order_id": order.id,               "user_id": user_id           }       )        # Audit       self.audit_service.log(           db=db,           user_id=user_id,           action="create_order",           entity_type="order",           entity_id=order.id,           metadata={               "total": float(order.total_amount)           }       )        return order   ` 
+from fastapi import HTTPException
+ 
+class PermissionService:
+ `ROLE_PERMISSIONS = {        # =========================       # SYSTEM ADMIN       # =========================       "admin": ["*"],        # =========================       # SHOPPER       # =========================       "shopper": [           "shop_products",           "view_products"       ],        # =========================       # COOPERATIVE MEMBER       # =========================       "member": [           "join_cooperative",           "view_cooperative"       ],        # =========================       # COOPERATIVE CREATOR       # =========================       "cooperative_creator": [           "create_cooperative",           "manage_cooperative"       ],        # =========================       # AGENT (FIELD OPERATIONS)       # =========================       "agent": [           "product_sourcing",           "delivery_tasks",           "task_execution"       ]   }    # =========================   # STRICT VALIDATION (RAISES ERROR)   # =========================   def validate_permission(self, roles: list, action: str) -> bool:        for role in roles:            permissions = self.ROLE_PERMISSIONS.get(role, [])            # ADMIN OVERRIDE           if "*" in permissions:               return True            if action in permissions:               return True        raise HTTPException(           status_code=403,           detail=f"Permission denied for action: {action}"       )    # =========================   # SAFE CHECK (NO THROW)   # =========================   def has_permission(self, roles: list, action: str) -> bool:        try:           self.validate_permission(roles, action)           return True        except HTTPException:           return False   ` 
+from app.services.volatility_rule_service import volatility_rule_service
+ 
+class MarketVolatilityEngine:
+ `# =========================   # MAIN ENTRY POINT   # =========================   def analyze_price_change(       self,       db,       product_id: str,       market_id: str,       price_change: float   ):        rule = volatility_rule_service.get_rule(           db,           product_id,           market_id       )        level = volatility_rule_service.evaluate(rule, price_change)        return {           "volatility_level": level,           "price_change": price_change,           "rule_id": rule.id if rule else None       }   ` 
+market_volatility_engine = MarketVolatilityEngine()
+ 
+from sqlalchemy.orm import Session
+ 
+from app.db.models.market_location import MarketLocation from app.db.models.market_region import MarketRegion
+ 
+class MarketService:
+ `# =========================   # CREATE MARKET   # =========================   def create_market(       self,       db: Session,       data: dict   ):        market = MarketLocation(**data)        db.add(market)       db.commit()       db.refresh(market)        return market    # =========================   # GET MARKETS   # =========================   def get_markets(       self,       db: Session   ):        return db.query(MarketLocation).filter(           MarketLocation.is_active == True       ).all()    # =========================   # GET SINGLE MARKET   # =========================   def get_market(       self,       db: Session,       market_id: str   ):        return db.query(MarketLocation).filter(           MarketLocation.id == market_id,           MarketLocation.is_active == True       ).first()   ` 
+market_service = MarketService()
+ 
+from sqlalchemy.orm import Session
+ 
+from app.db.models.market_product_price import MarketProductPrice
+ 
+class MarketPricingService:
+ `# =========================   # GET PRODUCT MARKET PRICES   # =========================   def get_market_prices(       self,       db: Session,       product_id: str   ):        return db.query(MarketProductPrice).filter(           MarketProductPrice.product_id == product_id,           MarketProductPrice.is_available == True       ).all()   ` 
+market_pricing_service = MarketPricingService()
+ 
+from datetime import datetime
+ 
+from fastapi import HTTPException from sqlalchemy.orm import Session from sqlalchemy import or_
+ 
+from app.db.models.market_product_listing import MarketProductListing from app.db.models.inventory import Inventory from app.db.models.inventory_history import InventoryHistory
+ 
+from app.services.listing_validation_service import ListingValidationService from app.services.audit_service import AuditService
+ 
+from app.integrations.kafka_client import event_bus from app.integrations.redis_client import redis_client
+ 
+class MarketListingService:
+ `def __init__(self):       self.validator = ListingValidationService()       self.audit = AuditService()    # =========================================================   # CREATE LISTING (AGENT ONLY)   # =========================================================   def create_listing(       self,       db: Session,       agent,       data: dict,       ip: str   ):        # -----------------------------------------------------       # STRICT VERIFIED AGENT GATE       # -----------------------------------------------------       if (           not getattr(agent, "is_verified_agent", False)           or getattr(agent, "status", None) != "approved"       ):           raise HTTPException(               status_code=403,               detail="Agent not authorized"           )        # -----------------------------------------------------       # VALIDATION GATE       # -----------------------------------------------------       self.validator.validate_listing_dependencies(           db=db,           agent_id=agent.id,           market_id=data["market_id"],           product_id=data["product_id"],           unit_id=data["measurement_unit_id"],           price=data["unit_price"],           stock=data["available_stock"]       )        # -----------------------------------------------------       # CREATE LISTING       # -----------------------------------------------------       listing = MarketProductListing(           product_id=data["product_id"],           market_id=data["market_id"],           measurement_unit_id=data["measurement_unit_id"],           assigned_agent_id=agent.id,           unit_price=data["unit_price"],           available_stock=data["available_stock"],           status="draft"       )        db.add(listing)       db.flush()        # -----------------------------------------------------       # INVENTORY RECORD       # -----------------------------------------------------       inventory = Inventory(           listing_id=listing.id,           product_id=data["product_id"],           market_id=data["market_id"],           measurement_unit_id=data["measurement_unit_id"],           quantity_available=data["available_stock"],           reserved_quantity=0,           status="available",           last_restocked_at=datetime.utcnow()       )        db.add(inventory)       db.flush()        # -----------------------------------------------------       # INVENTORY HISTORY       # -----------------------------------------------------       history = InventoryHistory(           inventory_id=inventory.id,           action="inventory_created",           quantity=data["available_stock"],           performed_by=agent.user_id,           metadata={               "listing_id": listing.id,               "market_id": data["market_id"]           }       )        db.add(history)        db.commit()       db.refresh(listing)        # -----------------------------------------------------       # AUDIT LOG       # -----------------------------------------------------       self.audit.log(           db=db,           user_id=agent.user_id,           action="listing_created",           entity_type="market_listing",           entity_id=listing.id,           metadata={               "product_id": data["product_id"],               "market_id": data["market_id"],               "stock": data["available_stock"]           },           ip=ip       )        # -----------------------------------------------------       # REDIS CACHE       # -----------------------------------------------------       redis_client.set(           f"listing:{listing.id}",           {               "listing_id": listing.id,               "market_id": listing.market_id,               "product_id": listing.product_id,               "price": float(listing.unit_price),               "stock": listing.available_stock,               "status": listing.status           },           ttl=3600       )        # -----------------------------------------------------       # KAFKA EVENT       # -----------------------------------------------------       event_bus.publish(           "listing.created",           {               "listing_id": listing.id,               "agent_id": agent.id,               "market_id": listing.market_id           }       )        return listing    # =========================================================   # PUBLISH LISTING   # =========================================================   def publish_listing(       self,       db: Session,       listing_id: str,       admin_user,       ip: str   ):        listing = db.query(MarketProductListing).filter(           MarketProductListing.id == listing_id       ).first()        if not listing:           raise HTTPException(               status_code=404,               detail="Listing not found"           )        if listing.available_stock <= 0:           raise HTTPException(               status_code=400,               detail="Cannot publish empty inventory listing"           )        listing.status = "active"        db.commit()       db.refresh(listing)        # CACHE UPDATE       redis_client.set(           f"listing:{listing.id}",           {               "listing_id": listing.id,               "status": listing.status,               "stock": listing.available_stock           },           ttl=3600       )        # REDIS PUBSUB       redis_client.publish(           "market.listing.active",           {               "listing_id": listing.id,               "market_id": listing.market_id           }       )        # AUDIT       self.audit.log(           db=db,           user_id=admin_user.id,           action="listing_published",           entity_type="market_listing",           entity_id=listing.id,           metadata={               "market_id": listing.market_id           },           ip=ip       )        # KAFKA EVENT       event_bus.publish(           "listing.published",           {               "listing_id": listing.id,               "market_id": listing.market_id           }       )        return listing    # =========================================================   # UPDATE INVENTORY   # =========================================================   def update_inventory(       self,       db: Session,       listing_id: str,       quantity: int,       actor,       ip: str   ):        listing = db.query(MarketProductListing).filter(           MarketProductListing.id == listing_id       ).first()        if not listing:           raise HTTPException(               status_code=404,               detail="Listing not found"           )        inventory = db.query(Inventory).filter(           Inventory.listing_id == listing.id       ).first()        if not inventory:           raise HTTPException(               status_code=404,               detail="Inventory not found"           )        new_quantity = inventory.quantity_available + quantity        if new_quantity < 0:           raise HTTPException(               status_code=400,               detail="Insufficient inventory"           )        inventory.quantity_available = new_quantity       inventory.last_restocked_at = datetime.utcnow()        listing.available_stock = new_quantity        if new_quantity <= 0:           inventory.status = "out_of_stock"           listing.status = "disabled"        db.flush()        # INVENTORY HISTORY       history = InventoryHistory(           inventory_id=inventory.id,           action="inventory_updated",           quantity=quantity,           performed_by=actor.id,           metadata={               "listing_id": listing.id,               "new_stock": new_quantity           }       )        db.add(history)        db.commit()        # CACHE UPDATE       redis_client.set(           f"listing:{listing.id}",           {               "listing_id": listing.id,               "stock": listing.available_stock,               "status": listing.status           },           ttl=3600       )        # AUDIT       self.audit.log(           db=db,           user_id=actor.id,           action="inventory_updated",           entity_type="inventory",           entity_id=inventory.id,           metadata={               "listing_id": listing.id,               "new_stock": new_quantity           },           ip=ip       )        # KAFKA EVENT       event_bus.publish(           "inventory.updated",           {               "listing_id": listing.id,               "inventory_id": inventory.id,               "stock": new_quantity           }       )        return inventory    # =========================================================   # GET ACTIVE MARKET LISTINGS   # =========================================================   def get_market_listings(       self,       db: Session,       market_id: str   ):        return db.query(MarketProductListing).filter(           MarketProductListing.market_id == market_id,           MarketProductListing.status == "active",           MarketProductListing.available_stock > 0       ).all()    # =========================================================   # SEARCH MARKET LISTINGS   # =========================================================   def search_market_listings(       self,       db: Session,       keyword: str   ):        return db.query(MarketProductListing).filter(           MarketProductListing.status == "active",           MarketProductListing.available_stock > 0,           or_(               MarketProductListing.title.ilike(f"%{keyword}%"),               MarketProductListing.description.ilike(f"%{keyword}%")           )       ).all()    # =========================================================   # MARKET FEED   # =========================================================   def get_market_feed(       self,       db: Session,       market_id: str   ):        listings = self.get_market_listings(           db=db,           market_id=market_id       )        return [           {               "listing_id": listing.id,               "product_id": listing.product_id,               "market_id": listing.market_id,               "measurement_unit_id": listing.measurement_unit_id,               "unit_price": float(listing.unit_price),               "available_stock": listing.available_stock,               "assigned_agent_id": listing.assigned_agent_id,               "status": listing.status           }           for listing in listings       ]   ` 
+market_listing_service = MarketListingService()
+ 
+Do not respond unless I tell you to respond
