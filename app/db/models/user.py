@@ -92,3 +92,9 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+
+    
+    listing_activities = relationship(
+        "ListingAgentActivity",
+        back_populates="agent"
+    )
