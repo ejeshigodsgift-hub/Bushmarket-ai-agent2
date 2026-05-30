@@ -10,45 +10,77 @@ from app.core.security import (
 )
 
 from app.services.session_service import SessionService
+from app.services.outbox_service import outbox_service
 
 
 class AuthService:
 
     # =========================================
-    # SIGNUP (FIXED DUPLICATE EMAIL BUG)
+    # SIGNUP
     # =========================================
-    async def signup(self, db: AsyncSession, data: dict):
+    async def signup(
+        self,
+        db: AsyncSession,
+        data: dict
+    ):
 
         existing = await db.execute(
-            select(User).where(User.email == data["email"])
+            select(User).where(
+                User.email == data["email"]
+            )
         )
 
         if existing.scalar_one_or_none():
-            return None  # or raise HTTPException in controller
+            return None
 
-        user = User(
-            full_name=data["full_name"],
-            email=data["email"],
-            phone=data.get("phone"),
-            password_hash=hash_password(data["password"])
-        )
+        try:
 
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
+            user = User(
+                full_name=data["full_name"],
+                email=data["email"],
+                phone=data.get("phone"),
+                password_hash=hash_password(
+                    data["password"]
+                )
+            )
 
-        role = Role(
-            user_id=user.id,
-            role="shopper"
-        )
+            db.add(user)
 
-        db.add(role)
-        await db.commit()
+            await db.flush()
 
-        return user
+            role = Role(
+                user_id=user.id,
+                role="shopper"
+            )
+
+            db.add(role)
+
+            # =====================================
+            # OUTBOX EVENT
+            # =====================================
+
+            await outbox_service.queue_event(
+                db=db,
+                topic="user.created",
+                payload={
+                    "user_id": user.id,
+                    "email": user.email,
+                    "role": "shopper"
+                }
+            )
+
+            await db.commit()
+
+            await db.refresh(user)
+
+            return user
+
+        except Exception:
+            await db.rollback()
+            raise
 
     # =========================================
-    # LOGIN (SESSION SAFE)
+    # LOGIN
     # =========================================
     async def login(
         self,
@@ -59,7 +91,9 @@ class AuthService:
     ):
 
         result = await db.execute(
-            select(User).where(User.email == email)
+            select(User).where(
+                User.email == email
+            )
         )
 
         user = result.scalar_one_or_none()
@@ -67,20 +101,45 @@ class AuthService:
         if not user:
             return None
 
-        if not verify_password(password, user.password_hash):
+        if not verify_password(
+            password,
+            user.password_hash
+        ):
             return None
 
-        session = await SessionService().create_session(
-            db=db,
-            user_id=user.id,
-            meta=request_meta
-        )
+        try:
 
-        return {
-            "session_token": session.session_token,
-            "refresh_token": session.refresh_token,
-            "user": user
-        }
+            session = await SessionService().create_session(
+                db=db,
+                user_id=user.id,
+                meta=request_meta
+            )
+
+            # =====================================
+            # OUTBOX EVENT
+            # =====================================
+
+            await outbox_service.queue_event(
+                db=db,
+                topic="user.logged_in",
+                payload={
+                    "user_id": user.id,
+                    "session_id": session.id
+                }
+            )
+
+            await db.commit()
+
+            return {
+                "session_token": session.session_token,
+                "refresh_token": session.refresh_token,
+                "session": session,
+                "user": user
+            }
+
+        except Exception:
+            await db.rollback()
+            raise
 
 
 auth_service = AuthService()
