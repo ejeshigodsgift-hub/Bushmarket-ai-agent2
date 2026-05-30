@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db.models.session import Session
+
 from app.integrations.redis_client import redis_client
 
 from app.core.security import (
@@ -14,14 +15,17 @@ from app.core.security import (
 
 from app.core.config import settings
 
+from app.services.outbox_service import outbox_service
+
 
 class SessionService:
 
     SESSION_PREFIX = "session:"
 
     # =========================================
-    # CREATE SESSION (FIXED FINGERPRINT CONSISTENCY)
+    # CREATE SESSION
     # =========================================
+
     async def create_session(
         self,
         db: AsyncSession,
@@ -64,10 +68,23 @@ class SessionService:
         )
 
         db.add(db_session)
+
+        await db.flush()
+
+        await outbox_service.queue_event(
+            db=db,
+            topic="session.created",
+            payload={
+                "session_id": db_session.id,
+                "user_id": user_id,
+                "device_id": db_session.device_id
+            }
+        )
+
         await db.commit()
+
         await db.refresh(db_session)
 
-        # CACHE
         await redis_client.set(
             self.SESSION_PREFIX + session_token,
             {
@@ -81,66 +98,9 @@ class SessionService:
         return db_session
 
     # =========================================
-    # GET SESSION (FIXED CACHE + DB SYNC)
-    # =========================================
-    async def get_session(
-        self,
-        db: AsyncSession,
-        token: str,
-        ip: str = None,
-        user_agent: str = None
-    ):
-
-        cached = await redis_client.get(
-            self.SESSION_PREFIX + token
-        )
-
-        result = await db.execute(
-            select(Session).where(
-                Session.session_token == token,
-                Session.is_active == True,
-                Session.is_revoked == False
-            )
-        )
-
-        db_session = result.scalar_one_or_none()
-
-        if not db_session:
-            return None
-
-        if db_session.expires_at < datetime.now(timezone.utc):
-            return None
-
-        # FINGERPRINT CHECK
-        if ip and user_agent:
-
-            current_fp = generate_device_fingerprint(ip, user_agent)
-
-            if db_session.fingerprint and current_fp != db_session.fingerprint:
-                return None
-
-        # UPDATE LAST SEEN
-        db_session.last_seen_at = datetime.now(timezone.utc)
-        await db.commit()
-
-        # REBUILD CACHE IF NEEDED
-        if not cached:
-
-            await redis_client.set(
-                self.SESSION_PREFIX + token,
-                {
-                    "session_id": db_session.id,
-                    "user_id": db_session.user_id,
-                    "fingerprint": db_session.fingerprint
-                },
-                ttl=settings.SESSION_EXPIRE_SECONDS
-            )
-
-        return db_session
-
-    # =========================================
     # DESTROY SESSION
     # =========================================
+
     async def destroy_session(
         self,
         db: AsyncSession,
@@ -148,7 +108,9 @@ class SessionService:
     ):
 
         result = await db.execute(
-            select(Session).where(Session.session_token == token)
+            select(Session).where(
+                Session.session_token == token
+            )
         )
 
         db_session = result.scalar_one_or_none()
@@ -160,6 +122,15 @@ class SessionService:
         db_session.is_revoked = True
         db_session.revoked_at = datetime.now(timezone.utc)
 
+        await outbox_service.queue_event(
+            db=db,
+            topic="session.revoked",
+            payload={
+                "session_id": db_session.id,
+                "user_id": db_session.user_id
+            }
+        )
+
         await db.commit()
 
         await redis_client.delete(
@@ -167,8 +138,9 @@ class SessionService:
         )
 
     # =========================================
-    # REFRESH SESSION (FIXED TOKEN ROTATION)
+    # REFRESH SESSION
     # =========================================
+
     async def refresh_session(
         self,
         db: AsyncSession,
@@ -191,16 +163,27 @@ class SessionService:
         if session.refresh_expires_at < datetime.now(timezone.utc):
             return None
 
-        # rotate tokens
+        old_session_token = session.session_token
+
         new_session_token = generate_session_token()
         new_refresh_token = generate_refresh_token()
 
-        # delete old cache first (FIX)
-        await redis_client.delete(self.SESSION_PREFIX + session.session_token)
+        await redis_client.delete(
+            self.SESSION_PREFIX + old_session_token
+        )
 
         session.session_token = new_session_token
         session.refresh_token = new_refresh_token
         session.last_seen_at = datetime.now(timezone.utc)
+
+        await outbox_service.queue_event(
+            db=db,
+            topic="session.refreshed",
+            payload={
+                "session_id": session.id,
+                "user_id": session.user_id
+            }
+        )
 
         await db.commit()
 
@@ -219,6 +202,7 @@ class SessionService:
     # =========================================
     # REVOKE USER SESSIONS
     # =========================================
+
     async def revoke_user_sessions(
         self,
         db: AsyncSession,
@@ -242,6 +226,15 @@ class SessionService:
 
             await redis_client.delete(
                 self.SESSION_PREFIX + session.session_token
+            )
+
+            await outbox_service.queue_event(
+                db=db,
+                topic="session.revoked",
+                payload={
+                    "session_id": session.id,
+                    "user_id": session.user_id
+                }
             )
 
         await db.commit()
