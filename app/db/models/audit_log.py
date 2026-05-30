@@ -2,17 +2,21 @@ import uuid
 
 from sqlalchemy import (
     String,
+    JSON,
     DateTime,
-    func,
-    JSON
+    func
 )
 
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import (
+    Mapped,
+    mapped_column
+)
 
 from app.db.base import Base
 
 
 class AuditLog(Base):
+
     __tablename__ = "audit_logs"
 
     id: Mapped[str] = mapped_column(
@@ -49,6 +53,6 @@ class AuditLog(Base):
     )
 
     created_at: Mapped[DateTime] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         server_default=func.now()
     )
