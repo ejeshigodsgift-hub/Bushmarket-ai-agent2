@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.role import Role
 
+from app.services.outbox_service import outbox_service
+
 
 class AgentService:
 
@@ -32,7 +34,22 @@ class AgentService:
 
         db.add(role)
 
+        # =========================================
+        # OUTBOX EVENT
+        # =========================================
+
+        await outbox_service.queue_event(
+            db=db,
+            topic="agent.approved",
+            payload={
+                "user_id": user_id,
+                "admin_id": admin_id,
+                "role": "agent"
+            }
+        )
+
         await db.commit()
+
         await db.refresh(role)
 
         return role
