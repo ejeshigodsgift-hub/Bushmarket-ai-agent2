@@ -1,82 +1,57 @@
-from pydantic_settings import BaseSettings
+# =========================================
+# APP
+# =========================================
+APP_NAME=BushmarketBackend
+ENV=development
 
+# =========================================
+# DATABASE
+# =========================================
+DATABASE_URL=postgresql+asyncpg://postgres_user:postgres_password@localhost:5432/bushmarket_db
 
-class Settings(BaseSettings):
+# =========================================
+# REDIS
+# =========================================
+REDIS_URL=redis://localhost:6379/0
 
-    # =========================================
-    # APP
-    # =========================================
-    APP_NAME: str = "Bushmarket"
+# =========================================
+# KAFKA
+# =========================================
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+KAFKA_CLIENT_ID=bushmarket-event-bus
 
-    ENV: str = "development"
+KAFKA_AGENT_TASK_TOPIC=agent.task.created
+KAFKA_AGENT_UPDATE_TOPIC=agent.task.updated
 
-    # =========================================
-    # DATABASE
-    # =========================================
-    DATABASE_URL: str
+# =========================================
+# SECURITY
+# =========================================
+SECRET_KEY=CHANGE_THIS_IN_PRODUCTION
 
-    # =========================================
-    # REDIS
-    # =========================================
-    REDIS_URL: str
+JWT_ALGORITHM=HS256
 
-    # =========================================
-    # KAFKA
-    # =========================================
-    KAFKA_BOOTSTRAP_SERVERS: str
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+REFRESH_TOKEN_EXPIRE_DAYS=7
+INTERNAL_JWT_EXPIRE_MINUTES=30
 
-    KAFKA_CLIENT_ID: str
+# =========================================
+# SESSION
+# =========================================
+SESSION_EXPIRE_SECONDS=86400
 
-    KAFKA_AGENT_TASK_TOPIC: str = (
-        "agent.task.created"
-    )
+COOKIE_NAME=bushmarket_session
+COOKIE_SECURE=false
+COOKIE_SAMESITE=lax
+COOKIE_DOMAIN=localhost
 
-    KAFKA_AGENT_UPDATE_TOPIC: str = (
-        "agent.task.updated"
-    )
+# =========================================
+# CSRF
+# =========================================
+CSRF_COOKIE_NAME=csrf_token
+CSRF_HEADER_NAME=x-csrf-token
 
-    # =========================================
-    # SECURITY
-    # =========================================
-    SECRET_KEY: str
-
-    JWT_ALGORITHM: str = "HS256"
-
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
-
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-
-    INTERNAL_JWT_EXPIRE_MINUTES: int = 30
-
-    # =========================================
-    # SESSION
-    # =========================================
-    SESSION_EXPIRE_SECONDS: int = 86400
-
-    COOKIE_NAME: str = "bushmarket_session"
-
-    COOKIE_SECURE: bool = False
-
-    COOKIE_SAMESITE: str = "lax"
-
-    COOKIE_DOMAIN: str = "localhost"
-
-    # =========================================
-    # CSRF
-    # =========================================
-    CSRF_COOKIE_NAME: str = "csrf_token"
-
-    CSRF_HEADER_NAME: str = "x-csrf-token"
-
-    # =========================================
-    # RATE LIMITING
-    # =========================================
-    LOGIN_RATE_LIMIT: int = 5
-
-    LOGIN_RATE_LIMIT_WINDOW: int = 60
-
-    class Config:
-        env_file = ".env"
-
-
-settings = Settings()
+# =========================================
+# RATE LIMITING
+# =========================================
+LOGIN_RATE_LIMIT=5
+LOGIN_RATE_LIMIT_WINDOW=60
