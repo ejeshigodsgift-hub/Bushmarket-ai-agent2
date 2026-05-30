@@ -9,11 +9,10 @@ from app.db.models.inventory import Inventory
 from app.db.models.inventory_history import InventoryHistory
 from app.db.models.listing_agent_activity import ListingAgentActivity
 
-from app.services.listing_validation_service import (
-    ListingValidationService
-)
-
+from app.services.listing_validation_service import ListingValidationService
 from app.services.audit_service import AuditService
+
+from app.services.agent_permission_service import agent_permission_service
 
 from app.events.outbox_publisher import OutboxPublisher
 
@@ -28,7 +27,7 @@ class MarketListingService:
     # CREATE LISTING
     # ====================================================
 
-    def create_listing(
+    async def create_listing(
         self,
         db: Session,
         agent,
@@ -36,10 +35,15 @@ class MarketListingService:
         ip: str
     ):
 
-        if (
-            not getattr(agent, "is_verified_agent", False)
-            or getattr(agent, "status", None) != "approved"
-        ):
+        # ====================================================
+        # CENTRALIZED AGENT CHECK (NEW RULE)
+        # ====================================================
+        is_agent = await agent_permission_service.is_agent(
+            db,
+            agent.user_id
+        )
+
+        if not is_agent:
             raise HTTPException(
                 status_code=403,
                 detail="Agent not authorized"
@@ -113,9 +117,7 @@ class MarketListingService:
             action="listing_created",
             entity_type="market_listing",
             entity_id=listing.id,
-            metadata={
-                "listing_id": str(listing.id)
-            },
+            metadata={"listing_id": str(listing.id)},
             ip=ip
         )
 
@@ -148,23 +150,15 @@ class MarketListingService:
         ip: str
     ):
 
-        listing = db.query(
-            MarketProductListing
-        ).filter(
+        listing = db.query(MarketProductListing).filter(
             MarketProductListing.id == listing_id
         ).first()
 
         if not listing:
-            raise HTTPException(
-                status_code=404,
-                detail="Listing not found"
-            )
+            raise HTTPException(404, "Listing not found")
 
         if listing.available_stock <= 0:
-            raise HTTPException(
-                status_code=400,
-                detail="No stock available"
-            )
+            raise HTTPException(400, "No stock available")
 
         listing.status = "active"
 
@@ -216,41 +210,27 @@ class MarketListingService:
         ip: str
     ):
 
-        listing = db.query(
-            MarketProductListing
-        ).filter(
+        listing = db.query(MarketProductListing).filter(
             MarketProductListing.id == listing_id
         ).first()
 
         if not listing:
-            raise HTTPException(
-                status_code=404,
-                detail="Listing not found"
-            )
+            raise HTTPException(404, "Listing not found")
 
-        inventory = db.query(
-            Inventory
-        ).filter(
+        inventory = db.query(Inventory).filter(
             Inventory.listing_id == listing.id
         ).first()
 
         if not inventory:
-            raise HTTPException(
-                status_code=404,
-                detail="Inventory not found"
-            )
+            raise HTTPException(404, "Inventory not found")
 
         new_stock = inventory.available_stock + quantity
 
         if new_stock < 0:
-            raise HTTPException(
-                status_code=400,
-                detail="Insufficient stock"
-            )
+            raise HTTPException(400, "Insufficient stock")
 
         inventory.available_stock = new_stock
         inventory.last_restocked_at = datetime.utcnow()
-
         listing.available_stock = new_stock
 
         if new_stock <= 0:
@@ -261,9 +241,7 @@ class MarketListingService:
             action="inventory_updated",
             quantity=quantity,
             performed_by=actor.id,
-            metadata={
-                "new_stock": new_stock
-            }
+            metadata={"new_stock": new_stock}
         )
 
         db.add(history)
@@ -284,9 +262,7 @@ class MarketListingService:
             action="inventory_updated",
             entity_type="inventory",
             entity_id=inventory.id,
-            metadata={
-                "new_stock": new_stock
-            },
+            metadata={"new_stock": new_stock},
             ip=ip
         )
 
@@ -311,62 +287,35 @@ class MarketListingService:
     # GET ACTIVE LISTINGS
     # ====================================================
 
-    def get_market_listings(
-        self,
-        db: Session,
-        market_id
-    ):
-        return (
-            db.query(MarketProductListing)
-            .filter(
-                MarketProductListing.market_id == market_id,
-                MarketProductListing.status == "active",
-                MarketProductListing.available_stock > 0,
-                MarketProductListing.is_active.is_(True)
-            )
-            .all()
-        )
+    def get_market_listings(self, db: Session, market_id):
+        return db.query(MarketProductListing).filter(
+            MarketProductListing.market_id == market_id,
+            MarketProductListing.status == "active",
+            MarketProductListing.available_stock > 0,
+            MarketProductListing.is_active.is_(True)
+        ).all()
 
     # ====================================================
     # SEARCH LISTINGS
     # ====================================================
 
-    def search_market_listings(
-        self,
-        db: Session,
-        keyword: str
-    ):
-        return (
-            db.query(MarketProductListing)
-            .filter(
-                MarketProductListing.status == "active",
-                MarketProductListing.is_active.is_(True),
-                or_(
-                    MarketProductListing.title.ilike(
-                        f"%{keyword}%"
-                    ),
-                    MarketProductListing.description.ilike(
-                        f"%{keyword}%"
-                    )
-                )
+    def search_market_listings(self, db: Session, keyword: str):
+        return db.query(MarketProductListing).filter(
+            MarketProductListing.status == "active",
+            MarketProductListing.is_active.is_(True),
+            or_(
+                MarketProductListing.title.ilike(f"%{keyword}%"),
+                MarketProductListing.description.ilike(f"%{keyword}%")
             )
-            .all()
-        )
+        ).all()
 
     # ====================================================
     # MARKET FEED
     # ====================================================
 
-    def get_market_feed(
-        self,
-        db: Session,
-        market_id
-    ):
+    def get_market_feed(self, db: Session, market_id):
 
-        listings = self.get_market_listings(
-            db=db,
-            market_id=market_id
-        )
+        listings = self.get_market_listings(db, market_id)
 
         return [
             {
