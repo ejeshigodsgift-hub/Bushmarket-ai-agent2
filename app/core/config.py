@@ -1,57 +1,44 @@
-# =========================================
-# APP
-# =========================================
-APP_NAME=BushmarketBackend
-ENV=development
+from pydantic_settings import BaseSettings
 
-# =========================================
-# DATABASE
-# =========================================
-DATABASE_URL=postgresql+asyncpg://postgres_user:postgres_password@localhost:5432/bushmarket_db
 
-# =========================================
-# REDIS
-# =========================================
-REDIS_URL=redis://localhost:6379/0
+class Settings(BaseSettings):
 
-# =========================================
-# KAFKA
-# =========================================
-KAFKA_BOOTSTRAP_SERVERS=localhost:9092
-KAFKA_CLIENT_ID=bushmarket-event-bus
+    APP_NAME: str = "Bushmarket"
+    ENV: str = "development"
 
-KAFKA_AGENT_TASK_TOPIC=agent.task.created
-KAFKA_AGENT_UPDATE_TOPIC=agent.task.updated
+    DATABASE_URL: str
 
-# =========================================
-# SECURITY
-# =========================================
-SECRET_KEY=CHANGE_THIS_IN_PRODUCTION
+    REDIS_URL: str
 
-JWT_ALGORITHM=HS256
+    KAFKA_BOOTSTRAP_SERVERS: str
+    KAFKA_CLIENT_ID: str
 
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-REFRESH_TOKEN_EXPIRE_DAYS=7
-INTERNAL_JWT_EXPIRE_MINUTES=30
+    KAFKA_AGENT_TASK_TOPIC: str = "agent.task.created"
+    KAFKA_AGENT_UPDATE_TOPIC: str = "agent.task.updated"
 
-# =========================================
-# SESSION
-# =========================================
-SESSION_EXPIRE_SECONDS=86400
+    SECRET_KEY: str
 
-COOKIE_NAME=bushmarket_session
-COOKIE_SECURE=false
-COOKIE_SAMESITE=lax
-COOKIE_DOMAIN=localhost
+    JWT_ALGORITHM: str = "HS256"
 
-# =========================================
-# CSRF
-# =========================================
-CSRF_COOKIE_NAME=csrf_token
-CSRF_HEADER_NAME=x-csrf-token
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    INTERNAL_JWT_EXPIRE_MINUTES: int = 30
 
-# =========================================
-# RATE LIMITING
-# =========================================
-LOGIN_RATE_LIMIT=5
-LOGIN_RATE_LIMIT_WINDOW=60
+    SESSION_EXPIRE_SECONDS: int = 86400
+
+    COOKIE_NAME: str = "bushmarket_session"
+    COOKIE_SECURE: bool = False
+    COOKIE_SAMESITE: str = "lax"
+    COOKIE_DOMAIN: str = "localhost"
+
+    CSRF_COOKIE_NAME: str = "csrf_token"
+    CSRF_HEADER_NAME: str = "x-csrf-token"
+
+    LOGIN_RATE_LIMIT: int = 5
+    LOGIN_RATE_LIMIT_WINDOW: int = 60
+
+    class Config:
+        env_file = ".env"
+
+
+settings = Settings()
