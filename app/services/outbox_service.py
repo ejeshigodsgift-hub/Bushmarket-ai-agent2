@@ -12,14 +12,12 @@ class OutboxService:
         payload: dict
     ):
 
-        event = OutboxEvent(
-            topic=topic,
-            payload=payload
+        db.add(
+            OutboxEvent(
+                topic=topic,
+                payload=payload
+            )
         )
-
-        db.add(event)
-
-        return event
 
 
 outbox_service = OutboxService()
