@@ -23,7 +23,6 @@ from app.db.base import Base
 
 
 class ProductVariant(Base):
-
     __tablename__ = "product_variants"
 
     __table_args__ = (
@@ -32,15 +31,26 @@ class ProductVariant(Base):
             "variant_name",
             name="uq_product_variant_name"
         ),
+        UniqueConstraint(
+            "sku",
+            name="uq_product_variant_sku"
+        ),
         Index("idx_product_variant_product", "product_id"),
+        Index("idx_product_variant_active", "is_active"),
     )
 
+    # =====================================================
+    # PRIMARY KEY
+    # =====================================================
     id: Mapped[str] = mapped_column(
         String(36),
         primary_key=True,
         default=lambda: str(uuid.uuid4())
     )
 
+    # =====================================================
+    # PARENT PRODUCT LINK
+    # =====================================================
     product_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("market_products.id", ondelete="CASCADE"),
@@ -48,6 +58,9 @@ class ProductVariant(Base):
         index=True
     )
 
+    # =====================================================
+    # VARIANT DATA
+    # =====================================================
     variant_name: Mapped[str] = mapped_column(
         String(255),
         nullable=False
@@ -62,16 +75,21 @@ class ProductVariant(Base):
     price_adjustment: Mapped[Decimal] = mapped_column(
         Numeric(12, 2),
         nullable=False,
-        default=0
+        default=Decimal("0.00"),
+        server_default="0"
     )
 
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=True,
+        server_default="true",
         index=True
     )
 
+    # =====================================================
+    # TIMESTAMPS
+    # =====================================================
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -85,6 +103,9 @@ class ProductVariant(Base):
         nullable=False
     )
 
+    # =====================================================
+    # RELATIONSHIPS
+    # =====================================================
     product = relationship(
         "Product",
         back_populates="variants",
