@@ -36,26 +36,17 @@ class ListingAgentActivity(Base):
     )
 
     # =====================================================
-    # CORE REFERENCES (ALIGNED SYSTEM-WIDE)
+    # CORE REFERENCES
     # =====================================================
-
     listing_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            "market_product_listings.id",
-            ondelete="CASCADE"
-        ),
+        ForeignKey("market_product_listings.id", ondelete="CASCADE"),
         nullable=False
     )
 
-    # IMPORTANT:
-    # This is ALWAYS users.id (agent, admin, shopper actor)
     agent_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            "users.id",
-            ondelete="CASCADE"
-        ),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False
     )
 
@@ -66,13 +57,6 @@ class ListingAgentActivity(Base):
         String(50),
         nullable=False
     )
-    # examples:
-    # listing_created
-    # listing_published
-    # inventory_updated
-    # price_changed
-    # order_placed (optional reuse)
-    # cart_updated (optional reuse)
 
     activity_note: Mapped[str | None] = mapped_column(
         Text,
@@ -92,7 +76,6 @@ class ListingAgentActivity(Base):
         nullable=True
     )
 
-    # system vs human action
     is_system_generated: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -110,16 +93,17 @@ class ListingAgentActivity(Base):
     )
 
     # =====================================================
-    # RELATIONSHIPS
+    # RELATIONSHIPS (FIXED)
     # =====================================================
 
     listing = relationship(
         "MarketProductListing",
-        lazy="joined",
-        backref="agent_activities"
+        back_populates="listing_activities",
+        lazy="joined"
     )
 
     agent = relationship(
         "User",
+        back_populates="listing_activities",
         lazy="joined"
     )
