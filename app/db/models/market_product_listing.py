@@ -208,19 +208,19 @@ class MarketProductListing(Base):
 
     product = relationship(
         "Product",
-        back_populates="market_listings",
+        back_populates="market_product_listings",
         lazy="joined"
     )
 
     variant = relationship(
         "ProductVariant",
-        back_populates="market_listings",
+        back_populates="market_product_listings",
         lazy="joined"
     )
 
     measurement_unit = relationship(
         "MeasurementUnit",
-        back_populates="market_listings",
+        back_populates="market_product_listings",
         lazy="joined"
     )
 
