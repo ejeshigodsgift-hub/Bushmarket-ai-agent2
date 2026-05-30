@@ -229,6 +229,14 @@ class MarketProductListing(Base):
         back_populates="market_product_listings",
         lazy="joined"
     )
+    
+    agent_activities = relationship(
+        "ListingAgentActivity",
+         back_populates="listing",
+         lazy="selectin",
+         cascade="all, 
+         delete-orphan"
+    )
 
     inventory = relationship(
         "Inventory",
