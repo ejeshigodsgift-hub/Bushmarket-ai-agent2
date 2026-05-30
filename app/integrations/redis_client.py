@@ -13,7 +13,12 @@ class RedisClient:
             decode_responses=True
         )
 
-    async def set(self, key: str, value, ttl: int = None):
+    async def set(
+        self,
+        key: str,
+        value,
+        ttl: int | None = None
+    ):
 
         if isinstance(value, (dict, list)):
             value = json.dumps(value)
@@ -33,6 +38,7 @@ class RedisClient:
 
         try:
             return json.loads(value)
+
         except Exception:
             return value
 
@@ -42,14 +48,11 @@ class RedisClient:
     async def exists(self, key: str):
         return await self.client.exists(key)
 
-    # =========================================
-    # SAFE PUBLISH (IMPROVED)
-    # =========================================
-    async def publish(self, channel: str, message: dict):
-
-        if message is None:
-            return
-
+    async def publish(
+        self,
+        channel: str,
+        message: dict
+    ):
         await self.client.publish(
             channel,
             json.dumps(message)
