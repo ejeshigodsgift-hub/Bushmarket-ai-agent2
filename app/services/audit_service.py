@@ -13,11 +13,9 @@ from app.integrations.redis_client import redis_client
 from app.services.outbox_service import outbox_service
 
 
-class AuditService:
 
-    # =====================================
-    # CREATE AUDIT LOG
-    # =====================================
+
+class AuditService:
 
     async def log(
         self,
@@ -33,34 +31,23 @@ class AuditService:
     ):
 
         audit_log = AuditLog(
-
             user_id=user_id,
-
             action=action,
-
             entity_type=entity_type,
-
             entity_id=entity_id,
-
             event_data=metadata,
-
             ip_address=ip,
-
             session_id=session_id,
-
             device_id=device_id,
-
             created_at=datetime.now(timezone.utc)
         )
 
         db.add(audit_log)
-
         await db.flush()
 
         # =====================================
-        # REDIS AUDIT STREAM
+        # REDIS STREAM (REAL-TIME EVENT)
         # =====================================
-
         await redis_client.publish(
             "audit.events",
             {
@@ -73,9 +60,8 @@ class AuditService:
         )
 
         # =====================================
-        # OUTBOX EVENT
+        # OUTBOX (RELIABLE EVENT DELIVERY)
         # =====================================
-
         await outbox_service.queue_event(
             db=db,
             topic="audit.log.created",
@@ -88,11 +74,13 @@ class AuditService:
             }
         )
 
-        await db.commit()
-
-        await db.refresh(audit_log)
+        await db.flush()  # IMPORTANT: no commit here
 
         return audit_log
+
+
+
+
 
     # =====================================
     # MARKETPLACE ORDER EVENTS
