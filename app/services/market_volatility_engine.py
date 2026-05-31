@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.market_product_price import (
-    MarketProductPrice
+    MarketPrice
 )
 
 from app.services.volatility_rule_service import (
@@ -33,13 +33,13 @@ class MarketVolatilityEngine:
         # GET LATEST MARKET PRICE
         # =========================================
         stmt = (
-            select(MarketProductPrice)
+            select(MarketPrice)
             .where(
-                MarketProductPrice.product_id == product_id,
-                MarketProductPrice.market_id == market_id
+                MarketPrice.product_id == product_id,
+                MarketPrice.market_id == market_id
             )
             .order_by(
-                MarketProductPrice.created_at.desc()
+                MarketPrice.created_at.desc()
             )
             .limit(1)
         )
