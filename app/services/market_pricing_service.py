@@ -3,6 +3,7 @@
 # =========================================
 
 from decimal import Decimal
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.volatility_rule_service import (
     volatility_rule_service
@@ -10,7 +11,6 @@ from app.services.volatility_rule_service import (
 
 
 class MarketPricingService:
-
     """
     Dynamic pricing engine.
 
@@ -23,7 +23,7 @@ class MarketPricingService:
 
     async def evaluate_price_change(
         self,
-        db,
+        db: AsyncSession,
         product_id: str,
         market_id: str,
         old_price: Decimal,
@@ -38,7 +38,7 @@ class MarketPricingService:
 
         change_percentage = (
             (new_price - old_price) / old_price
-        )
+        ) * Decimal("100")
 
         rule = await volatility_rule_service.get_rule(
             db=db,
@@ -46,14 +46,18 @@ class MarketPricingService:
             market_id=market_id
         )
 
-        level = volatility_rule_service.evaluate(
+        level = await volatility_rule_service.evaluate(
             rule=rule,
-            price_change=float(change_percentage)
+            percentage_change=float(change_percentage)
         )
 
         return {
             "status": level,
-            "percentage_change": change_percentage
+            "percentage_change": float(
+                round(change_percentage, 2)
+            ),
+            "old_price": float(old_price),
+            "new_price": float(new_price)
         }
 
 
