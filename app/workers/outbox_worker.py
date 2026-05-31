@@ -1,8 +1,6 @@
 from sqlalchemy import select
-
 from app.db.session import SessionLocal
 from app.db.models.outbox_event import OutboxEvent
-
 from app.integrations.kafka_client import event_bus
 
 
@@ -21,7 +19,6 @@ async def process_outbox_events():
         for event in events:
 
             try:
-
                 await event_bus.publish(
                     topic=event.topic,
                     event=event.payload
