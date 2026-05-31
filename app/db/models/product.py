@@ -132,3 +132,10 @@ class Product(Base):
         back_populates="product",
         lazy="selectin"
     )
+
+
+    market_prices = relationship(
+        "MarketPrice",
+        back_populates="product",
+        cascade="all, delete-orphan"
+    )
