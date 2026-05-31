@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.api_key import APIKey
 from app.core.security import hash_api_key
-from sqlalchemy.orm import mapped_column
+
 
 class APIKeyService:
 
