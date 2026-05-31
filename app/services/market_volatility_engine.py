@@ -54,7 +54,7 @@ class MarketVolatilityEngine:
                 "percentage_change": 0
             }
 
-        old_price = Decimal(str(latest_price.price))
+        old_price = Decimal(str(latest_price.unit_price))
 
         if old_price <= 0:
             return {
