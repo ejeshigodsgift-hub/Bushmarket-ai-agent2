@@ -687,6 +687,29 @@ Analytics + History System
 
 
 
+2. CORE SERVICE LAYER ORDER
+listing_validation_service
+cart_service
+market_listing_service
+volatility_rule_service
+agent_verification_service
+
+3. THEN ONLY:
+cooperative system
+AI assistant
+analytics
+delivery
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1168,19 +1191,6 @@ agent workflow logic
 
 #THINGS TO DEFINE BEFORE CART SYSTEM BUILD
 
-
-2. CORE SERVICE LAYER ORDER
-listing_validation_service
-cart_service
-market_listing_service
-volatility_rule_service
-agent_verification_service
-
-3. THEN ONLY:
-cooperative system
-AI assistant
-analytics
-delivery
 
 
 
