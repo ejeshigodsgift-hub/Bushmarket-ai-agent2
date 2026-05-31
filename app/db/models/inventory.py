@@ -27,6 +27,8 @@ class Inventory(Base):
         ),
         Index("idx_inventory_listing", "listing_id"),
         Index("idx_inventory_active", "is_active"),
+        Index("idx_inventory_expires_at", "expires_at"),
+
         CheckConstraint(
             "available_stock >= 0",
             name="ck_inventory_available_stock"
@@ -72,6 +74,20 @@ class Inventory(Base):
         nullable=False,
         default=0,
         server_default="0"
+    )
+
+    # =====================================
+    # 🆕 RESERVATION TTL FIELDS
+    # =====================================
+    reserved_at: Mapped[DateTime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    expires_at: Mapped[DateTime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True
     )
 
     is_active: Mapped[bool] = mapped_column(
