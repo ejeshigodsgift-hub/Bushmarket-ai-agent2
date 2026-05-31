@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
+from datetime import datetime, timedelta
 
 from app.db.models.inventory import Inventory
 from app.db.models.inventory_transaction import InventoryTransaction
@@ -34,29 +35,32 @@ class InventoryService:
         return inventory
 
     # =====================================
-    # RESERVE STOCK (CART / CHECKOUT PREP)
+    # RESERVE STOCK (WITH TTL)
     # =====================================
     def reserve_stock(
         self,
         db: Session,
-        inventory_id: str,
+        inventory: Inventory,
         quantity: int,
         user_id: str,
-        ip: str
+        ip: str = None
     ):
-
-        inventory = (
-            db.query(Inventory)
-            .filter(Inventory.id == inventory_id)
-            .with_for_update()
-            .first()
-        )
 
         if not inventory:
             raise HTTPException(status_code=404, detail="Inventory not found")
 
-        self.validator.validate_stock(inventory=inventory, quantity=quantity)
+        self.validator.validate_stock(
+            inventory=inventory,
+            quantity=quantity
+        )
 
+        now = datetime.utcnow()
+
+        # TTL reservation fields (NEW LOGIC)
+        inventory.reserved_at = now
+        inventory.expires_at = now + timedelta(minutes=5)
+
+        # lock-safe update
         inventory.available_stock -= quantity
         inventory.reserved_stock += quantity
 
@@ -68,8 +72,7 @@ class InventoryService:
         )
 
         db.add(tx)
-        db.commit()
-        db.refresh(inventory)
+        db.flush()
 
         self._emit_inventory_event(
             event="inventory_reserved",
@@ -79,33 +82,27 @@ class InventoryService:
         )
 
         self._audit(
-            db, user_id, "inventory_reserved",
-            inventory, quantity, ip
+            db=db,
+            user_id=user_id,
+            action="inventory_reserved",
+            inventory=inventory,
+            quantity=quantity,
+            ip=ip
         )
 
         return inventory
 
     # =====================================
-    # CONFIRM SALE (POST PAYMENT / ORDER FINALIZATION)
+    # CONFIRM SALE
     # =====================================
     def confirm_sale(
         self,
         db: Session,
-        inventory_id: str,
+        inventory: Inventory,
         quantity: int,
         user_id: str,
-        ip: str
+        ip: str = None
     ):
-
-        inventory = (
-            db.query(Inventory)
-            .filter(Inventory.id == inventory_id)
-            .with_for_update()
-            .first()
-        )
-
-        if not inventory:
-            raise HTTPException(status_code=404, detail="Inventory not found")
 
         if inventory.reserved_stock < quantity:
             raise HTTPException(status_code=400, detail="Reserved stock insufficient")
@@ -121,8 +118,7 @@ class InventoryService:
         )
 
         db.add(tx)
-        db.commit()
-        db.refresh(inventory)
+        db.flush()
 
         self._emit_inventory_event(
             event="inventory_sold",
@@ -139,26 +135,16 @@ class InventoryService:
         return inventory
 
     # =====================================
-    # RELEASE RESERVED STOCK (CANCELLED ORDER / FAILED PAYMENT)
+    # RELEASE RESERVED STOCK
     # =====================================
     def release_reserved_stock(
         self,
         db: Session,
-        inventory_id: str,
+        inventory: Inventory,
         quantity: int,
         user_id: str,
-        ip: str
+        ip: str = None
     ):
-
-        inventory = (
-            db.query(Inventory)
-            .filter(Inventory.id == inventory_id)
-            .with_for_update()
-            .first()
-        )
-
-        if not inventory:
-            raise HTTPException(status_code=404, detail="Inventory not found")
 
         if inventory.reserved_stock < quantity:
             raise HTTPException(status_code=400, detail="Reserved stock insufficient")
@@ -174,8 +160,7 @@ class InventoryService:
         )
 
         db.add(tx)
-        db.commit()
-        db.refresh(inventory)
+        db.flush()
 
         self._emit_inventory_event(
             event="inventory_released",
@@ -192,28 +177,18 @@ class InventoryService:
         return inventory
 
     # =====================================
-    # REDUCE STOCK (ADMIN / EMERGENCY ADJUSTMENT)
+    # REDUCE STOCK
     # =====================================
     def reduce_stock(
         self,
         db: Session,
-        inventory_id: str,
+        inventory: Inventory,
         quantity: int,
         user_id: str,
-        ip: str
+        ip: str = None
     ):
 
-        inventory = (
-            db.query(Inventory)
-            .filter(Inventory.id == inventory_id)
-            .with_for_update()
-            .first()
-        )
-
-        if not inventory:
-            raise HTTPException(status_code=404, detail="Inventory not found")
-
-        self.validator.validate_stock(inventory=inventory, quantity=quantity)
+        self.validator.validate_stock(inventory, quantity)
 
         inventory.available_stock -= quantity
 
@@ -225,8 +200,7 @@ class InventoryService:
         )
 
         db.add(tx)
-        db.commit()
-        db.refresh(inventory)
+        db.flush()
 
         self._emit_inventory_event(
             event="inventory_reduced",
@@ -243,34 +217,24 @@ class InventoryService:
         return inventory
 
     # =====================================
-    # 🆕 CHECKOUT FINALIZATION (BUSHMARKET CORE EXTENSION)
-    # THIS CONNECTS:
-    # cart → payment → inventory → order system
+    # FINALIZE CHECKOUT
     # =====================================
     def finalize_checkout(
         self,
         db: Session,
-        inventory_id: str,
+        inventory: Inventory,
         quantity: int,
         user_id: str,
         ip: str,
         order_id: str
     ):
 
-        inventory = (
-            db.query(Inventory)
-            .filter(Inventory.id == inventory_id)
-            .with_for_update()
-            .first()
-        )
-
-        if not inventory:
-            raise HTTPException(status_code=404, detail="Inventory not found")
-
         if inventory.reserved_stock < quantity:
-            raise HTTPException(status_code=400, detail="Reserved stock insufficient for checkout")
+            raise HTTPException(
+                status_code=400,
+                detail="Reserved stock insufficient for checkout"
+            )
 
-        # convert reserved → sold
         inventory.reserved_stock -= quantity
         inventory.sold_stock += quantity
 
@@ -282,8 +246,7 @@ class InventoryService:
         )
 
         db.add(tx)
-        db.commit()
-        db.refresh(inventory)
+        db.flush()
 
         self._emit_inventory_event(
             event="checkout_completed",
@@ -294,14 +257,17 @@ class InventoryService:
         )
 
         self._audit(
-            db, user_id, "checkout_completed",
-            inventory, quantity, ip
+            db, user_id,
+            "checkout_completed",
+            inventory,
+            quantity,
+            ip
         )
 
         return inventory
 
     # =====================================
-    # INTERNAL: EVENT EMITTER
+    # EVENT EMITTER
     # =====================================
     def _emit_inventory_event(self, event, inventory, quantity, user_id, extra=None):
 
@@ -317,11 +283,10 @@ class InventoryService:
         }
 
         redis_client.publish("inventory.updated", payload)
-
         event_bus.publish("inventory-events", payload)
 
     # =====================================
-    # INTERNAL: AUDIT LOGGER
+    # AUDIT
     # =====================================
     def _audit(self, db, user_id, action, inventory, quantity, ip):
 
