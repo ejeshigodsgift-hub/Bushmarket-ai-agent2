@@ -46,3 +46,8 @@ async def process_inventory_expiry():
                 continue
 
         await db.commit()
+
+async def run_worker_loop():
+    while True:
+        await process_inventory_expiry()
+        await asyncio.sleep(60)  # runs every 1 minute
