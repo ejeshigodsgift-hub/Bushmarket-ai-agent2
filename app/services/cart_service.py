@@ -8,7 +8,7 @@ from fastapi import HTTPException
 
 from app.db.models.cart import Cart
 from app.db.models.cart_item import CartItem
-from app.db.models.market_product_listing import MarketListing
+from app.db.models.market_product_listing import MarketProductListing
 from app.db.models.inventory import Inventory
 
 from app.services.audit_service import AuditService
