@@ -1,14 +1,19 @@
+from datetime import datetime, timezone
+
+from sqlalchemy import (
+    select,
+    or_
+)
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 from app.db.models.api_key import APIKey
 from app.core.security import hash_api_key
-
+from sqlalchemy.orm import mapped_column
 
 class APIKeyService:
 
     # =========================================
-    # VALIDATE API KEY (ASYNC SAFE VERSION)
+    # VALIDATE API KEY
     # =========================================
     async def validate_api_key(
         self,
@@ -21,7 +26,11 @@ class APIKeyService:
         result = await db.execute(
             select(APIKey).where(
                 APIKey.key_hash == hashed,
-                APIKey.is_active == True
+                APIKey.is_active.is_(True),
+                or_(
+                    APIKey.expires_at.is_(None),
+                    APIKey.expires_at > datetime.now(timezone.utc)
+                )
             )
         )
 
