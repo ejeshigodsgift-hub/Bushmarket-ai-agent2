@@ -82,8 +82,8 @@ class CartService:
             # =========================
             # GET LISTING
             # =========================
-            listing = db.query(MarketListing).filter(
-                MarketListing.id == listing_id
+            listing = db.query(MarketProductListing).filter(
+                MarketProductListing.id == listing_id
             ).first()
 
             if not listing:
