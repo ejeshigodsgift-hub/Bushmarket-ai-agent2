@@ -50,8 +50,7 @@ class AgentTaskService:
         role_result = await db.execute(role_stmt)
         agent_role = role_result.scalar_one_or_none()
 
-        if not agent_role:
-            raise HTTPException(404, "Agent not found")
+        await agent_permission_service.require_agent(db, agent_id)
 
         # =========================================
         # LOGGING
