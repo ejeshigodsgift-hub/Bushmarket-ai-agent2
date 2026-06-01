@@ -2,14 +2,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+
 from app.services.product_category_service import product_category_service
+from app.services.category_visibility_service import category_visibility_service
+from app.services.product_visibility_service import product_visibility_service
 
 
-router = APIRouter(prefix="/categories", tags=["Categories"])
+router = APIRouter(
+    prefix="/categories",
+    tags=["Product Categories"]
+)
 
 
 # ====================================================
-# GET ALL CATEGORIES (HOME / BROWSE PAGE)
+# GET ALL CATEGORIES
 # ====================================================
 @router.get("/")
 async def get_categories(db: AsyncSession = Depends(get_db)):
@@ -18,17 +24,17 @@ async def get_categories(db: AsyncSession = Depends(get_db)):
 
     return [
         {
-            "id": c.id,
-            "name": c.name,
-            "slug": c.slug,
-            "image_url": c.image_url
+            "id": category.id,
+            "name": category.name,
+            "slug": category.slug,
+            "image_url": category_visibility_service.apply_visibility(category).image_url
         }
-        for c in categories
+        for category in categories
     ]
 
 
 # ====================================================
-# GET SINGLE CATEGORY + PRODUCTS
+# GET CATEGORY WITH PRODUCTS
 # ====================================================
 @router.get("/{slug}")
 async def get_category(slug: str, db: AsyncSession = Depends(get_db)):
@@ -38,22 +44,24 @@ async def get_category(slug: str, db: AsyncSession = Depends(get_db)):
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
+    # Apply visibility rule for category image
+    category = category_visibility_service.apply_visibility(category)
+
     return {
         "id": category.id,
         "name": category.name,
         "slug": category.slug,
-        "description": category.description,
         "image_url": category.image_url,
 
-        # PRODUCTS INSIDE CATEGORY
         "products": [
             {
-                "id": p.id,
-                "name": p.name,
-                "slug": p.slug,
-                "image_url": p.image_url,
-                "base_price": p.base_price
+                "id": product.id,
+                "name": product.name,
+                "slug": product.slug,
+                "image_url": product_visibility_service.apply_visibility(product).image_url,
+                "base_price": product.base_price,
+                "is_active": product.is_active
             }
-            for p in category.products
+            for product in category.products
         ]
     }
