@@ -10,7 +10,8 @@ from sqlalchemy import (
     Text,
     func,
     Index,
-    UniqueConstraint
+    UniqueConstraint,
+    ForeignKey
 )
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -24,7 +25,7 @@ class Product(Base):
     __table_args__ = (
         UniqueConstraint("slug", name="uq_market_products_slug"),
         Index("idx_market_products_name", "name"),
-        Index("idx_market_products_category", "category"),
+        Index("idx_market_products_category", "category_id"),
     )
 
     # =========================
@@ -57,8 +58,10 @@ class Product(Base):
         nullable=True
     )
 
-    category: Mapped[str | None] = mapped_column(
-        String(120),
+    # 🔥 FIXED: proper FK instead of raw string
+    category_id: Mapped[str | None] = mapped_column(
+        String,
+        ForeignKey("product_categories.id", ondelete="SET NULL"),
         nullable=True,
         index=True
     )
@@ -106,6 +109,13 @@ class Product(Base):
     # RELATIONSHIPS
     # =========================
 
+    # 🔥 Category alignment (M → 1)
+    category = relationship(
+        "ProductCategory",
+        back_populates="products",
+        lazy="selectin"
+    )
+
     variants = relationship(
         "ProductVariant",
         back_populates="product",
@@ -126,13 +136,11 @@ class Product(Base):
         lazy="selectin"
     )
 
-    # 🔥 THIS FIXES YOUR MARKET PRODUCT LISTING ALIGNMENT
     market_product_listings = relationship(
         "MarketProductListing",
         back_populates="product",
         lazy="selectin"
     )
-
 
     market_prices = relationship(
         "MarketPrice",
