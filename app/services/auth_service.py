@@ -11,6 +11,7 @@ from app.core.security import (
 
 from app.services.session_service import SessionService
 from app.services.outbox_service import outbox_service
+from app.services.shopper_profile_service import shopper_profile_service
 
 
 class AuthService:
@@ -36,18 +37,15 @@ class AuthService:
         # -----------------------------------------
         # CHECK EXISTING USER (email OR phone)
         # -----------------------------------------
-        existing = await db.execute(
+        result = await db.execute(
             select(User).where(
-                (User.email == email) if email else False,
+                (User.email == email) if email else False
             )
         )
 
-        user_exists = existing.scalar_one_or_none()
-
-        if user_exists:
+        if result.scalar_one_or_none():
             return None
 
-        # optional: phone uniqueness check
         if phone:
             phone_check = await db.execute(
                 select(User).where(User.phone == phone)
@@ -79,6 +77,16 @@ class AuthService:
             )
 
             db.add(role)
+
+            # -----------------------------------------
+            # DEFAULT SHOPPER PROFILE (AUTO CREATE)
+            # -----------------------------------------
+            await shopper_profile_service.create_default_profile(
+                db=db,
+                user_id=user.id,
+                email=user.email,
+                phone=user.phone
+            )
 
             # -----------------------------------------
             # OUTBOX EVENT
