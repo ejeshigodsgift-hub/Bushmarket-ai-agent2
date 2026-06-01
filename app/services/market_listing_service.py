@@ -39,16 +39,7 @@ class MarketListingService:
         # user_id = permission identity
         # agent.id = business actor identity
         # ====================================================
-        is_agent = await agent_permission_service.is_agent(
-            db,
-            agent.user_id
-        )
-
-        if not is_agent:
-            raise HTTPException(
-                status_code=403,
-                detail="Agent not authorized"
-            )
+        await agent_permission_service.require_agent(db, agent.user_id)
 
         # ====================================================
         # VALIDATION
