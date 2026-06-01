@@ -1,0 +1,5 @@
+class ShopperProfileUpdateSchema(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    location: Optional[str] = None
+    preferred_categories: Optional[list[str]] = None
