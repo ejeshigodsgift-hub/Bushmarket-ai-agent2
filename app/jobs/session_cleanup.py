@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import delete
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import SessionLocal
@@ -12,8 +12,16 @@ async def cleanup_expired_sessions():
     async with SessionLocal() as db:
 
         try:
-            stmt = delete(Session).where(
-                Session.expires_at < datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
+
+            stmt = (
+                update(Session)
+                .where(Session.expires_at < now)
+                .values(
+                    is_active=False,
+                    is_revoked=True,
+                    revoked_at=now
+                )
             )
 
             await db.execute(stmt)
