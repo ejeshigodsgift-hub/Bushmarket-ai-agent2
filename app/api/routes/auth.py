@@ -10,8 +10,10 @@ from app.services.audit_service import AuditService
 from app.core.config import settings
 from app.core.csrf import generate_csrf_token
 
+from app.schemas.auth import SignupSchema, LoginSchema
 
-router = APIRouter(prefix="/auth")
+
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
 rate_limit_service = RateLimitService()
 session_service = SessionService()
@@ -23,11 +25,14 @@ audit_service = AuditService()
 # =========================
 @router.post("/signup")
 async def signup(
-    payload: dict,
+    payload: SignupSchema,
     db: AsyncSession = Depends(get_db)
 ):
 
-    user = await auth_service.signup(db, payload)
+    user = await auth_service.signup(db, payload.dict())
+
+    if not user:
+        raise HTTPException(status_code=400, detail="Signup failed")
 
     return {
         "user_id": user.id,
@@ -40,7 +45,7 @@ async def signup(
 # =========================
 @router.post("/login")
 async def login(
-    payload: dict,
+    payload: LoginSchema,
     request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db)
@@ -71,10 +76,10 @@ async def login(
     # AUTH LOGIN
     # -------------------------
     result = await auth_service.login(
-        db,
-        payload["email"],
-        payload["password"],
-        meta
+        db=db,
+        identifier=payload.identifier,
+        password=payload.password,
+        request_meta=meta
     )
 
     if not result:
@@ -83,36 +88,33 @@ async def login(
     session = result["session"]
 
     # =========================
-    # SESSION COOKIE (FIXED PART)
+    # SET SESSION COOKIE
     # =========================
     response.set_cookie(
         key=settings.COOKIE_NAME,
         value=session.session_token,
-
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite=settings.COOKIE_SAMESITE,
-
         max_age=settings.SESSION_EXPIRE_SECONDS
     )
 
-    # -------------------------
+    # =========================
     # CSRF TOKEN
-    # -------------------------
+    # =========================
     csrf_token = generate_csrf_token()
 
     response.set_cookie(
         key=settings.CSRF_COOKIE_NAME,
         value=csrf_token,
-
         httponly=False,
         secure=settings.COOKIE_SECURE,
         samesite="strict"
     )
 
-    # -------------------------
-    # AUDIT LOG
-    # -------------------------
+    # =========================
+    # AUDIT (LOGIN SUCCESS)
+    # =========================
     await audit_service.log(
         db=db,
         user_id=session.user_id,
@@ -127,6 +129,7 @@ async def login(
 
     return {
         "user_id": result["user"].id,
+        "session_id": session.id,
         "status": "logged_in"
     }
 
@@ -143,37 +146,41 @@ async def logout(
 
     session_token = request.cookies.get(settings.COOKIE_NAME)
 
-    if session_token:
+    if not session_token:
+        return {"status": "logged_out"}
 
-        # =========================
-        # GET REAL SESSION
-        # =========================
-        session = await session_service.get_session_by_token(
+    # =========================
+    # GET REAL SESSION
+    # =========================
+    session = await session_service.get_session_by_token(
+        db=db,
+        token=session_token
+    )
+
+    # =========================
+    # AUDIT REAL SESSION
+    # =========================
+    if session:
+        await audit_service.log(
             db=db,
-            token=session_token
+            user_id=session.user_id,
+            action="LOGOUT",
+            entity_type="session",
+            entity_id=session.id,
+            metadata={}
         )
 
-        # =========================
-        # AUDIT (REAL USER)
-        # =========================
-        if session:
-            await audit_service.log(
-                db=db,
-                user_id=session.user_id,
-                action="LOGOUT",
-                entity_type="session",
-                entity_id=session.id,
-                metadata={}
-            )
+    # =========================
+    # REVOKE SESSION (DB + REDIS + OUTBOX)
+    # =========================
+    await session_service.destroy_session(
+        db=db,
+        token=session_token
+    )
 
-        # =========================
-        # REVOKE SESSION
-        # =========================
-        await session_service.destroy_session(
-            db=db,
-            token=session_token
-        )
-
+    # =========================
+    # CLEAR COOKIES
+    # =========================
     response.delete_cookie(settings.COOKIE_NAME)
     response.delete_cookie(settings.CSRF_COOKIE_NAME)
 
