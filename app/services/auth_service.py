@@ -16,7 +16,7 @@ from app.services.outbox_service import outbox_service
 class AuthService:
 
     # =========================================
-    # SIGNUP
+    # SIGNUP (EMAIL OR PHONE REQUIRED)
     # =========================================
     async def signup(
         self,
@@ -24,30 +24,55 @@ class AuthService:
         data: dict
     ):
 
+        email = data.get("email")
+        phone = data.get("phone")
+
+        # -----------------------------------------
+        # VALIDATION: must have email OR phone
+        # -----------------------------------------
+        if not email and not phone:
+            return None
+
+        # -----------------------------------------
+        # CHECK EXISTING USER (email OR phone)
+        # -----------------------------------------
         existing = await db.execute(
             select(User).where(
-                User.email == data["email"]
+                (User.email == email) if email else False,
             )
         )
 
-        if existing.scalar_one_or_none():
+        user_exists = existing.scalar_one_or_none()
+
+        if user_exists:
             return None
+
+        # optional: phone uniqueness check
+        if phone:
+            phone_check = await db.execute(
+                select(User).where(User.phone == phone)
+            )
+            if phone_check.scalar_one_or_none():
+                return None
 
         try:
 
+            # -----------------------------------------
+            # CREATE USER
+            # -----------------------------------------
             user = User(
                 full_name=data["full_name"],
-                email=data["email"],
-                phone=data.get("phone"),
-                password_hash=hash_password(
-                    data["password"]
-                )
+                email=email,
+                phone=phone,
+                password_hash=hash_password(data["password"])
             )
 
             db.add(user)
-
             await db.flush()
 
+            # -----------------------------------------
+            # DEFAULT ROLE = SHOPPER
+            # -----------------------------------------
             role = Role(
                 user_id=user.id,
                 role="shopper"
@@ -55,22 +80,21 @@ class AuthService:
 
             db.add(role)
 
-            # =====================================
+            # -----------------------------------------
             # OUTBOX EVENT
-            # =====================================
-
+            # -----------------------------------------
             await outbox_service.queue_event(
                 db=db,
                 topic="user.created",
                 payload={
                     "user_id": user.id,
                     "email": user.email,
+                    "phone": user.phone,
                     "role": "shopper"
                 }
             )
 
             await db.commit()
-
             await db.refresh(user)
 
             return user
@@ -80,19 +104,23 @@ class AuthService:
             raise
 
     # =========================================
-    # LOGIN
+    # LOGIN (EMAIL OR PHONE)
     # =========================================
     async def login(
         self,
         db: AsyncSession,
-        email: str,
+        identifier: str,
         password: str,
         request_meta: dict
     ):
 
+        # -----------------------------------------
+        # FIND USER BY EMAIL OR PHONE
+        # -----------------------------------------
         result = await db.execute(
             select(User).where(
-                User.email == email
+                (User.email == identifier) |
+                (User.phone == identifier)
             )
         )
 
@@ -101,24 +129,26 @@ class AuthService:
         if not user:
             return None
 
-        if not verify_password(
-            password,
-            user.password_hash
-        ):
+        # -----------------------------------------
+        # VERIFY PASSWORD
+        # -----------------------------------------
+        if not verify_password(password, user.password_hash):
             return None
 
         try:
 
+            # -----------------------------------------
+            # CREATE SESSION
+            # -----------------------------------------
             session = await SessionService().create_session(
                 db=db,
                 user_id=user.id,
                 meta=request_meta
             )
 
-            # =====================================
+            # -----------------------------------------
             # OUTBOX EVENT
-            # =====================================
-
+            # -----------------------------------------
             await outbox_service.queue_event(
                 db=db,
                 topic="user.logged_in",
