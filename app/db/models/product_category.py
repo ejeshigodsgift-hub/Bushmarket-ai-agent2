@@ -58,6 +58,16 @@ class ProductCategory(Base):
     )
 
     # =========================
+    # IMAGE STATUS (APPROVAL FLOW)
+    # =========================
+    image_status: Mapped[str] = mapped_column(
+        String(20),
+        default="pending",   # pending | approved | rejected
+        nullable=False,
+        index=True
+    )
+
+    # =========================
     # CATEGORY HIERARCHY (OPTIONAL)
     # =========================
     parent_id: Mapped[str | None] = mapped_column(
@@ -98,14 +108,12 @@ class ProductCategory(Base):
     # RELATIONSHIPS
     # =========================
 
-    # 🔥 Product alignment (1 → many)
     products = relationship(
         "Product",
         back_populates="category",
         lazy="selectin"
     )
 
-    # 🔥 self-referencing hierarchy
     parent = relationship(
         "ProductCategory",
         remote_side=[id],
