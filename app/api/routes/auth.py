@@ -145,18 +145,33 @@ async def logout(
 
     if session_token:
 
-        await session_service.revoke_session(
+        # =========================
+        # GET REAL SESSION
+        # =========================
+        session = await session_service.get_session_by_token(
             db=db,
             token=session_token
         )
 
-        await audit_service.log(
+        # =========================
+        # AUDIT (REAL USER)
+        # =========================
+        if session:
+            await audit_service.log(
+                db=db,
+                user_id=session.user_id,
+                action="LOGOUT",
+                entity_type="session",
+                entity_id=session.id,
+                metadata={}
+            )
+
+        # =========================
+        # REVOKE SESSION
+        # =========================
+        await session_service.destroy_session(
             db=db,
-            user_id="unknown",
-            action="LOGOUT",
-            entity_type="session",
-            entity_id=session_token,
-            metadata={}
+            token=session_token
         )
 
     response.delete_cookie(settings.COOKIE_NAME)
