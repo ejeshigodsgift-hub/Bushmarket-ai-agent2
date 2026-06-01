@@ -15,6 +15,11 @@ from app.services.agent_permission_service import agent_permission_service
 
 from app.events.outbox_publisher import OutboxPublisher
 
+from sqlalchemy.orm import selectinload
+
+from app.db.models.product import Product
+from app.services.product_visibility_service import product_visibility_service
+
 
 class MarketListingService:
 
@@ -328,20 +333,42 @@ class MarketListingService:
 
     def get_market_feed(self, db: Session, market_id):
 
-        listings = self.get_market_listings(db, market_id)
+        listings = db.query(MarketProductListing) \
+            .options(selectinload(MarketProductListing.product)) \
+            .filter(
+                MarketProductListing.market_id == market_id,
+                MarketProductListing.status == "active",
+                MarketProductListing.available_stock > 0,
+                MarketProductListing.is_active.is_(True)
+            ) \
+            .all()
 
-        return [
-            {
+        result = []
+
+        for x in listings:
+
+            product = None
+
+            if x.product:
+                product = product_visibility_service.apply_visibility(x.product)
+
+            result.append({
                 "listing_id": str(x.id),
                 "title": x.title,
                 "product_id": str(x.product_id),
+
+                "product": {
+                    "image_url": product.image_url if product else None,
+                    "image_status": product.image_status if product else None
+                },
+
                 "market_id": str(x.market_id),
                 "unit_price": float(x.unit_price),
                 "available_stock": x.available_stock,
                 "status": x.status
-            }
-            for x in listings
-        ]
+            })
+
+        return result
 
 
 market_listing_service = MarketListingService()
