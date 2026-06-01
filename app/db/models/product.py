@@ -58,7 +58,9 @@ class Product(Base):
         nullable=True
     )
 
-    # 🔥 FIXED: proper FK instead of raw string
+    # =========================
+    # CATEGORY RELATIONSHIP
+    # =========================
     category_id: Mapped[str | None] = mapped_column(
         String,
         ForeignKey("product_categories.id", ondelete="SET NULL"),
@@ -66,11 +68,24 @@ class Product(Base):
         index=True
     )
 
+    # =========================
+    # IMAGE MANAGEMENT
+    # =========================
     image_url: Mapped[str | None] = mapped_column(
         String(1000),
         nullable=True
     )
 
+    image_status: Mapped[str] = mapped_column(
+        String(20),
+        default="pending",  # pending | approved | rejected
+        nullable=False,
+        index=True
+    )
+
+    # =========================
+    # PRICING
+    # =========================
     base_price: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2),
         nullable=True
@@ -82,6 +97,9 @@ class Product(Base):
         unique=True
     )
 
+    # =========================
+    # STATUS
+    # =========================
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         default=True,
@@ -109,7 +127,6 @@ class Product(Base):
     # RELATIONSHIPS
     # =========================
 
-    # 🔥 Category alignment (M → 1)
     category = relationship(
         "ProductCategory",
         back_populates="products",
