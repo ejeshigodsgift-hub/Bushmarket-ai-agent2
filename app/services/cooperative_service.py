@@ -1,8 +1,7 @@
 from datetime import datetime
-
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 
 from app.db.models.cooperative import Cooperative
 from app.db.models.cooperative_membership import CooperativeMembership
@@ -18,20 +17,18 @@ class CooperativeService:
         self.audit = AuditService()
 
     # ====================================================
-    # CREATE COOPERATIVE
+    # CREATE COOPERATIVE (ASYNC)
     # ====================================================
-    def create_cooperative(
+    async def create_cooperative(
         self,
-        db: Session,
+        db: AsyncSession,
         creator,
         data: dict,
-        ip: str
+        ip: str | None = None
     ):
-
-        # =========================
-        # VALIDATION RULES (SOFT-CODED LATER)
-        # =========================
-
+        # -----------------------------
+        # BUSINESS RULES (SOFT-CODED LATER)
+        # -----------------------------
         if len(data["product_ids"]) > 3:
             raise HTTPException(400, "Max 3 products allowed")
 
@@ -41,9 +38,9 @@ class CooperativeService:
         if data["lifespan_days"] > 60:
             raise HTTPException(400, "Max lifespan exceeded")
 
-        # =========================
+        # -----------------------------
         # CREATE COOPERATIVE
-        # =========================
+        # -----------------------------
         coop = Cooperative(
             creator_id=creator.id,
             title=data["title"],
@@ -54,16 +51,17 @@ class CooperativeService:
             max_members=data["max_members"],
             lifespan_days=data["lifespan_days"],
             status="draft",
-            discount_flag=data.get("discount_flag", False)
+            discount_flag=data.get("discount_flag", False),
+            market_id=data["market_id"]
         )
 
         db.add(coop)
-        db.flush()
+        await db.flush()
 
-        # =========================
+        # -----------------------------
         # AUDIT
-        # =========================
-        self.audit.log(
+        # -----------------------------
+        await self.audit.log(
             db=db,
             user_id=creator.id,
             action="cooperative_created",
@@ -73,10 +71,10 @@ class CooperativeService:
             ip=ip
         )
 
-        # =========================
+        # -----------------------------
         # OUTBOX EVENT
-        # =========================
-        outbox_service.queue_event(
+        # -----------------------------
+        await outbox_service.queue_event(
             db=db,
             topic="cooperative.created",
             payload={
@@ -85,19 +83,21 @@ class CooperativeService:
             }
         )
 
-        db.commit()
-        db.refresh(coop)
+        await db.commit()
+        await db.refresh(coop)
 
         return coop
 
     # ====================================================
-    # GET COOPERATIVE
+    # GET SINGLE COOPERATIVE
     # ====================================================
-    def get_cooperative(self, db: Session, coop_id: str):
+    async def get_cooperative(self, db: AsyncSession, coop_id: str):
 
-        coop = db.query(Cooperative).filter(
-            Cooperative.id == coop_id
-        ).first()
+        result = await db.execute(
+            select(Cooperative).where(Cooperative.id == coop_id)
+        )
+
+        coop = result.scalar_one_or_none()
 
         if not coop:
             raise HTTPException(404, "Cooperative not found")
@@ -105,93 +105,31 @@ class CooperativeService:
         return coop
 
     # ====================================================
-    # JOIN COOPERATIVE
-    # ====================================================
-    def join_cooperative(
-        self,
-        db: Session,
-        user,
-        coop_id: str,
-        ip: str
-    ):
-
-        coop = self.get_cooperative(db, coop_id)
-
-        # =========================
-        # CHECK DUPLICATE MEMBERSHIP
-        # =========================
-        existing = db.query(CooperativeMembership).filter(
-            CooperativeMembership.cooperative_id == coop_id,
-            CooperativeMembership.user_id == user.id
-        ).first()
-
-        if existing:
-            raise HTTPException(400, "Already joined this cooperative")
-
-        # =========================
-        # CHECK CAPACITY
-        # =========================
-        member_count = db.query(CooperativeMembership).filter(
-            CooperativeMembership.cooperative_id == coop_id
-        ).count()
-
-        if member_count >= coop.max_members:
-            raise HTTPException(400, "Cooperative full")
-
-        membership = CooperativeMembership(
-            cooperative_id=coop_id,
-            user_id=user.id,
-            status="pending",
-            joined_at=datetime.utcnow()
-        )
-
-        db.add(membership)
-        db.flush()
-
-        # =========================
-        # REDIS EVENT
-        # =========================
-        redis_client.publish("cooperative.events", {
-            "event": "member_joined",
-            "cooperative_id": coop_id,
-            "user_id": user.id
-        })
-
-        # =========================
-        # OUTBOX
-        # =========================
-        outbox_service.queue_event(
-            db=db,
-            topic="cooperative.member_joined",
-            payload={
-                "cooperative_id": coop_id,
-                "user_id": user.id
-            }
-        )
-
-        self.audit.log(
-            db=db,
-            user_id=user.id,
-            action="cooperative_joined",
-            entity_type="cooperative",
-            entity_id=coop_id,
-            metadata={},
-            ip=ip
-        )
-
-        db.commit()
-        db.refresh(membership)
-
-        return membership
-
-    # ====================================================
     # GET ACTIVE COOPERATIVES
     # ====================================================
-    def get_active_cooperatives(self, db: Session):
+    async def get_active_cooperatives(self, db: AsyncSession):
 
-        return db.query(Cooperative).filter(
-            Cooperative.status.in_(["active", "funding"])
-        ).all()
+        result = await db.execute(
+            select(Cooperative).where(
+                Cooperative.status.in_(["active", "funding"])
+            )
+        )
 
+        return result.scalars().all()
 
-cooperative_service = CooperativeService()
+    # ====================================================
+    # GET USER COOPERATIVES (FIXED MISSING METHOD)
+    # ====================================================
+    async def get_user_cooperatives(
+        self,
+        db: AsyncSession,
+        user_id: str
+    ):
+
+        result = await db.execute(
+            select(Cooperative)
+            .join(CooperativeMembership)
+            .where(CooperativeMembership.user_id == user_id)
+        )
+
+        return result.scalars().unique().all()
