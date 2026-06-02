@@ -10,21 +10,18 @@ from sqlalchemy import (
     ForeignKey,
     JSON,
     func,
-    Index
+    Index,
+    Text
 )
 
-from sqlalchemy.orm import (
-    Mapped,
-    mapped_column,
-    relationship
-)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
 
 class Cooperative(Base):
     """
-    Core Cooperative Entity (BushMarket Group Buying System)
+    Core Cooperative Entity (BushMarket Group Buying Engine)
     """
 
     __tablename__ = "cooperatives"
@@ -47,13 +44,12 @@ class Cooperative(Base):
     # =========================
     # BASIC INFO
     # =========================
-    title: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False
-    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # =========================
-    # MARKET
+    # MARKET CONTEXT
     # =========================
     market_id: Mapped[str] = mapped_column(
         String,
@@ -73,105 +69,69 @@ class Cooperative(Base):
     )
 
     # =========================
-    # PRODUCT SELECTION
+    # PRODUCTS (MAX 3 enforced in service/engine)
     # =========================
-    product_ids: Mapped[list] = mapped_column(
-        JSON,
-        nullable=False
-    )
+    product_ids: Mapped[list] = mapped_column(JSON, nullable=False)
 
     # =========================
-    # TARGET SETTINGS
+    # TARGET CONFIG
     # =========================
-    target_quantity: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False
-    )
+    target_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    max_members: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        default=30
-    )
+    target_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
-    current_members: Mapped[int] = mapped_column(
-        Integer,
-        default=0
-    )
+    contribution_per_member: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
-    target_amount: Mapped[float] = mapped_column(
-        Numeric(12, 2),
-        nullable=False
-    )
+    max_members: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
 
-    contribution_per_member: Mapped[float] = mapped_column(
-        Numeric(12, 2),
-        nullable=False
-    )
+    current_members: Mapped[int] = mapped_column(Integer, default=0)
 
     # =========================
-    # LIFECYCLE
+    # LIFECYCLE (CRITICAL)
     # =========================
     status: Mapped[str] = mapped_column(
-        String(20),
-        default="draft",  # draft → active → funded → purchasing → closed
+        String(30),
+        default="draft",
         index=True
     )
+    """
+    draft → active → funded → purchasing → delivered → closed → expired
+    """
 
     # =========================
-    # TIME CONSTRAINTS
+    # TIMING RULES
     # =========================
-    lifespan_days: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False
-    )
+    lifespan_days: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    starts_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    ends_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # =========================
-    # ADMIN FLAGS
+    # BUSINESS RULE FLAGS (ADMIN CONTROLLED / SOFT CODED)
     # =========================
-    discount_flag: Mapped[bool] = mapped_column(
-        Boolean,
-        default=False
-    )
+    discount_flag: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    is_active: Mapped[bool] = mapped_column(
-        Boolean,
-        default=True
-    )
+    partial_procurement_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    auto_merge_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # =========================
-    # FINANCIAL CORE
+    # FINANCIAL CORE (ESCROW SYSTEM READY)
     # =========================
-    pooled_wallet_id: Mapped[str | None] = mapped_column(
-        String,
-        nullable=True
-    )
+    pooled_wallet_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    escrow_balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+
+    total_contributed: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
 
     # =========================
     # FAILURE HANDLING
     # =========================
-    auto_merge_allowed: Mapped[bool] = mapped_column(
-        Boolean,
-        default=True
-    )
-
-    partial_procurement_enabled: Mapped[bool] = mapped_column(
-        Boolean,
-        default=True
-    )
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # =========================
-    # TIMESTAMPS
+    # LIFECYCLE TIMESTAMPS
     # =========================
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -184,6 +144,12 @@ class Cooperative(Base):
         onupdate=func.now()
     )
 
+    funded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    purchasing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # =========================
     # RELATIONSHIPS
     # =========================
@@ -193,12 +159,6 @@ class Cooperative(Base):
         cascade="all, delete-orphan"
     )
 
-    creator = relationship(
-        "User",
-        lazy="selectin"
-    )
+    creator = relationship("User", lazy="selectin")
 
-    market = relationship(
-        "MarketLocation",
-        lazy="selectin"
-    )
+    market = relationship("MarketLocation", lazy="selectin")
