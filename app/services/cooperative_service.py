@@ -38,7 +38,7 @@ class CooperativeService:
         if data["max_members"] > 30:
             raise HTTPException(400, "Max 30 members allowed")
 
-        if data["life_span_days"] > 60:
+        if data["lifespan_days"] > 60:
             raise HTTPException(400, "Max lifespan exceeded")
 
         # =========================
@@ -52,7 +52,7 @@ class CooperativeService:
             target_amount=data["target_amount"],
             contribution_per_member=data["contribution_per_member"],
             max_members=data["max_members"],
-            life_span_days=data["life_span_days"],
+            lifespan_days=data["lifespan_days"],
             status="draft",
             discount_flag=data.get("discount_flag", False)
         )
