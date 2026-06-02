@@ -38,6 +38,10 @@ class Cooperative(Base):
         primary_key=True,
         default=lambda: str(uuid.uuid4())
     )
+    title: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False
+    )
 
     # =========================
     # CREATOR
