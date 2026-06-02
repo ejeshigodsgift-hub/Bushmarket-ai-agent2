@@ -2,10 +2,11 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from fastapi import HTTPException
 
-from app.db.models.cooperative_membership import CooperativeMembership
 from app.db.models.cooperative import Cooperative
+from app.db.models.cooperative_membership import CooperativeMembership
 
 from app.services.audit_service import AuditService
 from app.services.outbox_service import outbox_service
@@ -27,31 +28,51 @@ class CooperativeMembershipService:
         ip: str | None = None
     ):
 
-        # check cooperative exists
-        coop = await db.get(Cooperative, cooperative_id)
+        coop = await db.get(
+            Cooperative,
+            cooperative_id
+        )
 
         if not coop:
-            raise HTTPException(404, "Cooperative not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Cooperative not found"
+            )
 
-        # prevent duplicate membership
-        stmt = select(CooperativeMembership).where(
+        stmt = select(
+            CooperativeMembership
+        ).where(
             CooperativeMembership.user_id == user_id,
             CooperativeMembership.cooperative_id == cooperative_id
         )
 
-        existing = (await db.execute(stmt)).scalar_one_or_none()
+        existing = (
+            await db.execute(stmt)
+        ).scalar_one_or_none()
 
         if existing:
-            raise HTTPException(409, "Already requested/joined")
+            raise HTTPException(
+                status_code=409,
+                detail="Already requested/joined"
+            )
 
         membership = CooperativeMembership(
             user_id=user_id,
             cooperative_id=cooperative_id,
             status="pending",
-            created_at=datetime.now(timezone.utc)
+
+            # lifecycle timestamps
+            created_at=datetime.now(timezone.utc),
+
+            # lifecycle tracking
+            activated_at=None,
+            failed_at=None,
+            failure_reason=None,
+            payment_reference=None
         )
 
         db.add(membership)
+
         await db.flush()
 
         await self.audit.log(
@@ -60,7 +81,9 @@ class CooperativeMembershipService:
             action="cooperative_join_requested",
             entity_type="cooperative_membership",
             entity_id=membership.id,
-            metadata={"cooperative_id": cooperative_id},
+            metadata={
+                "cooperative_id": cooperative_id
+            },
             ip=ip
         )
 
@@ -86,14 +109,27 @@ class CooperativeMembershipService:
         payment_reference: str
     ):
 
-        membership = await db.get(CooperativeMembership, membership_id)
+        membership = await db.get(
+            CooperativeMembership,
+            membership_id
+        )
 
         if not membership:
-            raise HTTPException(404, "Membership not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Membership not found"
+            )
 
         membership.status = "active"
+
         membership.payment_reference = payment_reference
-        membership.activated_at = datetime.now(timezone.utc)
+
+        membership.activated_at = datetime.now(
+            timezone.utc
+        )
+
+        membership.failed_at = None
+        membership.failure_reason = None
 
         await self.audit.log(
             db=db,
@@ -101,7 +137,9 @@ class CooperativeMembershipService:
             action="cooperative_membership_activated",
             entity_type="cooperative_membership",
             entity_id=membership.id,
-            metadata={"payment_reference": payment_reference}
+            metadata={
+                "payment_reference": payment_reference
+            }
         )
 
         await outbox_service.queue_event(
@@ -110,11 +148,14 @@ class CooperativeMembershipService:
             payload={
                 "membership_id": str(membership.id),
                 "user_id": membership.user_id,
-                "cooperative_id": membership.cooperative_id
+                "cooperative_id": membership.cooperative_id,
+                "payment_reference": payment_reference
             }
         )
 
         await db.commit()
+
+        await db.refresh(membership)
 
         return membership
 
@@ -128,13 +169,24 @@ class CooperativeMembershipService:
         reason: str = "payment_failed"
     ):
 
-        membership = await db.get(CooperativeMembership, membership_id)
+        membership = await db.get(
+            CooperativeMembership,
+            membership_id
+        )
 
         if not membership:
-            raise HTTPException(404, "Membership not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Membership not found"
+            )
 
         membership.status = "failed"
+
         membership.failure_reason = reason
+
+        membership.failed_at = datetime.now(
+            timezone.utc
+        )
 
         await self.audit.log(
             db=db,
@@ -142,7 +194,9 @@ class CooperativeMembershipService:
             action="cooperative_membership_failed",
             entity_type="cooperative_membership",
             entity_id=membership.id,
-            metadata={"reason": reason}
+            metadata={
+                "reason": reason
+            }
         )
 
         await outbox_service.queue_event(
@@ -151,16 +205,19 @@ class CooperativeMembershipService:
             payload={
                 "membership_id": str(membership.id),
                 "user_id": membership.user_id,
-                "cooperative_id": membership.cooperative_id
+                "cooperative_id": membership.cooperative_id,
+                "reason": reason
             }
         )
 
         await db.commit()
 
+        await db.refresh(membership)
+
         return membership
 
     # =========================================
-    # GET STATUS
+    # GET MEMBERSHIP STATUS
     # =========================================
     async def get_membership_status(
         self,
@@ -169,12 +226,15 @@ class CooperativeMembershipService:
         cooperative_id: str
     ):
 
-        stmt = select(CooperativeMembership).where(
+        stmt = select(
+            CooperativeMembership
+        ).where(
             CooperativeMembership.user_id == user_id,
             CooperativeMembership.cooperative_id == cooperative_id
         )
 
         result = await db.execute(stmt)
+
         membership = result.scalar_one_or_none()
 
         return membership
