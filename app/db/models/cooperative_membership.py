@@ -11,30 +11,16 @@ from sqlalchemy import (
     Index
 )
 
-from sqlalchemy.orm import (
-    Mapped,
-    mapped_column,
-    relationship
-)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
 
 class CooperativeMembership(Base):
     """
-    Cooperative Membership
+    Cooperative Membership Lifecycle Model
 
-    Lifecycle:
-
-    pending
-        ↓
-    active
-        ↓
-    refunded
-
-    pending
-        ↓
-    failed
+    pending → active → failed → refunded
     """
 
     __tablename__ = "cooperative_memberships"
@@ -46,18 +32,18 @@ class CooperativeMembership(Base):
         Index("idx_membership_payment_reference", "payment_reference"),
     )
 
-    # ====================================================
+    # =========================
     # PRIMARY KEY
-    # ====================================================
+    # =========================
     id: Mapped[str] = mapped_column(
         String,
         primary_key=True,
         default=lambda: str(uuid.uuid4())
     )
 
-    # ====================================================
-    # RELATIONSHIPS
-    # ====================================================
+    # =========================
+    # RELATIONS
+    # =========================
     cooperative_id: Mapped[str] = mapped_column(
         String,
         ForeignKey("cooperatives.id"),
@@ -72,45 +58,42 @@ class CooperativeMembership(Base):
         index=True
     )
 
-    # ====================================================
+    # =========================
     # CONTRIBUTION
-    # ====================================================
+    # =========================
     contribution_amount: Mapped[float] = mapped_column(
         Numeric(12, 2),
         nullable=False
     )
 
-    # ====================================================
-    # MEMBERSHIP STATUS
-    # pending -> active -> refunded
-    # pending -> failed
-    # ====================================================
+    # =========================
+    # STATUS
+    # =========================
     status: Mapped[str] = mapped_column(
         String(20),
-        nullable=False,
         default="pending",
         index=True
     )
 
-    # ====================================================
-    # FINANCIAL CORE REFERENCE
-    # ====================================================
+    # =========================
+    # PAYMENT (FINANCIAL CORE)
+    # =========================
     payment_reference: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True
     )
 
-    # ====================================================
-    # FAILURE TRACKING
-    # ====================================================
+    # =========================
+    # FAILURE HANDLING
+    # =========================
     failure_reason: Mapped[str | None] = mapped_column(
         Text,
         nullable=True
     )
 
-    # ====================================================
-    # LIFECYCLE TIMESTAMPS
-    # ====================================================
+    # =========================
+    # TIMESTAMPS (FULL LIFECYCLE)
+    # =========================
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -120,23 +103,18 @@ class CooperativeMembership(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False
+        onupdate=func.now()
     )
 
-    activated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    failed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # ====================================================
+    refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # =========================
     # RELATIONSHIPS
-    # ====================================================
+    # =========================
     cooperative = relationship(
         "Cooperative",
         back_populates="memberships"
