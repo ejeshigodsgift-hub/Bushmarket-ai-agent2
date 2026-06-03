@@ -10,20 +10,21 @@ from app.db.models.ledger_account import LedgerAccount
 from app.db.models.ledger_entry import LedgerEntry
 from app.db.models.escrow_account import EscrowAccount
 
-from app.services.outbox_service import outbox_service
 from app.services.audit_service import AuditService
+from app.services.outbox_service import outbox_service
+from app.services.idempotency_service import idempotency_service
 
 
 class FinancialCoreService:
     """
-    Central money movement engine (REAL SOURCE OF TRUTH)
+    REAL SOURCE OF TRUTH (BANK-GRADE FINANCIAL ENGINE)
     """
 
     def __init__(self):
         self.audit = AuditService()
 
     # =========================================================
-    # INTERNAL: ROW LOCK HELPER
+    # ROW LOCK HELPERS (CONCURRENCY SAFE)
     # =========================================================
     async def _lock_wallet(self, db: AsyncSession, wallet_id: str):
         stmt = select(Wallet).where(Wallet.id == wallet_id).with_for_update()
@@ -38,7 +39,7 @@ class FinancialCoreService:
         return (await db.execute(stmt)).scalar_one()
 
     # =========================================================
-    # DOUBLE ENTRY POSTING (CORE ENGINE)
+    # DOUBLE ENTRY CORE ENGINE (ATOMIC POSTING)
     # =========================================================
     async def post_ledger_entry(
         self,
@@ -69,11 +70,10 @@ class FinancialCoreService:
         )
 
         db.add_all([debit, credit])
-
         return debit, credit
 
     # =========================================================
-    # WALLET TOPUP (USER → WALLET)
+    # WALLET CREDIT (POST-PAYMENT SETTLEMENT)
     # =========================================================
     async def wallet_credit(
         self,
@@ -93,13 +93,25 @@ class FinancialCoreService:
             action="wallet_credit",
             entity_type="wallet",
             entity_id=wallet.id,
-            metadata={"amount": str(amount), "reference": reference}
+            reference=reference,
+            amount=float(amount),
+            metadata={"amount": str(amount)}
+        )
+
+        await outbox_service.queue_event(
+            db=db,
+            topic="financial.wallet.credit",
+            payload={
+                "wallet_id": wallet.id,
+                "amount": str(amount),
+                "reference": reference
+            }
         )
 
         return wallet
 
     # =========================================================
-    # ESCROW DEPOSIT (PAYMENT → ESCROW ONLY)
+    # ESCROW DEPOSIT (PAYMENT GATEWAY → ESCROW ONLY)
     # =========================================================
     async def escrow_deposit(
         self,
@@ -118,6 +130,17 @@ class FinancialCoreService:
         escrow.ledger_balance += amount
         escrow.version += 1
 
+        await self.audit.log(
+            db=db,
+            user_id="system",
+            action="escrow_deposit",
+            entity_type="escrow",
+            entity_id=escrow.id,
+            reference=reference,
+            amount=float(amount),
+            metadata={"amount": str(amount)}
+        )
+
         await outbox_service.queue_event(
             db=db,
             topic="financial.escrow.deposit",
@@ -131,7 +154,7 @@ class FinancialCoreService:
         return escrow
 
     # =========================================================
-    # ESCROW HOLD (FREEZE FUNDS)
+    # ESCROW HOLD (RESERVE FUNDS)
     # =========================================================
     async def escrow_hold(
         self,
@@ -143,16 +166,26 @@ class FinancialCoreService:
         escrow = await self._lock_escrow(db, escrow_id)
 
         if escrow.available_balance < amount:
-            raise HTTPException(400, "Insufficient escrow funds")
+            raise HTTPException(400, "Insufficient escrow balance")
 
         escrow.available_balance -= amount
         escrow.total_reserved += amount
         escrow.version += 1
 
+        await outbox_service.queue_event(
+            db=db,
+            topic="financial.escrow.hold",
+            payload={
+                "escrow_id": escrow.id,
+                "amount": str(amount),
+                "reference": reference
+            }
+        )
+
         return escrow
 
     # =========================================================
-    # ESCROW RELEASE (TO PLATFORM / SETTLEMENT)
+    # ESCROW RELEASE (SETTLEMENT / PLATFORM PAYOUT)
     # =========================================================
     async def escrow_release(
         self,
@@ -170,6 +203,17 @@ class FinancialCoreService:
         escrow.ledger_balance -= amount
         escrow.version += 1
 
+        await self.audit.log(
+            db=db,
+            user_id="system",
+            action="escrow_release",
+            entity_type="escrow",
+            entity_id=escrow.id,
+            reference=reference,
+            amount=float(amount),
+            metadata={"amount": str(amount)}
+        )
+
         await outbox_service.queue_event(
             db=db,
             topic="financial.escrow.release",
@@ -183,7 +227,7 @@ class FinancialCoreService:
         return escrow
 
     # =========================================================
-    # SAFE TRANSFER (WALLET → ESCROW OR WALLET → WALLET)
+    # WALLET → WALLET TRANSFER (SAFE INTERNAL MOVEMENT)
     # =========================================================
     async def transfer(
         self,
@@ -205,10 +249,21 @@ class FinancialCoreService:
         sender.version += 1
         receiver.version += 1
 
+        await outbox_service.queue_event(
+            db=db,
+            topic="financial.wallet.transfer",
+            payload={
+                "from": sender.id,
+                "to": receiver.id,
+                "amount": str(amount),
+                "reference": reference
+            }
+        )
+
         return sender, receiver
 
     # =========================================================
-    # FINAL COMMIT SAFEPOINT
+    # ATOMIC COMMIT SAFETY BOUNDARY
     # =========================================================
     async def commit(self, db: AsyncSession):
         await db.commit()
