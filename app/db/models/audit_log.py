@@ -55,6 +55,12 @@ class AuditLog(Base):
         nullable=False
     )
 
+    event_hash: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        index=True
+    )
+
     ip_address: Mapped[str | None] = mapped_column(
         String,
         nullable=True
