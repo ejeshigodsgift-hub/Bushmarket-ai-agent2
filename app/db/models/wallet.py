@@ -10,6 +10,7 @@ from sqlalchemy import (
 )
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from decimal import Decimal
 
 from app.db.base import Base
 
@@ -46,17 +47,25 @@ class Wallet(Base):
         index=True
     )
 
-    balance: Mapped[float] = mapped_column(
+    balance: Mapped[Decimal] = mapped_column(
         Numeric(18, 2),
         default=0,
         nullable=False
     )
 
-    escrow_balance: Mapped[float] = mapped_column(
+    escrow_balance: Mapped[Decimal] = mapped_column(
         Numeric(18, 2),
         default=0,
         nullable=False
     )
+    
+    ledger_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18,2),
+        default=0,
+        nullable=False
+    )
+    
+    
 
     currency: Mapped[str] = mapped_column(
         String(10),
