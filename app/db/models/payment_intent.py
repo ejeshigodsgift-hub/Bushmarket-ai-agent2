@@ -11,6 +11,7 @@ from sqlalchemy import (
 )
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from decimal import Decimal
 
 from app.db.base import Base
 
@@ -41,7 +42,7 @@ class PaymentIntent(Base):
         index=True
     )
 
-    amount: Mapped[float] = mapped_column(
+    amount: Mapped[Decimal] = mapped_column(
         Numeric(18, 2),
         nullable=False
     )
