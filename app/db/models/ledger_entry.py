@@ -40,6 +40,13 @@ class LedgerEntry(Base):
         index=True
     )
 
+    transaction_reference: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        index=True
+    )
+    
+
     entry_type: Mapped[str] = mapped_column(
         String(10),
         nullable=False
