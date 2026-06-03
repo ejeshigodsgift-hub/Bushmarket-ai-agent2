@@ -73,6 +73,11 @@ class Wallet(Base):
         nullable=False
     )
 
+    version: Mapped[int] = mapped_column(
+        default=1,
+        nullable=False
+    )
+
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
