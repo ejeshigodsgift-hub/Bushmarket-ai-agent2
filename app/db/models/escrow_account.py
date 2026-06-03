@@ -17,6 +17,7 @@ from sqlalchemy import (
 )
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from decimal import Decimal
 
 from app.db.base import Base
 
@@ -52,20 +53,26 @@ class EscrowAccount(Base):
     # =========================
     # FINANCIAL STATE
     # =========================
-    total_deposited: Mapped[float] = mapped_column(
+    total_deposited: Mapped[Decimal] = mapped_column(
         Numeric(18, 2),
         default=0,
         nullable=False
     )
 
-    total_reserved: Mapped[float] = mapped_column(
+    total_reserved: Mapped[Decimal] = mapped_column(
         Numeric(18, 2),
         default=0,
         nullable=False
     )
 
-    available_balance: Mapped[float] = mapped_column(
+    available_balance: Mapped[Decimal] = mapped_column(
         Numeric(18, 2),
+        default=0,
+        nullable=False
+    )
+
+    ledger_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18,2),
         default=0,
         nullable=False
     )
@@ -73,6 +80,11 @@ class EscrowAccount(Base):
     currency: Mapped[str] = mapped_column(
         String(10),
         default="NGN",
+        nullable=False
+    )
+
+    version: Mapped[int] = mapped_column(
+        default=1,
         nullable=False
     )
 
