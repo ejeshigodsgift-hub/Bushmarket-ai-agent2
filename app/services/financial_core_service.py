@@ -23,6 +23,8 @@ class FinancialCoreService:
     def __init__(self):
         self.audit = AuditService()
 
+    
+
     # =========================================================
     # ROW LOCK HELPERS (CONCURRENCY SAFE)
     # =========================================================
@@ -50,6 +52,11 @@ class FinancialCoreService:
         reference: str,
         description: str | None = None
     ):
+
+        await self._ensure_idempotent(
+            db,
+            reference
+        )
         if amount <= 0:
             raise HTTPException(400, "Invalid amount")
 
@@ -72,86 +79,7 @@ class FinancialCoreService:
         db.add_all([debit, credit])
         return debit, credit
 
-    # =========================================================
-    # WALLET CREDIT (POST-PAYMENT SETTLEMENT)
-    # =========================================================
-    async def wallet_credit(
-        self,
-        db: AsyncSession,
-        wallet_id: str,
-        amount: Decimal,
-        reference: str
-    ):
-        wallet = await self._lock_wallet(db, wallet_id)
-
-        wallet.balance += amount
-        wallet.version += 1
-
-        await self.audit.log(
-            db=db,
-            user_id=wallet.user_id,
-            action="wallet_credit",
-            entity_type="wallet",
-            entity_id=wallet.id,
-            reference=reference,
-            amount=float(amount),
-            metadata={"amount": str(amount)}
-        )
-
-        await outbox_service.queue_event(
-            db=db,
-            topic="financial.wallet.credit",
-            payload={
-                "wallet_id": wallet.id,
-                "amount": str(amount),
-                "reference": reference
-            }
-        )
-
-        return wallet
-
-    # =========================================================
-    # ESCROW DEPOSIT (PAYMENT GATEWAY → ESCROW ONLY)
-    # =========================================================
-    async def escrow_deposit(
-        self,
-        db: AsyncSession,
-        escrow_id: str,
-        amount: Decimal,
-        reference: str
-    ):
-        escrow = await self._lock_escrow(db, escrow_id)
-
-        if escrow.is_frozen:
-            raise HTTPException(400, "Escrow frozen")
-
-        escrow.total_deposited += amount
-        escrow.available_balance += amount
-        escrow.ledger_balance += amount
-        escrow.version += 1
-
-        await self.audit.log(
-            db=db,
-            user_id="system",
-            action="escrow_deposit",
-            entity_type="escrow",
-            entity_id=escrow.id,
-            reference=reference,
-            amount=float(amount),
-            metadata={"amount": str(amount)}
-        )
-
-        await outbox_service.queue_event(
-            db=db,
-            topic="financial.escrow.deposit",
-            payload={
-                "escrow_id": escrow.id,
-                "amount": str(amount),
-                "reference": reference
-            }
-        )
-
-        return escrow
+    
 
     # =========================================================
     # ESCROW HOLD (RESERVE FUNDS)
@@ -163,6 +91,10 @@ class FinancialCoreService:
         amount: Decimal,
         reference: str
     ):
+        await self._ensure_idempotent(
+            db,
+            reference
+        )
         escrow = await self._lock_escrow(db, escrow_id)
 
         if escrow.available_balance < amount:
@@ -194,6 +126,10 @@ class FinancialCoreService:
         amount: Decimal,
         reference: str
     ):
+        await self._ensure_idempotent(
+            db,
+            reference
+        )
         escrow = await self._lock_escrow(db, escrow_id)
 
         if escrow.total_reserved < amount:
@@ -237,6 +173,12 @@ class FinancialCoreService:
         amount: Decimal,
         reference: str
     ):
+
+        await self._ensure_idempotent(
+            db,
+            reference
+        )
+
         sender = await self._lock_wallet(db, from_wallet_id)
         receiver = await self._lock_wallet(db, to_wallet_id)
 
@@ -266,4 +208,202 @@ class FinancialCoreService:
     # ATOMIC COMMIT SAFETY BOUNDARY
     # =========================================================
     async def commit(self, db: AsyncSession):
+        await self._ensure_idempotent(
+            db,
+            reference
+    )
         await db.commit()
+
+
+    # =========================================================
+# IDEMPOTENCY
+# =========================================================
+
+    async def _ensure_idempotent(
+        self,
+        db: AsyncSession,
+        reference: str
+    ):
+        exists = await     idempotency_service.exists(
+            db=db,
+            key=reference
+        )
+
+        if exists:
+            raise HTTPException(
+                status_code=409,
+                detail="Reference already  processed"
+            )
+
+        await idempotency_service.record(
+            db=db,
+            key=reference
+        )
+
+
+    # =========================================================
+# LEDGER SAFETY
+# =========================================================
+
+    async def _post_double_entry(
+        self,
+        db: AsyncSession,
+        debit_account_id: str,
+        credit_account_id: str,
+        amount: Decimal,
+        reference: str,
+        description: str | None = None
+    ):
+        if amount <= 0:
+            raise HTTPException(
+                400,
+                "Invalid amount"
+            )
+
+        debit = LedgerEntry(
+            account_id=debit_account_id,
+            entry_type="debit",
+            amount=amount,
+            transaction_reference=reference,
+        description=description
+        )
+
+        credit = LedgerEntry(
+            account_id=credit_account_id,
+            entry_type="credit",
+            amount=amount,
+            transaction_reference=reference,
+        description=description
+        )
+
+        db.add(debit)
+        db.add(credit)
+
+        return debit, credit
+
+    # =========================================================
+    # WALLET CREDIT (POST-PAYMENT SETTLEMENT)
+    # ========================================================
+
+    async def wallet_credit(
+        self,
+        db: AsyncSession,
+        wallet_id: str,
+        amount: Decimal,
+        reference: str,
+        debit_ledger_account: str,
+        credit_ledger_account: str
+    ):
+        await self._ensure_idempotent(
+            db,
+            reference
+        )
+
+        wallet = await self._lock_wallet(
+            db,
+            wallet_id
+        )
+
+        wallet.balance += amount
+        wallet.version += 1
+
+        await self._post_double_entry(
+            db=db,
+          
+    debit_account_id=debit_ledger_account,
+          credit_account_id=credit_ledger_account,
+            amount=amount,
+            reference=reference,
+            description="Wallet Credit"
+        )
+
+        await self.audit.log(
+            db=db,
+            user_id=wallet.user_id,
+            action="wallet_credit",
+            entity_type="wallet",
+            entity_id=wallet.id,
+            reference=reference,
+            amount=float(amount)
+        )
+
+        await outbox_service.queue_event(
+            db=db,
+          topic="financial.wallet.credit",
+            payload={
+                "wallet_id": wallet.id,
+                "amount": str(amount),
+                "reference": reference
+            }
+        )
+
+        return wallet
+
+# =========================================================
+    # ESCROW DEPOSIT (PAYMENT GATEWAY → ESCROW ONLY)
+    # =========================================================
+      
+
+
+    async def escrow_deposit(
+        self,
+        db: AsyncSession,
+        escrow_id: str,
+        amount: Decimal,
+        reference: str,
+        debit_ledger_account: str,
+        credit_ledger_account: str
+    ):
+        await self._ensure_idempotent(
+            db,
+            reference
+        )
+
+        escrow = await self._lock_escrow(
+            db,
+            escrow_id
+        )
+
+        if escrow.is_frozen:
+            raise HTTPException(
+                400,
+                "Escrow frozen"
+            )
+
+        escrow.total_deposited += amount
+        escrow.available_balance += amount
+        escrow.ledger_balance += amount
+        escrow.version += 1
+
+        await self._post_double_entry(
+            db=db,
+         debit_account_id=debit_ledger_account,
+         credit_account_id=credit_ledger_account,
+            amount=amount,
+            reference=reference,
+            description="Escrow Deposit"
+        )
+
+        await self.audit.log(
+            db=db,
+            user_id="system",
+            action="escrow_deposit",
+            entity_type="escrow",
+            entity_id=escrow.id,
+            reference=reference,
+            amount=float(amount)
+        )
+
+        await outbox_service.queue_event(
+            db=db,
+            topic="financial.escrow.deposit",
+            payload={
+                "escrow_id": escrow.id,
+                "amount": str(amount),
+                "reference": reference
+            }
+        )
+
+        return escrow
+
+
