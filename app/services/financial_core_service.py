@@ -89,23 +89,47 @@ class FinancialCoreService:
         db: AsyncSession,
         escrow_id: str,
         amount: Decimal,
-        reference: str
+        reference: str,
+        reserved_ledger_account: str,
+        available_ledger_account: str
     ):
         await self._ensure_idempotent(
             db,
             reference
         )
-        escrow = await self._lock_escrow(db, escrow_id)
+
+        if amount <= 0:
+            raise HTTPException(
+                400,
+                "Invalid amount"
+            )
+
+        escrow = await self._lock_escrow(
+            db,
+            escrow_id
+        )
 
         if escrow.available_balance < amount:
-            raise HTTPException(400, "Insufficient escrow balance")
+            raise HTTPException(
+                400,
+                "Insufficient escrow balance"
+            )
 
         escrow.available_balance -= amount
         escrow.total_reserved += amount
         escrow.version += 1
 
-        await outbox_service.queue_event(
+        await self._post_double_entry(
             db=db,
+            debit_account_id=reserved_ledger_account,
+        credit_account_id=available_ledger_account,
+            amount=amount,
+            reference=reference,
+            description="Escrow Hold"
+        )
+
+        await outbox_service.queue_event(
+            db=db,    
             topic="financial.escrow.hold",
             payload={
                 "escrow_id": escrow.id,
@@ -130,6 +154,12 @@ class FinancialCoreService:
             db,
             reference
         )
+
+        if amount <= 0:
+            raise HTTPException(
+                400,
+                "Invalid amount"
+            )
         escrow = await self._lock_escrow(db, escrow_id)
 
         if escrow.total_reserved < amount:
@@ -138,6 +168,16 @@ class FinancialCoreService:
         escrow.total_reserved -= amount
         escrow.ledger_balance -= amount
         escrow.version += 1
+
+        await self._post_double_entry(
+            db=db,
+      
+           debit_account_id=settlement_ledger_account,
+    credit_account_id=reserved_ledger_account,
+            amount=amount,
+            reference=reference,
+            description="Escrow Release"
+        )
 
         await self.audit.log(
             db=db,
@@ -172,12 +212,20 @@ class FinancialCoreService:
         to_wallet_id: str,
         amount: Decimal,
         reference: str
+        receiver_ledger_account: str,
+        sender_ledger_account: str
     ):
 
         await self._ensure_idempotent(
             db,
             reference
         )
+      
+        if amount <= 0:
+            raise HTTPException(
+                400,
+                "Invalid amount"
+            )
 
         sender = await self._lock_wallet(db, from_wallet_id)
         receiver = await self._lock_wallet(db, to_wallet_id)
@@ -190,6 +238,15 @@ class FinancialCoreService:
 
         sender.version += 1
         receiver.version += 1
+
+        await self._post_double_entry(
+            db=db,
+    debit_account_id=receiver_ledger_account,
+    credit_account_id=sender_ledger_account,
+            amount=amount,
+            reference=reference,
+            description="Wallet Transfer"
+        )
 
         await outbox_service.queue_event(
             db=db,
@@ -321,6 +378,12 @@ class FinancialCoreService:
             db,
             reference
         )
+        
+        if amount <= 0:
+            raise HTTPException(
+                400,
+                "Invalid amount"
+            )
 
         wallet = await self._lock_wallet(
             db,
@@ -381,6 +444,12 @@ class FinancialCoreService:
             db,
             reference
         )
+
+        if amount <= 0:
+            raise HTTPException(
+                400,
+                "Invalid amount"
+            )
 
         escrow = await self._lock_escrow(
             db,
