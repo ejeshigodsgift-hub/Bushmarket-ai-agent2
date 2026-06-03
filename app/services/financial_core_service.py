@@ -207,14 +207,17 @@ class FinancialCoreService:
     # =========================================================
     # ATOMIC COMMIT SAFETY BOUNDARY
     # =========================================================
-    async def commit(self, db:    
+    async def commit(self, db:   
     AsyncSession):
         try:
             await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
 
+        except Exception as e:
+            await db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Transaction    failed: {str(e)}"
+            )
 
     # =========================================================
 # IDEMPOTENCY
