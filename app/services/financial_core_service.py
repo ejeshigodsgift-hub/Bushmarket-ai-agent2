@@ -256,17 +256,38 @@ class FinancialCoreService:
         description: str | None = None
     ):
         if amount <= 0:
+            raise HTTPException(400,    
+    "Invalid amount")
+
+    # =========================================================
+    # VALIDATE LEDGER ACCOUNTS EXIST (CRITICAL FIX)
+    # =========================================================
+        debit_account = await       self._lock_ledger(db, debit_account_id)
+        credit_account = await self._lock_ledger(db, credit_account_id)
+
+        if not debit_account:
             raise HTTPException(
-                400,
-                "Invalid amount"
+                status_code=404,
+                detail=f"Debit ledger              
+    account not found: {debit_account_id}"
             )
 
+        if not credit_account:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Credit ledger     
+    account not found: {credit_account_id}"
+            )
+
+    # =========================================================
+    # CREATE DOUBLE ENTRY
+    # =========================================================
         debit = LedgerEntry(
             account_id=debit_account_id,
             entry_type="debit",
             amount=amount,
             transaction_reference=reference,
-        description=description
+            description=description
         )
 
         credit = LedgerEntry(
@@ -274,14 +295,12 @@ class FinancialCoreService:
             entry_type="credit",
             amount=amount,
             transaction_reference=reference,
-        description=description
+            description=description
         )
 
-        db.add(debit)
-        db.add(credit)
+        db.add_all([debit, credit])
 
         return debit, credit
-
     # =========================================================
     # WALLET CREDIT (POST-PAYMENT SETTLEMENT)
     # ========================================================
