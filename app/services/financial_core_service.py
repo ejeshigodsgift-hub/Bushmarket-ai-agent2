@@ -148,7 +148,9 @@ class FinancialCoreService:
         db: AsyncSession,
         escrow_id: str,
         amount: Decimal,
-        reference: str
+        reference: str,
+        settlement_ledger_account,
+        reserved_ledger_account
     ):
         await self._ensure_idempotent(
             db,
@@ -211,46 +213,110 @@ class FinancialCoreService:
         from_wallet_id: str,
         to_wallet_id: str,
         amount: Decimal,
-        reference: str
+        reference: str,
         receiver_ledger_account: str,
         sender_ledger_account: str
     ):
-
         await self._ensure_idempotent(
             db,
             reference
         )
-      
+
         if amount <= 0:
             raise HTTPException(
-                400,
-                "Invalid amount"
+                status_code=400,
+                detail="Invalid amount"
             )
 
-        sender = await self._lock_wallet(db, from_wallet_id)
-        receiver = await self._lock_wallet(db, to_wallet_id)
+        if from_wallet_id == to_wallet_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot transfer to same wallet"
+            )
 
+    # =====================================================
+    # DEADLOCK PREVENTION
+    # Always lock wallets in deterministic order
+    # =====================================================
+        wallet_ids = sorted([
+            from_wallet_id,
+            to_wallet_id
+        ])
+
+        first_wallet = await    self._lock_wallet(
+            db,
+            wallet_ids[0]
+        )
+
+        second_wallet = await   self._lock_wallet(
+            db,
+            wallet_ids[1]
+        )
+
+    # =====================================================
+    # MAP BACK TO REAL SENDER / RECEIVER
+    # =====================================================
+        if first_wallet.id == from_wallet_id:
+            sender = first_wallet
+            receiver = second_wallet
+        else:
+            sender = second_wallet
+            receiver = first_wallet
+
+    # =====================================================
+    # BALANCE VALIDATION
+    # =====================================================
         if sender.balance < amount:
-            raise HTTPException(400, "Insufficient balance")
+            raise HTTPException(
+                status_code=400,
+                detail="Insufficient balance"
+            )
 
+    # =====================================================
+    # UPDATE BALANCES
+    # =====================================================
         sender.balance -= amount
         receiver.balance += amount
 
         sender.version += 1
         receiver.version += 1
 
+    # =====================================================
+    # DOUBLE ENTRY LEDGER
+    # =====================================================
         await self._post_double_entry(
             db=db,
-    debit_account_id=receiver_ledger_account,
-    credit_account_id=sender_ledger_account,
+           debit_account_id=receiver_ledger_account,
+        credit_account_id=sender_ledger_account,
             amount=amount,
             reference=reference,
             description="Wallet Transfer"
         )
 
+    # =====================================================
+    # AUDIT LOG
+    # =====================================================
+        await self.audit.log(
+            db=db,
+            user_id=sender.user_id,
+            action="wallet_transfer",
+            entity_type="wallet",
+            entity_id=sender.id,
+            reference=reference,
+            amount=float(amount),
+            metadata={
+                "from_wallet_id": sender.id,
+                "to_wallet_id": receiver.id
+            }
+        )
+
+    # =====================================================
+    # OUTBOX EVENT
+    # =====================================================
         await outbox_service.queue_event(
             db=db,
-            topic="financial.wallet.transfer",
+           
+    topic="financial.wallet.transfer",
             payload={
                 "from": sender.id,
                 "to": receiver.id,
