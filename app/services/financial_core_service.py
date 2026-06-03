@@ -207,12 +207,13 @@ class FinancialCoreService:
     # =========================================================
     # ATOMIC COMMIT SAFETY BOUNDARY
     # =========================================================
-    async def commit(self, db: AsyncSession):
-        await self._ensure_idempotent(
-            db,
-            reference
-    )
-        await db.commit()
+    async def commit(self, db:    
+    AsyncSession):
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
 
 
     # =========================================================
