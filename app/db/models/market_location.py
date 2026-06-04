@@ -99,6 +99,28 @@ class MarketLocation(Base):
         onupdate=func.now()
     )
 
+    #        ====================================
+# COMMISSION SETTINGS
+# ====================================
+
+    market_fee_percent: Mapped[Decimal] =  mapped_column(
+        Numeric(8, 2),
+        nullable=False,
+        default=Decimal("0.00")
+    )
+
+    market_manager_fee_percent:    Mapped[Decimal] = mapped_column(
+        Numeric(8, 2),
+        nullable=False,
+        default=Decimal("0.00")
+    )
+
+    allow_custom_market_fee: Mapped[bool]  = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False
+    )
+
     region = relationship(
         "MarketRegion",
         back_populates="markets",
