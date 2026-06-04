@@ -4,6 +4,7 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
+from datetime import datetime, timedelta, timezone
 
 from app.services.cooperative_service import cooperative_service
 from app.services.cooperative_membership_service import cooperative_membership_service
@@ -13,12 +14,22 @@ from app.integrations.financial_core import financial_core
 
 
 class CooperativeEngine:
+    """
+    FULL COOPERATIVE STATE ENGINE
+
+    Handles:
+    - Funding lifecycle
+    - Partial procurement
+    - Expiry + extension
+    - Escrow-safe financial transitions
+    - Ledger-consistent operations
+    """
 
     def __init__(self):
         self.audit = AuditService()
 
     # ====================================================
-    # 1. JOIN COOPERATIVE (FULL FLOW ENTRY POINT)
+    # 1. JOIN COOPERATIVE
     # ====================================================
     async def join_cooperative(
         self,
@@ -27,12 +38,6 @@ class CooperativeEngine:
         cooperative_id: str,
         ip: str | None = None
     ):
-        """
-        FULL FLOW:
-        join → pending membership → payment → return intent
-        """
-
-        # STEP 1: create pending membership
         membership = await cooperative_membership_service.create_pending_membership(
             db=db,
             user_id=user_id,
@@ -42,7 +47,6 @@ class CooperativeEngine:
 
         coop = await cooperative_service.get_cooperative(db, cooperative_id)
 
-        # STEP 2: initiate payment
         payment_intent = await cooperative_payment_service.initiate_membership_payment(
             db=db,
             membership_id=membership.id,
@@ -51,11 +55,10 @@ class CooperativeEngine:
             cooperative_id=cooperative_id
         )
 
-        # STEP 3: audit engine action
         await self.audit.log(
             db=db,
             user_id=user_id,
-            action="cooperative_engine_join_initiated",
+            action="coop_join_initiated",
             entity_type="cooperative",
             entity_id=cooperative_id,
             metadata={
@@ -72,7 +75,7 @@ class CooperativeEngine:
         }
 
     # ====================================================
-    # 2. PAYMENT SUCCESS (WEBHOOK ENTRY POINT)
+    # 2. PAYMENT SUCCESS → STATE TRANSITION ENGINE
     # ====================================================
     async def handle_payment_success(
         self,
@@ -81,12 +84,6 @@ class CooperativeEngine:
         payment_reference: str,
         user_id: str
     ):
-        """
-        WEBHOOK FLOW:
-        payment success → activate membership → update coop state
-        """
-
-        # STEP 1: activate membership
         membership = await cooperative_membership_service.activate_membership(
             db=db,
             membership_id=membership_id,
@@ -98,17 +95,15 @@ class CooperativeEngine:
             membership.cooperative_id
         )
 
-        # STEP 2: update cooperative member count
         coop.current_members += 1
 
-        # STEP 3: check funding condition
-        await self._check_funding_progress(db, coop)
+        # STATE ENGINE ENTRY POINT
+        await self._evaluate_cooperative_state(db, coop)
 
-        # STEP 4: audit
         await self.audit.log(
             db=db,
             user_id=user_id,
-            action="cooperative_engine_payment_success",
+            action="coop_payment_success",
             entity_type="cooperative",
             entity_id=coop.id,
             metadata={
@@ -120,12 +115,12 @@ class CooperativeEngine:
         await db.commit()
 
         return {
-            "status": "membership_activated",
+            "status": "processed",
             "cooperative_status": coop.status
         }
 
     # ====================================================
-    # 3. PAYMENT FAILED (WEBHOOK ENTRY POINT)
+    # 3. PAYMENT FAILURE
     # ====================================================
     async def handle_payment_failed(
         self,
@@ -133,10 +128,6 @@ class CooperativeEngine:
         membership_id: str,
         reason: str = "payment_failed"
     ):
-        """
-        PAYMENT FAILURE FLOW
-        """
-
         membership = await cooperative_membership_service.fail_membership(
             db=db,
             membership_id=membership_id,
@@ -146,76 +137,190 @@ class CooperativeEngine:
         await self.audit.log(
             db=db,
             user_id=membership.user_id,
-            action="cooperative_engine_payment_failed",
+            action="coop_payment_failed",
             entity_type="cooperative",
             entity_id=membership.cooperative_id,
-            metadata={
-                "membership_id": membership_id,
-                "reason": reason
-            }
+            metadata={"reason": reason}
         )
 
         await db.commit()
 
-        return {
-            "status": "failed",
-            "reason": reason
-        }
+        return {"status": "failed"}
 
     # ====================================================
-    # 4. FUNDING LOGIC (CORE BUSINESS ENGINE)
+    # 4. STATE ENGINE CORE (THE HEART OF SYSTEM)
     # ====================================================
-    async def _check_funding_progress(
-        self,
-        db: AsyncSession,
-        coop
-    ):
+    async def _evaluate_cooperative_state(self, db: AsyncSession, coop):
         """
-        Determines if cooperative is funded
+        FULL STATE MACHINE LOGIC
         """
 
         total_funds = coop.current_members * float(coop.contribution_per_member)
 
+        # ==========================
+        # FULL FUNDING ACHIEVED
+        # ==========================
         if total_funds >= float(coop.target_amount):
-
             coop.status = "funded"
 
             await self.audit.log(
                 db=db,
                 user_id=coop.creator_id,
-                action="cooperative_funded",
+                action="coop_funded",
                 entity_type="cooperative",
                 entity_id=coop.id,
-                metadata={
-                    "total_funds": total_funds
-                }
+                metadata={"total_funds": total_funds}
             )
 
-        elif coop.current_members >= coop.max_members:
-
+        # ==========================
+        # STILL ACTIVE FUNDING
+        # ==========================
+        elif coop.current_members < coop.max_members:
             coop.status = "active"
 
+        # ==========================
+        # CAPACITY REACHED BUT NOT FUNDED
+        # ==========================
         else:
-            coop.status = "active"
+            coop.status = "funding"
+
+    # ====================================================
+    # 5. EXPIRY HANDLER (TRIGGERS STATE CHANGE)
+    # ====================================================
+    async def handle_expiry(self, db: AsyncSession, coop):
+        """
+        Called by scheduler when lifespan ends
+        """
+
+        if coop.status in ["funded", "closed"]:
+            return coop
+
+        coop.status = "expired"
+
+        await self.audit.log(
+            db=db,
+            user_id=coop.creator_id,
+            action="coop_expired",
+            entity_type="cooperative",
+            entity_id=coop.id,
+            metadata={}
+        )
+
+        return await self._evaluate_post_expiry_options(db, coop)
+
+    # ====================================================
+    # 6. POST-EXPIRY ENGINE (EXTENSION OR PARTIAL PROCUREMENT)
+    # ====================================================
+    async def _evaluate_post_expiry_options(self, db: AsyncSession, coop):
+        """
+        Decide what happens after expiry
+        """
+
+        total_funds = coop.current_members * float(coop.contribution_per_member)
+
+        # ==========================
+        # OPTION A: EXTENSION (48H)
+        # ==========================
+        if coop.allow_extension:
+            coop.status = "extension_granted"
+            coop.expiry_extended_at = datetime.now(timezone.utc) + timedelta(hours=48)
+
+            await self.audit.log(
+                db=db,
+                user_id=coop.creator_id,
+                action="coop_extension_granted",
+                entity_type="cooperative",
+                entity_id=coop.id
+            )
+
+            return coop
+
+        # ==========================
+        # OPTION B: PARTIAL PROCUREMENT
+        # ==========================
+        return await self._trigger_partial_procurement(db, coop)
+
+    # ====================================================
+    # 7. PARTIAL PROCUREMENT ENGINE
+    # ====================================================
+    async def _trigger_partial_procurement(self, db: AsyncSession, coop):
+        """
+        Escrow-safe partial execution
+        """
+
+        coop.status = "partial_procurement"
+
+        escrow = await financial_core.get_cooperative_escrow(
+            cooperative_id=coop.id
+        )
+
+        available_funds = escrow["available_balance"]
+
+        if available_funds <= 0:
+            coop.status = "failed"
+            return coop
+
+        # Lock funds in FinancialCore (CRITICAL)
+        await financial_core.reserve_for_partial_procurement(
+            cooperative_id=coop.id,
+            amount=available_funds
+        )
+
+        await financial_core.create_partial_order(
+            cooperative_id=coop.id,
+            amount=available_funds,
+            mode="partial"
+        )
+
+        await self.audit.log(
+            db=db,
+            user_id=coop.creator_id,
+            action="coop_partial_procurement_started",
+            entity_type="cooperative",
+            entity_id=coop.id,
+            metadata={"amount": available_funds}
+        )
 
         return coop
 
     # ====================================================
-    # 5. EXTERNAL PAYMENT SYNC (FINANCIAL CORE CALLBACK)
+    # 8. MANUAL EXTENSION (48H SURVIVAL MODE)
+    # ====================================================
+    async def extend_cooperative_48h(
+        self,
+        db: AsyncSession,
+        cooperative_id: str,
+        user_id: str
+    ):
+        coop = await cooperative_service.get_cooperative(db, cooperative_id)
+
+        if coop.status != "expired":
+            raise HTTPException(400, "Only expired cooperatives can be extended")
+
+        coop.expiry_extended_at = datetime.now(timezone.utc) + timedelta(hours=48)
+        coop.status = "active"
+
+        await self.audit.log(
+            db=db,
+            user_id=user_id,
+            action="coop_48h_extension",
+            entity_type="cooperative",
+            entity_id=coop.id
+        )
+
+        return coop
+
+    # ====================================================
+    # 9. EXTERNAL FINANCIAL SYNC (TRUTH RECONCILIATION)
     # ====================================================
     async def sync_payment_from_financial_core(
         self,
         db: AsyncSession,
         payment_reference: str
     ):
-        """
-        Reconciliation layer (VERY IMPORTANT for real systems)
-        """
-
         payment = await financial_core.verify_payment(payment_reference)
 
         if payment["status"] == "success":
-
             return await self.handle_payment_success(
                 db=db,
                 membership_id=payment["metadata"]["membership_id"],
@@ -223,13 +328,12 @@ class CooperativeEngine:
                 user_id=payment["user_id"]
             )
 
-        else:
-
-            return await self.handle_payment_failed(
-                db=db,
-                membership_id=payment["metadata"]["membership_id"],
-                reason=payment.get("failure_reason", "failed")
-            )
+        return await self.handle_payment_failed(
+            db=db,
+            membership_id=payment["metadata"]["membership_id"],
+            reason="failed"
+        )
 
 
+# SINGLETON
 cooperative_engine = CooperativeEngine()
