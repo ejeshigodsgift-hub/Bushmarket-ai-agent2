@@ -196,6 +196,33 @@ class MarketProductListing(Base):
         onupdate=func.now()
     )
 
+
+    # ====================================
+# COMMISSION SNAPSHOTS
+# ====================================
+
+    platform_fee_percent: Mapped[Decimal]    
+= mapped_column(
+        Numeric(8, 2),
+        nullable=False,
+        default=Decimal("0.00"),
+        server_default="0"
+    )
+
+    market_fee_percent: Mapped[Decimal] = mapped_column(
+        Numeric(8, 2),
+        nullable=False,
+        default=Decimal("0.00"),
+        server_default="0"
+    )
+
+    agent_fee_percent: Mapped[Decimal] =  mapped_column(
+        Numeric(8, 2),
+        nullable=False,
+        default=Decimal("0.00"),
+        server_default="0"
+    )
+
     # =====================================================
     # RELATIONSHIPS
     # =====================================================
