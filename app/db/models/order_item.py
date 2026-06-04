@@ -51,6 +51,56 @@ class OrderItem(Base):
         default=lambda: str(uuid.uuid4())
     )
 
+    # ====================================
+# COMMISSION SNAPSHOTS
+# ====================================
+
+    platform_fee_percent: Mapped[Decimal] = mapped_column(
+        Numeric(8, 2),
+        nullable=False,
+        default=Decimal("0.00")
+    )
+
+    market_fee_percent: Mapped[Decimal] = mapped_column(
+        Numeric(8, 2),
+        nullable=False,
+        default=Decimal("0.00")
+    )
+
+    agent_fee_percent: Mapped[Decimal] = mapped_column(
+        Numeric(8, 2),
+        nullable=False,
+        default=Decimal("0.00")
+    )
+
+# ====================================
+# COMMISSION AMOUNTS
+# ====================================
+
+    platform_fee_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2),
+        nullable=False,
+        default=Decimal("0.00")
+    )
+
+    market_fee_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2),
+        nullable=False,
+        default=Decimal("0.00")
+    )
+
+    agent_fee_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2),
+        nullable=False,
+        default=Decimal("0.00")
+    )
+
+    seller_amount: Mapped[Decimal] =   mapped_column(
+        Numeric(18, 2),
+        nullable=False,
+        default=Decimal("0.00")
+    )
+
     # =========================================
     # RELATIONS
     # =========================================
