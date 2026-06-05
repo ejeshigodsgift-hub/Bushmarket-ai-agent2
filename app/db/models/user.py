@@ -15,6 +15,8 @@ from sqlalchemy.orm import (
 
 from app.db.base import Base
 
+from app.core.constants.roles import ALL_ROLES
+
 
 class User(Base):
 
@@ -98,3 +100,7 @@ class User(Base):
         "ListingAgentActivity",
         back_populates="agent"
     )
+
+    @property
+    def role_list(self):
+        return [r.role for r in self.roles]
