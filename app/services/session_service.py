@@ -1,3 +1,5 @@
+app/services/session_service.py
+
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -5,324 +7,290 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.session import Session
 
-from app.integrations.redis_client import redis_client
-
 from app.core.security import (
-    generate_session_token,
-    generate_refresh_token,
-    generate_device_fingerprint
+generate_session_token,
+generate_refresh_token,
+generate_device_fingerprint
 )
 
 from app.core.config import settings
-
 from app.services.outbox_service import outbox_service
-
 
 class SessionService:
 
-    SESSION_PREFIX = "session:"
+SESSION_PREFIX = "session:"
 
-    # =========================================
-    # CREATE SESSION
-    # =========================================
+# =========================================
+# CREATE SESSION
+# =========================================
 
-    async def create_session(
-        self,
-        db: AsyncSession,
-        user_id: str,
-        meta: dict
-    ) -> Session:
+async def create_session(
+    self,
+    db: AsyncSession,
+    user_id: str,
+    meta: dict
+) -> Session:
 
-        now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
 
-        fingerprint = generate_device_fingerprint(
-            meta.get("ip_address", ""),
-            meta.get("user_agent", "")
-        )
+    fingerprint = generate_device_fingerprint(
+        meta.get("ip_address", ""),
+        meta.get("user_agent", "")
+    )
 
-        session_token = generate_session_token()
-        refresh_token = generate_refresh_token()
+    session = Session(
+        user_id=user_id,
+        session_token=generate_session_token(),
+        refresh_token=generate_refresh_token(),
+        device_id=meta.get("device_id"),
+        device_name=meta.get("device_name"),
+        user_agent=meta.get("user_agent"),
+        ip_address=meta.get("ip_address"),
+        fingerprint=fingerprint,
 
-        expires_at = now + timedelta(
+        # Bushmarket Cooperative Context
+        cooperative_id=meta.get("cooperative_id"),
+        membership_active=meta.get(
+            "membership_active",
+            False
+        ),
+
+        expires_at=now + timedelta(
             seconds=settings.SESSION_EXPIRE_SECONDS
-        )
+        ),
 
-        refresh_expires_at = now + timedelta(
+        refresh_expires_at=now + timedelta(
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+        ),
+
+        last_seen_at=now,
+        is_active=True,
+        is_revoked=False
+    )
+
+    db.add(session)
+
+    await db.flush()
+
+    await outbox_service.queue_event(
+        db=db,
+        topic="session.created",
+        payload={
+            "session_id": str(session.id),
+            "user_id": str(user_id),
+            "cooperative_id": session.cooperative_id,
+            "membership_active": session.membership_active,
+            "device_id": session.device_id
+        }
+    )
+
+    return session
+
+# =========================================
+# GET SESSION
+# =========================================
+
+async def get_session(
+    self,
+    db: AsyncSession,
+    token: str,
+    ip: str,
+    user_agent: str
+) -> Session | None:
+
+    result = await db.execute(
+        select(Session).where(
+            Session.session_token == token,
+            Session.is_active.is_(True),
+            Session.is_revoked.is_(False)
         )
+    )
 
-        db_session = Session(
-            user_id=user_id,
-            session_token=session_token,
-            refresh_token=refresh_token,
-            device_id=meta.get("device_id"),
-            device_name=meta.get("device_name"),
-            user_agent=meta.get("user_agent"),
-            ip_address=meta.get("ip_address"),
-            fingerprint=fingerprint,
-            expires_at=expires_at,
-            refresh_expires_at=refresh_expires_at,
-            is_active=True,
-            is_revoked=False,
-            last_seen_at=now
+    session = result.scalar_one_or_none()
+
+    if not session:
+        return None
+
+    if session.expires_at < datetime.now(
+        timezone.utc
+    ):
+        return None
+
+    fingerprint = generate_device_fingerprint(
+        ip,
+        user_agent
+    )
+
+    if session.fingerprint != fingerprint:
+        return None
+
+    session.last_seen_at = datetime.now(
+        timezone.utc
+    )
+
+    return session
+
+# =========================================
+# GET SESSION BY TOKEN
+# =========================================
+
+async def get_session_by_token(
+    self,
+    db: AsyncSession,
+    token: str
+) -> Session | None:
+
+    result = await db.execute(
+        select(Session).where(
+            Session.session_token == token
         )
+    )
 
-        db.add(db_session)
+    return result.scalar_one_or_none()
 
-        await db.flush()
+# =========================================
+# REVOKE SESSION
+# =========================================
 
-        await outbox_service.queue_event(
-            db=db,
-            topic="session.created",
-            payload={
-                "session_id": str(db_session.id),
-                "user_id": str(user_id),
-                "device_id": db_session.device_id
-            }
+async def revoke_session(
+    self,
+    db: AsyncSession,
+    token: str
+) -> None:
+
+    await self.destroy_session(
+        db=db,
+        token=token
+    )
+
+# =========================================
+# DESTROY SESSION
+# =========================================
+
+async def destroy_session(
+    self,
+    db: AsyncSession,
+    token: str
+) -> None:
+
+    result = await db.execute(
+        select(Session).where(
+            Session.session_token == token
         )
+    )
 
-        await db.commit()
+    session = result.scalar_one_or_none()
 
-        await db.refresh(db_session)
+    if not session:
+        return
 
-        await redis_client.set(
-            f"{self.SESSION_PREFIX}{session_token}",
-            {
-                "session_id": str(db_session.id),
-                "user_id": str(user_id),
-                "fingerprint": fingerprint
-            },
-            ttl=settings.SESSION_EXPIRE_SECONDS
+    session.is_active = False
+    session.is_revoked = True
+    session.revoked_at = datetime.now(
+        timezone.utc
+    )
+
+    await outbox_service.queue_event(
+        db=db,
+        topic="session.revoked",
+        payload={
+            "session_id": str(session.id),
+            "user_id": str(session.user_id)
+        }
+    )
+
+# =========================================
+# REFRESH SESSION
+# =========================================
+
+async def refresh_session(
+    self,
+    db: AsyncSession,
+    refresh_token: str
+) -> Session | None:
+
+    result = await db.execute(
+        select(Session).where(
+            Session.refresh_token == refresh_token,
+            Session.is_active.is_(True),
+            Session.is_revoked.is_(False)
         )
+    )
 
-        return db_session
+    session = result.scalar_one_or_none()
 
-    # =========================================
-    # GET SESSION (AUTH VALIDATION)
-    # =========================================
+    if not session:
+        return None
 
-    async def get_session(
-        self,
-        db: AsyncSession,
-        token: str,
-        ip: str,
-        user_agent: str
-    ) -> Session | None:
+    if session.refresh_expires_at < datetime.now(
+        timezone.utc
+    ):
+        return None
 
-        result = await db.execute(
-            select(Session).where(
-                Session.session_token == token,
-                Session.is_active.is_(True),
-                Session.is_revoked.is_(False)
-            )
+    session.session_token = (
+        generate_session_token()
+    )
+
+    session.refresh_token = (
+        generate_refresh_token()
+    )
+
+    session.last_seen_at = datetime.now(
+        timezone.utc
+    )
+
+    await outbox_service.queue_event(
+        db=db,
+        topic="session.refreshed",
+        payload={
+            "session_id": str(session.id),
+            "user_id": str(session.user_id)
+        }
+    )
+
+    return session
+
+# =========================================
+# REVOKE ALL USER SESSIONS
+# =========================================
+
+async def revoke_user_sessions(
+    self,
+    db: AsyncSession,
+    user_id: str
+) -> int:
+
+    result = await db.execute(
+        select(Session).where(
+            Session.user_id == user_id,
+            Session.is_active.is_(True)
         )
+    )
 
-        session = result.scalar_one_or_none()
+    sessions = result.scalars().all()
 
-        if not session:
-            return None
+    revoked_count = 0
 
-        if session.expires_at < datetime.now(timezone.utc):
-            return None
+    for session in sessions:
 
-        fingerprint = generate_device_fingerprint(
-            ip,
-            user_agent
+        session.is_active = False
+        session.is_revoked = True
+
+        session.revoked_at = datetime.now(
+            timezone.utc
         )
-
-        if session.fingerprint != fingerprint:
-            return None
-
-        session.last_seen_at = datetime.now(timezone.utc)
-
-        await db.commit()
-
-        return session
-
-    # =========================================
-    # GET SESSION BY TOKEN
-    # =========================================
-
-    async def get_session_by_token(
-        self,
-        db: AsyncSession,
-        token: str
-    ) -> Session | None:
-
-        result = await db.execute(
-            select(Session).where(
-                Session.session_token == token
-            )
-        )
-
-        return result.scalar_one_or_none()
-
-    # =========================================
-    # REVOKE SESSION
-    # =========================================
-
-    async def revoke_session(
-        self,
-        db: AsyncSession,
-        token: str
-    ) -> None:
-
-        await self.destroy_session(
-            db=db,
-            token=token
-        )
-
-    # =========================================
-    # DESTROY SESSION
-    # =========================================
-
-    async def destroy_session(
-        self,
-        db: AsyncSession,
-        token: str
-    ) -> None:
-
-        result = await db.execute(
-            select(Session).where(
-                Session.session_token == token
-            )
-        )
-
-        db_session = result.scalar_one_or_none()
-
-        if not db_session:
-            return
-
-        db_session.is_active = False
-        db_session.is_revoked = True
-        db_session.revoked_at = datetime.now(timezone.utc)
 
         await outbox_service.queue_event(
             db=db,
             topic="session.revoked",
-            payload={
-                "session_id": str(db_session.id),
-                "user_id": str(db_session.user_id)
-            }
-        )
-
-        await db.commit()
-
-        await redis_client.delete(
-            f"{self.SESSION_PREFIX}{token}"
-        )
-
-    # =========================================
-    # REFRESH SESSION
-    # =========================================
-
-    async def refresh_session(
-        self,
-        db: AsyncSession,
-        refresh_token: str
-    ) -> Session | None:
-
-        result = await db.execute(
-            select(Session).where(
-                Session.refresh_token == refresh_token,
-                Session.is_active.is_(True),
-                Session.is_revoked.is_(False)
-            )
-        )
-
-        session = result.scalar_one_or_none()
-
-        if not session:
-            return None
-
-        if session.refresh_expires_at < datetime.now(timezone.utc):
-            return None
-
-        old_session_token = session.session_token
-
-        new_session_token = generate_session_token()
-        new_refresh_token = generate_refresh_token()
-
-        await redis_client.delete(
-            f"{self.SESSION_PREFIX}{old_session_token}"
-        )
-
-        session.session_token = new_session_token
-        session.refresh_token = new_refresh_token
-        session.last_seen_at = datetime.now(timezone.utc)
-
-        await outbox_service.queue_event(
-            db=db,
-            topic="session.refreshed",
             payload={
                 "session_id": str(session.id),
                 "user_id": str(session.user_id)
             }
         )
 
-        await db.commit()
+        revoked_count += 1
 
-        await redis_client.set(
-            f"{self.SESSION_PREFIX}{new_session_token}",
-            {
-                "session_id": str(session.id),
-                "user_id": str(session.user_id),
-                "fingerprint": session.fingerprint
-            },
-            ttl=settings.SESSION_EXPIRE_SECONDS
-        )
-
-        await db.refresh(session)
-
-        return session
-
-    # =========================================
-    # REVOKE ALL USER SESSIONS
-    # =========================================
-
-    async def revoke_user_sessions(
-        self,
-        db: AsyncSession,
-        user_id: str
-    ) -> int:
-
-        result = await db.execute(
-            select(Session).where(
-                Session.user_id == user_id,
-                Session.is_active.is_(True)
-            )
-        )
-
-        sessions = result.scalars().all()
-
-        revoked_count = 0
-
-        for session in sessions:
-
-            session.is_active = False
-            session.is_revoked = True
-            session.revoked_at = datetime.now(
-                timezone.utc
-            )
-
-            await redis_client.delete(
-                f"{self.SESSION_PREFIX}{session.session_token}"
-            )
-
-            await outbox_service.queue_event(
-                db=db,
-                topic="session.revoked",
-                payload={
-                    "session_id": str(session.id),
-                    "user_id": str(session.user_id)
-                }
-            )
-
-            revoked_count += 1
-
-        await db.commit()
-
-        return revoked_count
-
+    return revoked_count
 
 session_service = SessionService()
