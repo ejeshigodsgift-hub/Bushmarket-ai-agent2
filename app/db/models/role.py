@@ -15,6 +15,7 @@ from sqlalchemy.orm import (
 )
 
 from app.db.base import Base
+from app.core.constants.roles import ALL_ROLES  # ✅ IMPORTANT
 
 
 class Role(Base):
@@ -32,7 +33,6 @@ class Role(Base):
     # =========================================
     # PRIMARY ID
     # =========================================
-
     id: Mapped[str] = mapped_column(
         String,
         primary_key=True,
@@ -42,18 +42,16 @@ class Role(Base):
     # =========================================
     # RELATION
     # =========================================
-
     user_id: Mapped[str] = mapped_column(
         String,
-        ForeignKey(
-            "users.id",
-            ondelete="CASCADE"
-        ),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    # shopper | member | agent | admin
+    # =========================================
+    # ROLE FIELD (ONLY ONCE)
+    # =========================================
     role: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
@@ -67,9 +65,17 @@ class Role(Base):
     )
 
     # =========================================
+    # VALIDATION (CORRECT PLACEMENT)
+    # =========================================
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        if self.role not in ALL_ROLES:
+            raise ValueError(f"Invalid role: {self.role}")
+
+    # =========================================
     # RELATIONSHIP
     # =========================================
-
     user = relationship(
         "User",
         back_populates="roles"
