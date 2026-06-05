@@ -43,6 +43,24 @@ class Session(Base):
     )
 
     # =========================
+    # COOPERATIVE RELATION
+    # =========================
+
+    cooperative_id: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+        index=True
+    )
+
+    membership_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False
+    )
+    
+
+
+    # =========================
     # TOKENS
     # =========================
 
