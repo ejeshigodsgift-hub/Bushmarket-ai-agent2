@@ -1,14 +1,7 @@
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db.models.shopper_profile import ShopperProfile
-
+# app/services/shopper_profile_service.py
 
 class ShopperProfileService:
 
-    # =========================================
-    # AUTO CREATE PROFILE (ON SIGNUP)
-    # =========================================
     async def create_default_profile(
         self,
         db: AsyncSession,
@@ -16,61 +9,39 @@ class ShopperProfileService:
         email: str | None = None,
         phone: str | None = None
     ):
-
         profile = ShopperProfile(
             user_id=user_id,
             email=email,
             phone=phone,
-            preferred_categories=None,
+            preferred_categories=[],
             location=None
         )
 
         db.add(profile)
+        await db.flush()
         return profile
 
-    # =========================================
-    # GET PROFILE
-    # =========================================
-    async def get_profile(
-        self,
-        db: AsyncSession,
-        user_id: str
-    ):
-
+    async def get_profile(self, db: AsyncSession, user_id: str):
         result = await db.execute(
             select(ShopperProfile).where(
                 ShopperProfile.user_id == user_id
             )
         )
-
         return result.scalar_one_or_none()
 
-    # =========================================
-    # UPDATE PROFILE (UPGRADES)
-    # =========================================
     async def update_profile(
         self,
         db: AsyncSession,
         user_id: str,
         data: dict
     ):
-
-        result = await db.execute(
-            select(ShopperProfile).where(
-                ShopperProfile.user_id == user_id
-            )
-        )
-
-        profile = result.scalar_one_or_none()
+        profile = await self.get_profile(db, user_id)
 
         if not profile:
             return None
 
-        for key, value in data.items():
-            if hasattr(profile, key):
-                setattr(profile, key, value)
+        for k, v in data.items():
+            setattr(profile, k, v)
 
+        await db.flush()
         return profile
-
-
-shopper_profile_service = ShopperProfileService()
