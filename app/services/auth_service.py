@@ -114,6 +114,8 @@ class AuthService:
     # =========================================
     # LOGIN (EMAIL OR PHONE)
     # =========================================
+    # app/services/auth_service.py
+
     async def login(
         self,
         db: AsyncSession,
@@ -122,13 +124,10 @@ class AuthService:
         request_meta: dict
     ):
 
-        # -----------------------------------------
-        # FIND USER BY EMAIL OR PHONE
-        # -----------------------------------------
         result = await db.execute(
             select(User).where(
                 (User.email == identifier) |
-                (User.phone == identifier)
+                (User.phone == identifier.   )
             )
         )
 
@@ -137,47 +136,37 @@ class AuthService:
         if not user:
             return None
 
-        # -----------------------------------------
-        # VERIFY PASSWORD
-        # -----------------------------------------
-        if not verify_password(password, user.password_hash):
+        if not verify_password(password,     user.password_hash):
             return None
 
-        try:
+        roles = user.role_list   # ✅ FIX 3
 
-            # -----------------------------------------
-            # CREATE SESSION
-            # -----------------------------------------
-            session = await SessionService().create_session(
-                db=db,
-                user_id=user.id,
-                meta=request_meta
-            )
-
-            # -----------------------------------------
-            # OUTBOX EVENT
-            # -----------------------------------------
-            await outbox_service.queue_event(
-                db=db,
-                topic="user.logged_in",
-                payload={
-                    "user_id": user.id,
-                    "session_id": session.id
-                }
-            )
-
-            await db.commit()
-
-            return {
-                "session_token": session.session_token,
-                "refresh_token": session.refresh_token,
-                "session": session,
-                "user": user
+        session = await     SessionService().create_session(
+            db=db,
+            user_id=user.id,
+            meta=request_meta | {
+                "roles": roles   # ✅     embedded roles
             }
+        )
 
-        except Exception:
-            await db.rollback()
-            raise
+        await outbox_service.queue_event(
+            db=db,
+           topic="user.logged_in",
+            payload={
+                "user_id": user.id,
+                "session_id": session.id,
+                "roles": roles
+            }
+        )
 
+        await db.commit()
+        await db.refresh(session)
+        
 
-auth_service = AuthService()
+        return {
+            "session_token":  session.session_token,
+            "refresh_token":  session.refresh_token,
+            "session": session,
+            "user": user,
+            "roles": roles
+        }
