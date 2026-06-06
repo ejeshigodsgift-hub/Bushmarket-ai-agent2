@@ -70,6 +70,7 @@ class MarketProductListing(Base):
         String(36),
         ForeignKey("market_products.id", ondelete="CASCADE"),
         nullable=False
+        index=True
     )
 
     variant_id: Mapped[str | None] = mapped_column(
