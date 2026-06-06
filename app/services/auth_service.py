@@ -161,6 +161,13 @@ class AuthService:
 
         await db.commit()
         await db.refresh(session)
+
+        access_token =         jwt_service.create_access_token(
+            user_id=user.id,
+            roles=roles,
+            session_id=session.id,
+    cooperative_id=session.cooperative_id
+    )
         
 
         return {
