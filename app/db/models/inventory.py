@@ -11,7 +11,7 @@ from sqlalchemy import (
     UniqueConstraint
 )
 
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -43,15 +43,15 @@ class Inventory(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
-    listing_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("market_product_listings.id", ondelete="CASCADE"),
+    listing_id: Mapped[str] = mapped_column(
+        String(36),
+      ForeignKey("market_product_listings.id",     ondelete="CASCADE"),
         nullable=False
     )
 
