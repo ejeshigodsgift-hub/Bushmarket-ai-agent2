@@ -69,7 +69,7 @@ class MarketProductListing(Base):
     product_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("market_products.id", ondelete="CASCADE"),
-        nullable=False
+        nullable=False,
         index=True
     )
 
