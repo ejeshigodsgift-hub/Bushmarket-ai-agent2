@@ -1,5 +1,3 @@
-# app/services/ai_service.py
-
 from app.services.llm_service import llm_service
 from app.services.search_service import search_service
 from app.services.pricing_service import pricing_service
@@ -17,7 +15,7 @@ class AIService:
     async def process_message(self, db, user_id, message):
 
         # =====================================
-        # 1. LOG USER MESSAGE (GET CONVERSATION)
+        # 1. LOG USER MESSAGE
         # =====================================
         conversation_id = await ai_logger.log_user_message(
             db=db,
@@ -51,11 +49,14 @@ class AIService:
         response_payload = None
 
         # =====================================
-        # SEARCH
+        # SEARCH PRODUCT
         # =====================================
         if intent == "search_product":
 
-            results = await search_service.search_products(db=db, query=query)
+            results = await search_service.search_products(
+                db=db,
+                query=query
+            )
 
             response_payload = {
                 "reply": "Products found.",
@@ -67,10 +68,15 @@ class AIService:
         # =====================================
         elif intent == "price_check":
 
-            listings = await search_service.search_products(db=db, query=query)
+            listings = await search_service.search_products(
+                db=db,
+                query=query
+            )
 
             if not listings:
-                response_payload = {"reply": "No product found."}
+                response_payload = {
+                    "reply": "No product found."
+                }
             else:
                 listing = listings[0]
 
@@ -89,14 +95,12 @@ class AIService:
         # =====================================
         elif intent == "add_to_cart":
 
-            result = await cart_service.add_item(
+            response_payload = await cart_service.add_item(
                 db=db,
                 user_id=user_id,
                 listing_id=query,
                 quantity=quantity
             )
-
-            response_payload = result
 
         # =====================================
         # COOPERATIVE STATUS
@@ -133,7 +137,7 @@ class AIService:
             )
 
         # =====================================
-        # DEFAULT
+        # DEFAULT RESPONSE
         # =====================================
         else:
             response_payload = {
@@ -141,9 +145,15 @@ class AIService:
             }
 
         # =====================================
-        # 4. LOG ASSISTANT MESSAGE (FIXED)
+        # 4. SAFE ASSISTANT LOGGING (FIXED)
         # =====================================
-        assistant_text = response_payload.get("reply", "Done")
+
+        assistant_text = ""
+
+        if isinstance(response_payload, dict):
+            assistant_text = response_payload.get("reply") or "Done"
+        else:
+            assistant_text = str(response_payload)
 
         await ai_logger.log_assistant_message(
             db=db,
