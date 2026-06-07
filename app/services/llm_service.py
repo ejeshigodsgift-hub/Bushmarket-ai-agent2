@@ -7,12 +7,18 @@ class LLMService:
     def __init__(self, api_key: str):
         self.client = OpenAI(api_key=api_key)
 
-    def parse_intent(self, message: str):
+    def parse_intent(self, message: str, context: list = None):
 
         prompt = f"""
 You are Bushmarket AI Router.
 
-Classify user message into one intent only:
+You understand shopping, cooperative buying, and agent workflows.
+
+CONTEXT:
+{context}
+
+USER MESSAGE:
+{message}
 
 INTENTS:
 - search_product
@@ -23,23 +29,35 @@ INTENTS:
 - checkout
 - general_chat
 
-Return ONLY JSON:
+RULES:
+- Always extract product name into "query"
+- quantity default is 1 if not stated
+- If unclear, return general_chat
+
+RETURN ONLY VALID JSON:
 {{
   "intent": "",
   "query": "",
-  "quantity": null
+  "quantity": 1
 }}
-
-User message:
-{message}
 """
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[
+                {"role": "system", "content": "You are a strict JSON router."},
+                {"role": "user", "content": prompt}
+            ]
         )
 
-        return json.loads(response.choices[0].message.content)
+        try:
+            return json.loads(response.choices[0].message.content)
+        except Exception:
+            return {
+                "intent": "general_chat",
+                "query": "",
+                "quantity": 1
+            }
 
 
 llm_service = LLMService(api_key="YOUR_API_KEY")
