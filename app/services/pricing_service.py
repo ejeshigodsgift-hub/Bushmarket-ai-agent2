@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from app.domain.pricing.pricing import PriceBreakdown
+from app.db.models.pricing_model import PriceBreakdown
 from app.db.models.market_product_listing import (
     MarketProductListing
 )
