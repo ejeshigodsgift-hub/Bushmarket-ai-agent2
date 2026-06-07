@@ -14,6 +14,16 @@ class SearchService:
     def _make_hash(self, query: str) -> str:
         return hashlib.sha256(query.lower().strip().encode()).hexdigest()
 
+    def _serialize_listing(self, listing: MarketProductListing):
+        return {
+            "listing_id": listing.id,
+            "product_name": listing.product.name,
+            "image_url": listing.product.image_url,
+            "unit_price": str(listing.unit_price),
+            "market_name": listing.market.market_name,
+            "availability": listing.available_stock
+        }
+
     async def search_products(
         self,
         db: AsyncSession,
@@ -23,7 +33,7 @@ class SearchService:
         query_hash = self._make_hash(query)
 
         # =========================
-        # 1. CHECK CACHE FIRST
+        # CACHE LOOKUP
         # =========================
         cached = await db.execute(
             select(SearchResultCache)
@@ -36,7 +46,7 @@ class SearchService:
             return json.loads(cache_row.result_json)
 
         # =========================
-        # 2. DB SEARCH
+        # DB SEARCH
         # =========================
         stmt = (
             select(MarketProductListing)
@@ -56,19 +66,21 @@ class SearchService:
         listings = result.scalars().all()
 
         # =========================
-        # 3. STORE CACHE
+        # NORMALIZE RESULTS (FIX)
+        # =========================
+        serialized = [self._serialize_listing(l) for l in listings]
+
+        # =========================
+        # CACHE STORE (FIXED)
         # =========================
         cache = SearchResultCache(
             query_hash=query_hash,
             query_text=query,
-            result_json=json.dumps([l.id for l in listings]),
-            total_results=len(listings)
+            result_json=json.dumps(serialized),
+            total_results=len(serialized)
         )
 
         db.add(cache)
         await db.commit()
 
-        return listings
-
-
-search_service = SearchService()
+        return serialized
