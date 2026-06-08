@@ -102,10 +102,16 @@ class AILogger:
         session = AIShoppingSession(
             user_id=user_id,
             conversation_id=conversation_id,
-            selected_listing_id=data.get("listing_id"),
+        selected_listing_id=data.get("listing_id"),
             quantity=data.get("quantity"),
+
+        # ✅ supports both listing +       query state tracking
             status=action,
-            metadata=metadata or {}
+
+            metadata={
+                "query": data.get("query"),
+                **(metadata or {})
+            }
         )
 
         db.add(session)
