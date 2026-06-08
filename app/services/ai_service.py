@@ -24,7 +24,6 @@ class AIService:
         message: str | None = None,
         audio_file=None
     ):
-
         # =====================================================
         # SESSION
         # =====================================================
@@ -66,7 +65,7 @@ class AIService:
         )
 
         # =====================================================
-        # INTENT
+        # INTENT PARSING
         # =====================================================
         ai = llm_service.parse_intent(
             message=message,
@@ -74,18 +73,17 @@ class AIService:
         )
 
         intent = ai.get("intent")
-        query = ai.get("query")
+        query = ai.get("query") or message
         quantity = ai.get("quantity") or 1
         cooperative_id = ai.get("cooperative_id")
         broadcast_message = ai.get("message")
 
         data = {}
         reply = "Processing request..."
-
         recommendations = []
 
         # =====================================================
-        # SEARCH
+        # SEARCH PRODUCTS
         # =====================================================
         if intent == "search_product":
 
@@ -95,7 +93,11 @@ class AIService:
             )
 
             recommendations = listings
-            data = {"results": listings}
+
+            data = {
+                "results": search_service.serialize_results(listings)
+            }
+
             reply = "Products found."
 
         # =====================================================
@@ -148,7 +150,7 @@ class AIService:
             reply = "Added to cart."
 
         # =====================================================
-        # COOPERATIVE ACTIONS
+        # COOPERATIVE STATUS
         # =====================================================
         elif intent == "cooperative_status":
 
@@ -159,6 +161,9 @@ class AIService:
             )
             reply = "Cooperative status retrieved."
 
+        # =====================================================
+        # COOPERATIVE REMINDER
+        # =====================================================
         elif intent == "cooperative_reminder":
 
             data = await cooperative_ai_service.send_reminder(
@@ -168,6 +173,9 @@ class AIService:
             )
             reply = "Reminder sent."
 
+        # =====================================================
+        # COOPERATIVE MESSAGE
+        # =====================================================
         elif intent == "cooperative_message":
 
             data = await cooperative_message_service.broadcast(
@@ -179,20 +187,23 @@ class AIService:
             reply = "Message sent to cooperative."
 
         # =====================================================
-        # DEFAULT
+        # DEFAULT RESPONSE
         # =====================================================
         else:
             data = {}
             reply = "I can help you shop, search, or manage cooperatives."
 
         # =====================================================
-        # LOG RECOMMENDATIONS
+        # LOG AI RECOMMENDATIONS (LEARNING LAYER)
         # =====================================================
         for rank, listing in enumerate(recommendations[:5], start=1):
+
+            listing_id = getattr(listing, "listing_id", None) or getattr(listing, "id", None)
+
             db.add(
                 AIProductRecommendation(
                     conversation_id=conversation_id,
-                    listing_id=getattr(listing, "listing_id", getattr(listing, "id", None)),
+                    listing_id=listing_id,
                     confidence_score=ai.get("confidence", 0.8),
                     rank_position=rank,
                     reasoning=ai.get("reasoning"),
@@ -223,7 +234,7 @@ class AIService:
         await db.commit()
 
         # =====================================================
-        # FINAL RESPONSE (STANDARDIZED)
+        # FINAL RESPONSE
         # =====================================================
         return {
             "reply": reply,
