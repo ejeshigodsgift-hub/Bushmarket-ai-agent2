@@ -1,4 +1,3 @@
-from datetime import datetime
 from uuid import uuid4
 
 from app.services.llm_service import llm_service
@@ -13,18 +12,11 @@ from app.services.cooperative_ai_service import cooperative_ai_service
 from app.services.cooperative_message_service import cooperative_message_service
 
 from app.db.models.ai_product_recommendation import AIProductRecommendation
-
-# =====================================================
-# 🧠 VOICE INTEGRATION (NEW LAYER)
-# =====================================================
-from app.services.stt_service import stt_service  # Speech-to-text service
+from app.services.stt_service import stt_service
 
 
 class AIService:
 
-    # =====================================================
-    # MAIN ENTRY (NOW SUPPORTS TEXT OR AUDIO)
-    # =====================================================
     async def process_message(
         self,
         db,
@@ -34,7 +26,7 @@ class AIService:
     ):
 
         # =====================================================
-        # 0. SESSION CONTEXT
+        # SESSION
         # =====================================================
         session_id = str(uuid4())
 
@@ -45,31 +37,27 @@ class AIService:
         conversation_id = conversation.id
 
         # =====================================================
-        # 🧠 VOICE INGESTION LAYER (NEW)
+        # VOICE INPUT
         # =====================================================
-        if audio_file is not None:
+        if audio_file:
             message = await stt_service.transcribe(audio_file)
 
-        # fallback safety
         if not message:
-            raise ValueError("No input provided (text or audio required)")
+            raise ValueError("No input provided")
 
         # =====================================================
-        # 1. LOG USER MESSAGE (UNIFIED PIPELINE)
+        # LOG USER MESSAGE
         # =====================================================
         await ai_logger.log_message(
             db=db,
             conversation_id=conversation_id,
             role="user",
             content=message,
-            metadata={
-                "session_id": session_id,
-                "source": "voice" if audio_file else "chat"
-            }
+            metadata={"session_id": session_id}
         )
 
         # =====================================================
-        # 2. MEMORY CONTEXT (RAG)
+        # MEMORY
         # =====================================================
         memory_context = await ai_memory_service.get_relevant_memory(
             db=db,
@@ -78,7 +66,7 @@ class AIService:
         )
 
         # =====================================================
-        # 3. INTENT PARSING
+        # INTENT
         # =====================================================
         ai = llm_service.parse_intent(
             message=message,
@@ -91,11 +79,13 @@ class AIService:
         cooperative_id = ai.get("cooperative_id")
         broadcast_message = ai.get("message")
 
-        response_payload = None
+        data = {}
+        reply = "Processing request..."
+
         recommendations = []
 
         # =====================================================
-        # SEARCH PRODUCT
+        # SEARCH
         # =====================================================
         if intent == "search_product":
 
@@ -105,11 +95,8 @@ class AIService:
             )
 
             recommendations = listings
-
-            response_payload = {
-                "reply": "Products found.",
-                "results": listings
-            }
+            data = {"results": listings}
+            reply = "Products found."
 
         # =====================================================
         # PRICE CHECK
@@ -122,13 +109,11 @@ class AIService:
             )
 
             if not listings:
-                response_payload = {
-                    "reply": "No product found."
-                }
+                reply = "No product found."
+                data = {}
 
             else:
                 listing = listings[0]
-
                 recommendations = [listing]
 
                 breakdown = pricing_service.calculate_price(
@@ -136,13 +121,11 @@ class AIService:
                     quantity=quantity
                 )
 
-                response_payload = {
-                    "reply": "Price breakdown generated.",
-                    "pricing": pricing_service.build_ai_response(breakdown)
-                }
+                data = pricing_service.build_ai_response(breakdown)
+                reply = "Price breakdown ready."
 
         # =====================================================
-        # ADD TO CART (FEEDBACK LOOP)
+        # ADD TO CART
         # =====================================================
         elif intent == "add_to_cart":
 
@@ -161,53 +144,55 @@ class AIService:
                 session_id=session_id
             )
 
-            response_payload = result
+            data = result
+            reply = "Added to cart."
 
         # =====================================================
         # COOPERATIVE ACTIONS
         # =====================================================
         elif intent == "cooperative_status":
 
-            response_payload = await cooperative_ai_service.get_status(
+            data = await cooperative_ai_service.get_status(
                 db=db,
                 user_id=user_id,
                 cooperative_id=cooperative_id
             )
+            reply = "Cooperative status retrieved."
 
         elif intent == "cooperative_reminder":
 
-            response_payload = await cooperative_ai_service.send_reminder(
+            data = await cooperative_ai_service.send_reminder(
                 db=db,
                 user_id=user_id,
                 cooperative_id=cooperative_id
             )
+            reply = "Reminder sent."
 
         elif intent == "cooperative_message":
 
-            response_payload = await cooperative_message_service.broadcast(
+            data = await cooperative_message_service.broadcast(
                 db=db,
                 sender_id=user_id,
                 cooperative_id=cooperative_id,
                 message=broadcast_message
             )
+            reply = "Message sent to cooperative."
 
         # =====================================================
-        # DEFAULT RESPONSE
+        # DEFAULT
         # =====================================================
         else:
-            response_payload = {
-                "reply": "I can help with shopping, cooperatives and products."
-            }
+            data = {}
+            reply = "I can help you shop, search, or manage cooperatives."
 
         # =====================================================
-        # 4. AI PRODUCT RECOMMENDATION LOGGING
+        # LOG RECOMMENDATIONS
         # =====================================================
         for rank, listing in enumerate(recommendations[:5], start=1):
-
             db.add(
                 AIProductRecommendation(
                     conversation_id=conversation_id,
-                    listing_id=getattr(listing, "id", None),
+                    listing_id=getattr(listing, "listing_id", getattr(listing, "id", None)),
                     confidence_score=ai.get("confidence", 0.8),
                     rank_position=rank,
                     reasoning=ai.get("reasoning"),
@@ -219,19 +204,13 @@ class AIService:
             )
 
         # =====================================================
-        # 5. LOG ASSISTANT MESSAGE
+        # LOG ASSISTANT MESSAGE
         # =====================================================
-        assistant_text = (
-            response_payload.get("reply")
-            if isinstance(response_payload, dict)
-            else str(response_payload)
-        )
-
         await ai_logger.log_message(
             db=db,
             conversation_id=conversation_id,
             role="assistant",
-            content=assistant_text,
+            content=reply,
             metadata={
                 "session_id": session_id,
                 "intent": intent
@@ -239,14 +218,19 @@ class AIService:
         )
 
         # =====================================================
-        # 6. COMMIT ALL
+        # COMMIT
         # =====================================================
         await db.commit()
 
         # =====================================================
-        # 7. RETURN RESPONSE
+        # FINAL RESPONSE (STANDARDIZED)
         # =====================================================
-        return response_payload
+        return {
+            "reply": reply,
+            "data": data,
+            "intent": intent,
+            "session_id": session_id
+        }
 
 
 ai_service = AIService()
