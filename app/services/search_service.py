@@ -29,7 +29,8 @@ class SearchService:
     # =========================
     # SERIALIZER
     # =========================
-    def serialize_results(self, listings):
+    def to_api_response(self, listings):
+
         return [
             {
                 "listing_id": listing.id,
