@@ -14,7 +14,6 @@ from app.db.models.market_product_listing import MarketProductListing
 from app.db.models.product import Product
 from app.db.models.search_query import SearchQuery
 from app.db.models.search_result_cache import SearchResultCache
-
 from app.db.models.market_location import MarketLocation
 
 
@@ -36,7 +35,7 @@ class SearchService:
         return [
             {
                 "listing_id": listing.id,
-                "product_name":  listing.product.name,
+                "product_name": listing.product.name,
                 "image_url": listing.product.image_url,
                 "unit_price": float(listing.unit_price),
                 "market": {
@@ -56,6 +55,8 @@ class SearchService:
         db: AsyncSession,
         query: str,
         user_id: str | None = None,
+        user_lat: float | None = None,
+        user_lng: float | None = None,
         limit: int = 20
     ):
         normalized_query = query.lower().strip()
@@ -65,29 +66,38 @@ class SearchService:
         # DATABASE SEARCH
         # =====================================================
         stmt = (
-        select(MarketProductListing)
-        .options(
-        selectinload(MarketProductListing.product),
-        selectinload(MarketProductListing.market),
-        selectinload(MarketProductListing.inventory),
-    )
-        .join(Product)
-        .join(MarketLocation)  # ✅ REQUIRED for market_name filter
-        .where(
-            or_(
-                Product.name.ilike(f"%.   {normalized_query}%"),
-            Product.description.ilike(f"%{normalized_query}%"),
-            MarketProductListing.title.ilike(f"%{normalized_query}%"),
-            MarketLocation.market_name.ilike(f"%{normalized_query}%")  # NEW
-            ),
-        MarketProductListing.is_active.is_(True),
-            MarketProductListing.status == "active"
+            select(MarketProductListing)
+            .options(
+                selectinload(MarketProductListing.product),
+                selectinload(MarketProductListing.market),
+                selectinload(MarketProductListing.inventory),
+            )
+            .join(Product)
+            .join(MarketLocation)
+            .where(
+                or_(
+                    Product.name.ilike(f"%{normalized_query}%"),
+                    Product.description.ilike(f"%{normalized_query}%"),
+                    MarketProductListing.title.ilike(f"%{normalized_query}%"),
+                    MarketLocation.market_name.ilike(f"%{normalized_query}%")
+                ),
+                MarketProductListing.is_active.is_(True),
+                MarketProductListing.status == "active"
+            )
+            .limit(limit)
         )
-        .limit(limit)
-    )
 
-    result = await db.execute(stmt)
-    listings =         result.scalars().unique().all()
+        # =========================
+        # NEAREST MARKET SUPPORT
+        # =========================
+        if user_lat is not None and user_lng is not None:
+            stmt = stmt.order_by(
+                MarketLocation.latitude - user_lat,
+                MarketLocation.longitude - user_lng
+            )
+
+        result = await db.execute(stmt)
+        listings = result.scalars().unique().all()
 
         # =====================================================
         # SEARCH ANALYTICS
@@ -106,7 +116,7 @@ class SearchService:
         # =====================================================
         # CACHE SERIALIZED VERSION
         # =====================================================
-        serialized = self.serialize_results(listings)
+        serialized = self.to_api_response(listings)
 
         cache_stmt = (
             select(SearchResultCache)
@@ -119,10 +129,7 @@ class SearchService:
         if existing_cache:
             existing_cache.result_json = json.dumps(serialized)
             existing_cache.total_results = len(serialized)
-            existing_cache.expires_at = (
-                datetime.now(timezone.utc)
-                + timedelta(minutes=10)
-            )
+            existing_cache.expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
         else:
             db.add(
                 SearchResultCache(
@@ -130,10 +137,7 @@ class SearchService:
                     query_text=query,
                     result_json=json.dumps(serialized),
                     total_results=len(serialized),
-                    expires_at=(
-                        datetime.now(timezone.utc)
-                        + timedelta(minutes=10)
-                    )
+                    expires_at=datetime.now(timezone.utc) + timedelta(minutes=10)
                 )
             )
 
