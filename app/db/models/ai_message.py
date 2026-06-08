@@ -36,7 +36,8 @@ class AIMessage(Base):
 
     content: Mapped[str] = mapped_column(Text)
 
-    metadata: Mapped[dict | None] = mapped_column(
+    # ✅ FIXED FIELD NAME
+    message_metadata: Mapped[dict | None] = mapped_column(
         JSON,
         nullable=True
     )
