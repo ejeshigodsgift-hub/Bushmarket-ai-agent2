@@ -141,6 +141,7 @@ class AIService:
             await ai_logger.log_behavior_signal(
                 db=db,
                 user_id=user_id,
+                    conversation_id=conversation_id,
                 event="add_to_cart",
                 listing_id=query,
                 session_id=session_id
