@@ -2,14 +2,25 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+
 from app.services.search_service import search_service
-from app.schemas.search_schema import SearchRequest, SearchResponse
 
-router = APIRouter(prefix="/search", tags=["Search"])
+from app.schemas.search_schema import (
+    SearchRequest,
+    SearchResponse
+)
+
+router = APIRouter(
+    prefix="/search",
+    tags=["Search"]
+)
 
 
-@router.post("/")
-async def search(
+@router.post(
+    "/",
+    response_model=SearchResponse
+)
+async def search_products(
     payload: SearchRequest,
     db: AsyncSession = Depends(get_db)
 ):
@@ -17,6 +28,7 @@ async def search(
     listings = await search_service.search_products(
         db=db,
         query=payload.query,
+        user_id=payload.user_id,
         limit=payload.limit
     )
 
@@ -25,13 +37,14 @@ async def search(
         "total_results": len(listings),
         "results": [
             {
-                "listing_id": l.id,
-                "product_name": l.product.name,
-                "image_url": l.product.image_url,
-                "unit_price": float(l.unit_price),
-                "market_name": l.market.market_name,
-                "availability": l.available_stock
+                "listing_id": listing.id,
+                "product_name": listing.product.name,
+                "image_url": listing.product.image_url,
+                "unit_price": float(listing.unit_price),
+                "market_name": listing.market.market_name,
+                "available_stock": listing.available_stock,
+                "status": listing.status
             }
-            for l in listings
+            for listing in listings
         ]
     }
