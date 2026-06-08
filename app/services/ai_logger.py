@@ -11,7 +11,7 @@ from app.db.models.ai_shopping_session import AIShoppingSession
 class AILogger:
 
     # =====================================================
-    # CONVERSATION (UNCHANGED CORE)
+    # CONVERSATION
     # =====================================================
     async def get_or_create_conversation(self, db, user_id: str):
 
@@ -35,7 +35,7 @@ class AILogger:
         return conversation
 
     # =====================================================
-    # 🔥 UNIFIED MESSAGE LOGGER (FIXED CORE GAP)
+    # UNIFIED MESSAGE LOGGER (UPDATED FIELD)
     # =====================================================
     async def log_message(
         self,
@@ -45,27 +45,21 @@ class AILogger:
         content: str,
         metadata: dict | None = None
     ):
-        """
-        Unified logger for:
-        - user messages
-        - assistant messages
-        - system messages (optional)
-        """
 
         msg = AIMessage(
             conversation_id=conversation_id,
             role=role,
             content=content,
-            metadata=metadata or {},
+            message_metadata=metadata or {},   # ✅ UPDATED HERE
             created_at=datetime.utcnow()
         )
 
         db.add(msg)
-
         return msg
 
     # =====================================================
-    # BACKWARD COMPATIBILITY (OPTIONAL HELPERS)
+    # BACKWARD COMPATIBILITY HELPERS
+    # (NO LOGIC CHANGE, ONLY FIELD NAME)
     # =====================================================
     async def log_user_message(self, db, user_id: str, message: str, metadata: dict | None = None):
 
@@ -92,7 +86,7 @@ class AILogger:
         )
 
     # =====================================================
-    # 🔥 SYSTEM / SHOPPING ACTIONS (ENHANCED)
+    # SYSTEM / SHOPPING ACTIONS (UNCHANGED)
     # =====================================================
     async def log_system_action(
         self,
@@ -114,11 +108,10 @@ class AILogger:
         )
 
         db.add(session)
-
         return session
 
     # =====================================================
-    # 🔥 BEHAVIOR SIGNALS (CRITICAL AI LEARNING FIX)
+    # BEHAVIOR SIGNALS (UNCHANGED)
     # =====================================================
     async def log_behavior_signal(
         self,
@@ -129,13 +122,6 @@ class AILogger:
         session_id: str | None = None,
         metadata: dict | None = None
     ):
-        """
-        Tracks AI learning signals:
-        - click
-        - view
-        - add_to_cart
-        - purchase
-        """
 
         session = AIShoppingSession(
             user_id=user_id,
@@ -150,7 +136,6 @@ class AILogger:
         )
 
         db.add(session)
-
         return session
 
 
