@@ -1,23 +1,59 @@
 import uuid
-from sqlalchemy import String, DateTime, Text, func, ForeignKey
+from datetime import datetime
+
+from sqlalchemy import String, DateTime, Text, func, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.db.base import Base
 
 
 class AIMessage(Base):
     __tablename__ = "ai_messages"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    # =========================
+    # PRIMARY KEY
+    # =========================
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4())
+    )
 
+    # =========================
+    # CONVERSATION LINK
+    # =========================
     conversation_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("ai_conversations.id"),
-        index=True
+        index=True,
+        nullable=False
     )
 
-    role: Mapped[str] = mapped_column(String(20))  # user | assistant
+    # =========================
+    # MESSAGE DATA
+    # =========================
+    role: Mapped[str] = mapped_column(String(20))  # user | assistant | system
+
     content: Mapped[str] = mapped_column(Text)
 
-    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    metadata: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True
+    )
 
-    conversation = relationship("AIConversation", back_populates="messages")
+    # =========================
+    # TIMESTAMP
+    # =========================
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now()
+    )
+
+    # =========================
+    # RELATIONSHIP
+    # =========================
+    conversation = relationship(
+        "AIConversation",
+        back_populates="messages",
+        lazy="selectin"
+    )
