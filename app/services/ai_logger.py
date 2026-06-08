@@ -6,6 +6,7 @@ from sqlalchemy import select
 from app.db.models.ai_conversation import AIConversation
 from app.db.models.ai_message import AIMessage
 from app.db.models.ai_shopping_session import AIShoppingSession
+from datetime import datetime, timezone
 
 
 class AILogger:
@@ -51,7 +52,7 @@ class AILogger:
             role=role,
             content=content,
             message_metadata=metadata or {},   # ✅ UPDATED HERE
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
 
         db.add(msg)
