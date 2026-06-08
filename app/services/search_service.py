@@ -1,3 +1,7 @@
+# =========================================
+# FILE: app/services/search_service.py
+# =========================================
+
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
@@ -23,6 +27,22 @@ class SearchService:
         ).hexdigest()
 
     # =========================
+    # SERIALIZER
+    # =========================
+    def serialize_results(self, listings):
+        return [
+            {
+                "listing_id": listing.id,
+                "product_name": listing.product.name,
+                "image_url": listing.product.image_url,
+                "unit_price": float(listing.unit_price),
+                "market_name": listing.market.market_name,
+                "availability": listing.available_stock
+            }
+            for listing in listings
+        ]
+
+    # =========================
     # CORE SEARCH ENGINE
     # =========================
     async def search_products(
@@ -32,26 +52,11 @@ class SearchService:
         user_id: str | None = None,
         limit: int = 20
     ):
-
         normalized_query = query.lower().strip()
         query_hash = self._make_hash(query)
 
         # =====================================================
-        # 1. CACHE LOOKUP (FAST PATH)
-        # =====================================================
-        cache_stmt = (
-            select(SearchResultCache)
-            .where(SearchResultCache.query_hash == query_hash)
-        )
-
-        cache_result = await db.execute(cache_stmt)
-        cache_row = cache_result.scalar_one_or_none()
-
-        if cache_row:
-            return json.loads(cache_row.result_json)
-
-        # =====================================================
-        # 2. DATABASE SEARCH (SLOW PATH)
+        # DATABASE SEARCH
         # =====================================================
         stmt = (
             select(MarketProductListing)
@@ -74,53 +79,63 @@ class SearchService:
         )
 
         result = await db.execute(stmt)
+
         listings = result.scalars().unique().all()
 
         # =====================================================
-        # 3. LOG SEARCH QUERY (AI + ANALYTICS LAYER)
+        # SEARCH ANALYTICS
         # =====================================================
         if user_id:
-            search_log = SearchQuery(
-                user_id=user_id,
-                query_text=query,
-                normalized_query=normalized_query,
-                total_results=len(listings),
-                search_source="manual"
+            db.add(
+                SearchQuery(
+                    user_id=user_id,
+                    query_text=query,
+                    normalized_query=normalized_query,
+                    total_results=len(listings),
+                    search_source="manual"
+                )
             )
-            db.add(search_log)
 
         # =====================================================
-        # 4. SERIALIZE RESULTS (CACHE FORMAT)
+        # CACHE SERIALIZED VERSION
         # =====================================================
-        serialized = [
-            {
-                "listing_id": l.id,
-                "product_name": l.product.name,
-                "image_url": l.product.image_url,
-                "unit_price": str(l.unit_price),
-                "market_name": l.market.market_name,
-                "availability": l.available_stock
-            }
-            for l in listings
-        ]
+        serialized = self.serialize_results(listings)
 
-        # =====================================================
-        # 5. STORE CACHE (FAST REUSE LAYER)
-        # =====================================================
-        cache_entry = SearchResultCache(
-            query_hash=query_hash,
-            query_text=query,
-            result_json=json.dumps(serialized),
-            total_results=len(serialized),
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10)
+        cache_stmt = (
+            select(SearchResultCache)
+            .where(SearchResultCache.query_hash == query_hash)
         )
 
-        db.add(cache_entry)
+        cache_result = await db.execute(cache_stmt)
+        existing_cache = cache_result.scalar_one_or_none()
 
-        # commit once (optimized)
+        if existing_cache:
+            existing_cache.result_json = json.dumps(serialized)
+            existing_cache.total_results = len(serialized)
+            existing_cache.expires_at = (
+                datetime.now(timezone.utc)
+                + timedelta(minutes=10)
+            )
+        else:
+            db.add(
+                SearchResultCache(
+                    query_hash=query_hash,
+                    query_text=query,
+                    result_json=json.dumps(serialized),
+                    total_results=len(serialized),
+                    expires_at=(
+                        datetime.now(timezone.utc)
+                        + timedelta(minutes=10)
+                    )
+                )
+            )
+
         await db.commit()
 
-        return serialized
+        # =====================================================
+        # RETURN ORM OBJECTS FOR AI + BUSINESS LOGIC
+        # =====================================================
+        return listings
 
 
 search_service = SearchService()
