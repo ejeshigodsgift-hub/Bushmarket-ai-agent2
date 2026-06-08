@@ -36,10 +36,13 @@ class SearchService:
         return [
             {
                 "listing_id": listing.id,
-                "product_name": listing.product.name,
+                "product_name":  listing.product.name,
                 "image_url": listing.product.image_url,
                 "unit_price": float(listing.unit_price),
-                "market_name": listing.market.market_name,
+                "market": {
+                    "id": listing.market.id,
+                    "name": listing.market.market_name
+                },
                 "availability": listing.available_stock
             }
             for listing in listings
