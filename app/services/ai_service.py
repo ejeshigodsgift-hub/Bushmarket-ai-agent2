@@ -12,16 +12,29 @@ from app.services.ai_logger import ai_logger
 from app.services.cooperative_ai_service import cooperative_ai_service
 from app.services.cooperative_message_service import cooperative_message_service
 
-# 🆕 AI learning layer (must exist in DB layer)
 from app.db.models.ai_product_recommendation import AIProductRecommendation
+
+# =====================================================
+# 🧠 VOICE INTEGRATION (NEW LAYER)
+# =====================================================
+from app.services.stt_service import stt_service  # Speech-to-text service
 
 
 class AIService:
 
-    async def process_message(self, db, user_id: str, message: str):
+    # =====================================================
+    # MAIN ENTRY (NOW SUPPORTS TEXT OR AUDIO)
+    # =====================================================
+    async def process_message(
+        self,
+        db,
+        user_id: str,
+        message: str | None = None,
+        audio_file=None
+    ):
 
         # =====================================================
-        # 0. SESSION CONTEXT (FIXED: request-level tracking)
+        # 0. SESSION CONTEXT
         # =====================================================
         session_id = str(uuid4())
 
@@ -30,6 +43,16 @@ class AIService:
             user_id=user_id
         )
         conversation_id = conversation.id
+
+        # =====================================================
+        # 🧠 VOICE INGESTION LAYER (NEW)
+        # =====================================================
+        if audio_file is not None:
+            message = await stt_service.transcribe(audio_file)
+
+        # fallback safety
+        if not message:
+            raise ValueError("No input provided (text or audio required)")
 
         # =====================================================
         # 1. LOG USER MESSAGE (UNIFIED PIPELINE)
@@ -41,7 +64,7 @@ class AIService:
             content=message,
             metadata={
                 "session_id": session_id,
-                "source": "chat"
+                "source": "voice" if audio_file else "chat"
             }
         )
 
@@ -119,7 +142,7 @@ class AIService:
                 }
 
         # =====================================================
-        # ADD TO CART (FEEDBACK LOOP STARTS HERE)
+        # ADD TO CART (FEEDBACK LOOP)
         # =====================================================
         elif intent == "add_to_cart":
 
@@ -130,7 +153,6 @@ class AIService:
                 quantity=quantity
             )
 
-            # 🧠 FEEDBACK SIGNAL (IMPORTANT FOR AI LEARNING)
             await ai_logger.log_behavior_signal(
                 db=db,
                 user_id=user_id,
@@ -178,7 +200,7 @@ class AIService:
             }
 
         # =====================================================
-        # 4. AI PRODUCT RECOMMENDATION LOGGING (LEARNING LAYER FIX)
+        # 4. AI PRODUCT RECOMMENDATION LOGGING
         # =====================================================
         for rank, listing in enumerate(recommendations[:5], start=1):
 
@@ -197,7 +219,7 @@ class AIService:
             )
 
         # =====================================================
-        # 5. LOG ASSISTANT MESSAGE (UNIFIED THREAD FIX)
+        # 5. LOG ASSISTANT MESSAGE
         # =====================================================
         assistant_text = (
             response_payload.get("reply")
@@ -217,7 +239,7 @@ class AIService:
         )
 
         # =====================================================
-        # 6. COMMIT ALL (ATOMIC BEHAVIOR FIX)
+        # 6. COMMIT ALL
         # =====================================================
         await db.commit()
 
