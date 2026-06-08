@@ -15,6 +15,8 @@ from app.db.models.product import Product
 from app.db.models.search_query import SearchQuery
 from app.db.models.search_result_cache import SearchResultCache
 
+from app.db.models.market_location import MarketLocation
+
 
 class SearchService:
 
@@ -60,28 +62,29 @@ class SearchService:
         # DATABASE SEARCH
         # =====================================================
         stmt = (
-            select(MarketProductListing)
-            .options(
-                selectinload(MarketProductListing.product),
-                selectinload(MarketProductListing.market),
-                selectinload(MarketProductListing.inventory),
-            )
-            .join(Product)
-            .where(
-                or_(
-                    Product.name.ilike(f"%{normalized_query}%"),
-                    Product.description.ilike(f"%{normalized_query}%"),
-                    MarketProductListing.title.ilike(f"%{normalized_query}%"),
-                ),
-                MarketProductListing.is_active.is_(True),
-                MarketProductListing.status == "active"
-            )
-            .limit(limit)
+        select(MarketProductListing)
+        .options(
+        selectinload(MarketProductListing.product),
+        selectinload(MarketProductListing.market),
+        selectinload(MarketProductListing.inventory),
+    )
+        .join(Product)
+        .join(MarketLocation)  # ✅ REQUIRED for market_name filter
+        .where(
+            or_(
+                Product.name.ilike(f"%.   {normalized_query}%"),
+            Product.description.ilike(f"%{normalized_query}%"),
+            MarketProductListing.title.ilike(f"%{normalized_query}%"),
+            MarketLocation.market_name.ilike(f"%{normalized_query}%")  # NEW
+            ),
+        MarketProductListing.is_active.is_(True),
+            MarketProductListing.status == "active"
         )
+        .limit(limit)
+    )
 
-        result = await db.execute(stmt)
-
-        listings = result.scalars().unique().all()
+    result = await db.execute(stmt)
+    listings =         result.scalars().unique().all()
 
         # =====================================================
         # SEARCH ANALYTICS
