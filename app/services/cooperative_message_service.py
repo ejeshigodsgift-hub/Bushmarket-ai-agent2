@@ -1,15 +1,19 @@
 class CooperativeMessageService:
 
+    def __init__(self, cooperative_service):
+        self.cooperative_service = cooperative_service
+
     async def send_to_members(
         self,
         db,
         cooperative_id: str,
         sender_user_id: str,
         title: str,
-        message: str
+        message: str,
+        inbox_model,
+        notification_model
     ):
-
-        cooperative = await cooperative_service.get_by_id(
+        cooperative = await self.cooperative_service.get_by_id(
             db,
             cooperative_id
         )
@@ -20,33 +24,27 @@ class CooperativeMessageService:
                 detail="Cooperative not found"
             )
 
-        members = cooperative.members
-
         sent_count = 0
 
-        for member in members:
+        for member in cooperative.members:
 
             if member.user_id == sender_user_id:
                 continue
 
-            inbox = CooperativeInboxMessage(
+            db.add(inbox_model(
                 cooperative_id=cooperative_id,
                 sender_user_id=sender_user_id,
                 recipient_user_id=member.user_id,
                 title=title,
                 message=message
-            )
+            ))
 
-            db.add(inbox)
-
-            notification = Notification(
+            db.add(notification_model(
                 user_id=member.user_id,
                 title=title,
                 message=message,
                 notification_type="cooperative_message"
-            )
-
-            db.add(notification)
+            ))
 
             sent_count += 1
 
