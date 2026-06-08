@@ -94,11 +94,14 @@ class AIService:
 
             recommendations = listings
 
+            
+
             data = {
-    "results": search_service.to_api_response(listings)
+                "products": search_service.to_api_response(listings),
+                "next_step": "select_market"
             }
 
-            reply = "Products found."
+reply = "Select a market to continue."
 
         # =====================================================
         # PRICE CHECK
