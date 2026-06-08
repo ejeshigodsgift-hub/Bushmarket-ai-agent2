@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime
-from decimal import Decimal
 
 from sqlalchemy import (
     String,
@@ -10,7 +9,8 @@ from sqlalchemy import (
     func,
     Index,
     CheckConstraint,
-    Text
+    Text,
+    Boolean
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -30,7 +30,7 @@ class AIProductRecommendation(Base):
     )
 
     # =========================
-    # AI CONTEXT
+    # CONTEXT
     # =========================
     conversation_id: Mapped[str] = mapped_column(
         String(36),
@@ -47,10 +47,10 @@ class AIProductRecommendation(Base):
     )
 
     # =========================
-    # AI DECISION METRICS
+    # AI SCORES
     # =========================
-    confidence_score: Mapped[Decimal] = mapped_column(
-        Numeric(5, 4),  # e.g. 0.0000 - 1.0000
+    confidence_score: Mapped[float] = mapped_column(
+        Numeric(5, 4),  # 0.0000 - 1.0000
         nullable=False
     )
 
@@ -70,19 +70,22 @@ class AIProductRecommendation(Base):
     )
 
     # =========================
-    # USER INTERACTION SIGNALS (AI LEARNING CORE)
+    # USER FEEDBACK LOOP
     # =========================
     clicked: Mapped[bool] = mapped_column(
+        Boolean,
         default=False,
         nullable=False
     )
 
     added_to_cart: Mapped[bool] = mapped_column(
+        Boolean,
         default=False,
         nullable=False
     )
 
     purchased: Mapped[bool] = mapped_column(
+        Boolean,
         default=False,
         nullable=False
     )
@@ -109,7 +112,7 @@ class AIProductRecommendation(Base):
     )
 
     # =========================
-    # PERFORMANCE INDEXES
+    # INDEXES + CONSTRAINTS
     # =========================
     __table_args__ = (
         Index("idx_ai_rec_conversation", "conversation_id"),
