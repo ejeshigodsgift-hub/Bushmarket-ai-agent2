@@ -95,7 +95,7 @@ class AIService:
             recommendations = listings
 
             data = {
-                "results": search_service.serialize_results(listings)
+    "results": search_service.to_api_response(listings)
             }
 
             reply = "Products found."
