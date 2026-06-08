@@ -118,6 +118,7 @@ class AILogger:
         self,
         db,
         user_id: str,
+        conversation_id: str,
         event: str,
         listing_id: str | None = None,
         session_id: str | None = None,
@@ -126,7 +127,7 @@ class AILogger:
 
         session = AIShoppingSession(
             user_id=user_id,
-            conversation_id=None,
+            conversation_id=conversation_id,,
             selected_listing_id=listing_id,
             quantity=1,
             status=event,
