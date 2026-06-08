@@ -1,13 +1,18 @@
 import uuid
-from sqlalchemy import String, DateTime, func, ForeignKey
+from sqlalchemy import String, DateTime, func, JSON
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.db.base import Base
 
 
 class AIShoppingSession(Base):
     __tablename__ = "ai_shopping_sessions"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4())
+    )
 
     user_id: Mapped[str] = mapped_column(String(36), index=True)
     conversation_id: Mapped[str] = mapped_column(String(36), index=True)
@@ -17,4 +22,10 @@ class AIShoppingSession(Base):
 
     status: Mapped[str] = mapped_column(String(30), default="active")
 
-    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # ✅ FIX: missing AI tracking field
+    metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now()
+    )
