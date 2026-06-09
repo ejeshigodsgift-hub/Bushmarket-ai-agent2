@@ -35,6 +35,14 @@ class AIService:
         )
         conversation_id = conversation.id
 
+        session = await    ai_logger.get_latest_shopping_session(
+            db=db,
+            user_id=user_id,
+            conversation_id=conversation_id
+        )
+
+        state = session.status if session else None
+
         # =====================================================
         # VOICE INPUT
         # =====================================================
@@ -75,6 +83,14 @@ class AIService:
         intent = ai.get("intent")
         query = ai.get("query") or message
         quantity = ai.get("quantity") or 1
+        # STATE MACHINE OVERRIDE (IMPORTANT)
+        if session:
+            if session.status ==  "awaiting_quantity":
+               intent = "select_quantity"
+
+            elif session.status ==  "awaiting_checkout_confirmation":
+                intent = "confirm_checkout"
+
         cooperative_id = ai.get("cooperative_id")
         broadcast_message = ai.get("message")
 
@@ -87,42 +103,63 @@ class AIService:
         # =====================================================
         if intent == "search_product":
 
-            listings = await    search_service.search_products(
+            listings = await   search_service.search_products(
                 db=db,
                 query=query
             )
 
             recommendations = listings
 
-            await ai_logger.log_system_action(
+    # CREATE SESSION IF NOT EXISTS
+            if not session:
+                session =   ai_logger.AIShoppingSession(
+                    user_id=user_id,
+             conversation_id=conversation_id,
+             status="awaiting_market_selection"
+                )
+
+            session.status =   "awaiting_market_selection"
+            db.add(session)
+
+            await  ai_logger.log_system_action(
                 db=db,
                 user_id=user_id,
-            conversation_id=conversation_id,
-        action="awaiting_market_selection",
+           conversation_id=conversation_id,
+          action="awaiting_market_selection",
                 data={"query": query}
             )
 
             data = {
-                "products": search_service.to_api_response(listings),
+                "products":  search_service.to_api_response(listings),
                 "next_step": "select_market"
             }
 
-            reply = "Select a market to     continue."
+            reply = "Select a market to continue."
 
         elif intent == "select_market":
+
+            listing = await   search_service.get_by_id(query)
+
+            if not listing:
+                return {"error": "Invalid  product"}
+
+            if not session:
+                return {"error": "Session expired"}
+
+            session.selected_listing_id =  listing.id
+            session.status = "awaiting_quantity"
+            db.add(session)
 
             await ai_logger.log_system_action(
                 db=db,
                 user_id=user_id,
-             conversation_id=conversation_id,
-                action="awaiting_quantity",
-                data={
-                    "listing_id": query
-                }
+           conversation_id=conversation_id,
+               action="awaiting_quantity",
+                data={"listing_id": listing.id}
             )
 
             data = {
-                "listing_id": query,
+                "listing_id": listing.id,
                 "next_step": "select_quantity"
             }
 
@@ -131,47 +168,65 @@ class AIService:
 
         elif intent == "select_quantity":
 
+            listing = await   search_service.get_by_id(session.selected  _listing_id)
+
+            if not listing:
+                return {"error": "Invalid session state"}
+
+            if quantity >  listing.available_stock:
+                return {"error": "Insufficient stock"}
+
+            session.quantity = quantity
+            session.status = "awaiting_checkout_confirmation"
+            db.add(session)
+
             await ai_logger.log_system_action(
                 db=db,
                 user_id=user_id,
-                conversation_id=conversation_id,
-        action="awaiting_checkout_confirmation",
+            conversation_id=conversation_id,
+          action="awaiting_checkout_confirmation",
                 data={
-                    "listing_id": query,
+                    "listing_id": listing.id,
                     "quantity": quantity
                 }
             )
 
             data = {
-                "listing_id": query,
+                "listing_id": listing.id,
                 "quantity": quantity,
                 "next_step": "confirm_checkout"
             }
 
             reply = "Confirm checkout?"
 
-        elif intent == "confirm_checkout":
+        elif intent ==   "confirm_checkout":
+
+            if not session:
+                return {"error": "Session   expired"}
 
             result = await cart_service.add_item(
                 db=db,
                 user_id=user_id,
-                listing_id=query,
-                quantity=quantity
+          listing_id=session.selected_listing_id,
+                quantity=session.quantity
             )
+
+            session.status = "completed"
+            db.add(session)
 
             await ai_logger.log_system_action(
                 db=db,
                 user_id=user_id,
-            conversation_id=conversation_id,
+             conversation_id=conversation_id,
                 action="completed",
                 data={
-                    "listing_id": query,
-                    "quantity": quantity
+                    "listing_id":  session.selected_listing_id,
+                    "quantity": session.quantity
                 }
             )
 
             data = result
-            reply = "Product added to cart."              
+            reply = "Product added to   cart."           
 
 
         # =====================================================
