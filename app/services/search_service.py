@@ -5,8 +5,7 @@
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
-
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func, cast, Float
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -31,7 +30,6 @@ class SearchService:
     # SERIALIZER
     # =========================
     def to_api_response(self, listings):
-
         return [
             {
                 "listing_id": listing.id,
@@ -63,7 +61,7 @@ class SearchService:
         query_hash = self._make_hash(query)
 
         # =====================================================
-        # DATABASE SEARCH
+        # BASE QUERY
         # =====================================================
         stmt = (
             select(MarketProductListing)
@@ -84,18 +82,42 @@ class SearchService:
                 MarketProductListing.is_active.is_(True),
                 MarketProductListing.status == "active"
             )
-            .limit(limit)
         )
 
-        # =========================
-        # NEAREST MARKET SUPPORT
-        # =========================
+        # =====================================================
+        # NEAREST MARKET (HAVERSINE FORMULA)
+        # =====================================================
         if user_lat is not None and user_lng is not None:
-            stmt = stmt.order_by(
-                MarketLocation.latitude - user_lat,
-                MarketLocation.longitude - user_lng
+
+            lat = func.radians(MarketLocation.latitude)
+            lng = func.radians(MarketLocation.longitude)
+            user_lat_rad = func.radians(user_lat)
+            user_lng_rad = func.radians(user_lng)
+
+            dlat = lat - user_lat_rad
+            dlng = lng - user_lng_rad
+
+            a = (
+                func.pow(func.sin(dlat / 2), 2)
+                + func.cos(user_lat_rad)
+                * func.cos(lat)
+                * func.pow(func.sin(dlng / 2), 2)
             )
 
+            c = 2 * func.atan2(func.sqrt(a), func.sqrt(1 - a))
+
+            earth_radius_km = 6371
+
+            distance_expr = earth_radius_km * c
+
+            stmt = stmt.order_by(distance_expr)
+
+        # apply limit AFTER ordering
+        stmt = stmt.limit(limit)
+
+        # =====================================================
+        # EXECUTE QUERY
+        # =====================================================
         result = await db.execute(stmt)
         listings = result.scalars().unique().all()
 
@@ -143,9 +165,6 @@ class SearchService:
 
         await db.commit()
 
-        # =====================================================
-        # RETURN ORM OBJECTS FOR AI + BUSINESS LOGIC
-        # =====================================================
         return listings
 
 
