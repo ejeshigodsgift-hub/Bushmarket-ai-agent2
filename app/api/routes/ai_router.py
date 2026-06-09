@@ -3,9 +3,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.services.ai_service import ai_service
-from app.schemas.ai_schema import AIChatRequest
+from app.db.models.ai_message import AIMessage
+from app.db.models.ai_conversation import AIConversation
+from app.db.models.ai_product_recommendation import AIProductRecommendation
+
+from sqlalchemy import select
 
 router = APIRouter(prefix="/ai", tags=["AI"])
+
 
 
 @router.post("/chat")
@@ -18,3 +23,86 @@ async def chat(
         user_id=payload.user_id,
         message=payload.message
     )
+
+
+# =========================
+# GET CONVERSATION
+# =========================
+@router.get("/conversation/{user_id}")
+async def get_conversation(user_id: str, db: AsyncSession = Depends(get_db)):
+
+    stmt = select(AIConversation).where(
+        AIConversation.user_id == user_id
+    ).order_by(AIConversation.created_at.desc())
+
+    result = await db.execute(stmt)
+
+    return result.scalars().all()
+
+
+# =========================
+# GET MESSAGES
+# =========================
+@router.get("/messages/{conversation_id}")
+async def get_messages(conversation_id: str, db: AsyncSession = Depends(get_db)):
+
+    stmt = select(AIMessage).where(
+        AIMessage.conversation_id == conversation_id
+    ).order_by(AIMessage.created_at.asc())
+
+    result = await db.execute(stmt)
+
+    return result.scalars().all()
+
+# =========================
+# CLICK TRACKING
+# =========================
+@router.post("/recommendations/click")
+async def click_recommendation(payload: dict, db: AsyncSession = Depends(get_db)):
+
+    rec = await db.get(
+        AIProductRecommendation,
+        payload["recommendation_id"]
+    )
+
+    if rec:
+        rec.clicked = True
+
+    await db.commit()
+    return {"status": "ok"}
+
+
+# =========================
+# ADD TO CART TRACKING
+# =========================
+@router.post("/recommendations/cart")
+async def add_to_cart_recommendation(payload: AIChatRequest, db: AsyncSession = Depends(get_db)):
+
+    rec = await db.get(
+        AIProductRecommendation,
+        payload["recommendation_id"]
+    )
+
+    if rec:
+        rec.added_to_cart = True
+
+    await db.commit()
+    return {"status": "ok"}
+
+
+# =========================
+# PURCHASE TRACKING
+# =========================
+@router.post("/recommendations/purchase")
+async def purchase_recommendation(payload: dict, db: AsyncSession = Depends(get_db)):
+
+    rec = await db.get(
+        AIProductRecommendation,
+        payload["recommendation_id"]
+    )
+
+    if rec:
+        rec.purchased = True
+
+    await db.commit()
+    return {"status": "ok"}
