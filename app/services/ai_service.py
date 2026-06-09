@@ -87,21 +87,92 @@ class AIService:
         # =====================================================
         if intent == "search_product":
 
-            listings = await search_service.search_products(
+            listings = await    search_service.search_products(
                 db=db,
                 query=query
             )
 
             recommendations = listings
 
-            
+            await ai_logger.log_system_action(
+                db=db,
+                user_id=user_id,
+            conversation_id=conversation_id,
+        action="awaiting_market_selection",
+                data={"query": query}
+            )
 
             data = {
                 "products": search_service.to_api_response(listings),
                 "next_step": "select_market"
             }
 
-reply = "Select a market to continue."
+            reply = "Select a market to     continue."
+
+        elif intent == "select_market":
+
+            await ai_logger.log_system_action(
+                db=db,
+                user_id=user_id,
+             conversation_id=conversation_id,
+                action="awaiting_quantity",
+                data={
+                    "listing_id": query
+                }
+            )
+
+            data = {
+                "listing_id": query,
+                "next_step": "select_quantity"
+            }
+
+            reply = "Enter quantity."
+
+
+        elif intent == "select_quantity":
+
+            await ai_logger.log_system_action(
+                db=db,
+                user_id=user_id,
+                conversation_id=conversation_id,
+        action="awaiting_checkout_confirmation",
+                data={
+                    "listing_id": query,
+                    "quantity": quantity
+                }
+            )
+
+            data = {
+                "listing_id": query,
+                "quantity": quantity,
+                "next_step": "confirm_checkout"
+            }
+
+            reply = "Confirm checkout?"
+
+        elif intent == "confirm_checkout":
+
+            result = await cart_service.add_item(
+                db=db,
+                user_id=user_id,
+                listing_id=query,
+                quantity=quantity
+            )
+
+            await ai_logger.log_system_action(
+                db=db,
+                user_id=user_id,
+            conversation_id=conversation_id,
+                action="completed",
+                data={
+                    "listing_id": query,
+                    "quantity": quantity
+                }
+            )
+
+            data = result
+            reply = "Product added to cart."              
+
 
         # =====================================================
         # PRICE CHECK
