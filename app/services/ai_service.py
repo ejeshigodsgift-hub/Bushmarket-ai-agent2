@@ -99,8 +99,8 @@ class AIService:
         recommendations = []
 
         # =====================================================
-        # SEARCH PRODUCTS
-        # =====================================================
+# SEARCH PRODUCTS
+# =====================================================
         if intent == "search_product":
 
             listings = await   search_service.search_products(
@@ -110,22 +110,23 @@ class AIService:
 
             recommendations = listings
 
-    # CREATE SESSION IF NOT EXISTS
+    # CREATE SESSION IF NOT EXISTS (FIXED IMPORT USAGE)
             if not session:
-                session =   ai_logger.AIShoppingSession(
+                session = AIShoppingSession(
                     user_id=user_id,
-             conversation_id=conversation_id,
-             status="awaiting_market_selection"
+               conversation_id=conversation_id,
+               status="awaiting_market_selection"
                 )
+                db.add(session)
 
-            session.status =   "awaiting_market_selection"
+            session.status =    "awaiting_market_selection"
             db.add(session)
 
-            await  ai_logger.log_system_action(
+            await ai_logger.log_system_action(
                 db=db,
                 user_id=user_id,
-           conversation_id=conversation_id,
-          action="awaiting_market_selection",
+            conversation_id=conversation_id,
+           action="awaiting_market_selection",
                 data={"query": query}
             )
 
@@ -134,8 +135,12 @@ class AIService:
                 "next_step": "select_market"
             }
 
-            reply = "Select a market to continue."
+            reply = "Select a market to   continue."
 
+
+# =====================================================
+# SELECT MARKET
+# =====================================================
         elif intent == "select_market":
 
             listing = await   search_service.get_by_id(query)
@@ -144,17 +149,17 @@ class AIService:
                 return {"error": "Invalid  product"}
 
             if not session:
-                return {"error": "Session expired"}
+                return {"error": "Session  expired"}
 
-            session.selected_listing_id =  listing.id
+            session.selected_listing_id =   listing.id
             session.status = "awaiting_quantity"
             db.add(session)
 
             await ai_logger.log_system_action(
                 db=db,
                 user_id=user_id,
-           conversation_id=conversation_id,
-               action="awaiting_quantity",
+              conversation_id=conversation_id,
+                action="awaiting_quantity",
                 data={"listing_id": listing.id}
             )
 
@@ -166,9 +171,17 @@ class AIService:
             reply = "Enter quantity."
 
 
+# =====================================================
+# SELECT QUANTITY (FULL FIXED)
+# =====================================================
         elif intent == "select_quantity":
 
-            listing = await   search_service.get_by_id(session.selected  _listing_id)
+    # SAFETY CHECK (FIXED)
+            if not session or not    session.selected_listing_id:
+                return {"error": "Session  expired or invalid state"}
+
+    # FIXED ATTRIBUTE NAME
+            listing = await search_service.get_by_id(session.selected_listing_id)
 
             if not listing:
                 return {"error": "Invalid session state"}
@@ -177,14 +190,14 @@ class AIService:
                 return {"error": "Insufficient stock"}
 
             session.quantity = quantity
-            session.status = "awaiting_checkout_confirmation"
+            session.status =    "awaiting_checkout_confirmation"
             db.add(session)
 
             await ai_logger.log_system_action(
                 db=db,
                 user_id=user_id,
             conversation_id=conversation_id,
-          action="awaiting_checkout_confirmation",
+           action="awaiting_checkout_confirmation",
                 data={
                     "listing_id": listing.id,
                     "quantity": quantity
@@ -199,10 +212,14 @@ class AIService:
 
             reply = "Confirm checkout?"
 
-        elif intent ==   "confirm_checkout":
+
+# =====================================================
+# CONFIRM CHECKOUT
+# =====================================================
+        elif intent == "confirm_checkout":
 
             if not session:
-                return {"error": "Session   expired"}
+                return {"error": "Session expired"}
 
             result = await cart_service.add_item(
                 db=db,
@@ -226,9 +243,7 @@ class AIService:
             )
 
             data = result
-            reply = "Product added to   cart."           
-
-
+            reply = "Product added to cart."
         # =====================================================
         # PRICE CHECK
         # =====================================================
