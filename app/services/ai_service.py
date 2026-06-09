@@ -13,6 +13,7 @@ from app.services.cooperative_message_service import cooperative_message_service
 
 from app.db.models.ai_product_recommendation import AIProductRecommendation
 from app.services.stt_service import stt_service
+from app.db.models.ai_shopping_session import AIShoppingSession
 
 
 class AIService:
