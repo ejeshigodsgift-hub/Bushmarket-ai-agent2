@@ -1,6 +1,7 @@
 from decimal import Decimal
-from datetime import datetime
-from sqlalchemy.orm import Session
+from datetime import datetime, timezone
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.cooperative_procurement import CooperativeProcurement
 from app.db.models.market_product_listing import MarketProductListing
@@ -8,9 +9,9 @@ from app.db.models.market_product_listing import MarketProductListing
 
 class CooperativePartialProcurementService:
 
-    def create_partial_procurement(
+    async def create_partial_procurement(
         self,
-        db: Session,
+        db: AsyncSession,
         cooperative_id: str,
         listing: MarketProductListing,
         requested_quantity: int,
@@ -24,7 +25,6 @@ class CooperativePartialProcurementService:
 
         final_quantity = min(requested_quantity, available_quantity)
 
-        # scaling logic for partial fulfillment
         fulfillment_ratio = Decimal(final_quantity) / Decimal(requested_quantity)
 
         adjusted_cost = total_cost * fulfillment_ratio
@@ -37,12 +37,10 @@ class CooperativePartialProcurementService:
             estimated_retail_value=listing.unit_price * final_quantity,
             cooperative_buying_value=adjusted_cost,
             estimated_savings=(listing.unit_price * final_quantity) - adjusted_cost,
-            savings_percentage=(
-                ((listing.unit_price * final_quantity) - adjusted_cost)
-                / (listing.unit_price * final_quantity)
-            ) * Decimal("100"),
+            savings_percentage=((listing.unit_price * final_quantity) - adjusted_cost)
+            / (listing.unit_price * final_quantity) * Decimal("100"),
             status="approved",
-            approved_at=datetime.utcnow()
+            approved_at=datetime.now(timezone.utc)
         )
 
         db.add(procurement)
@@ -50,13 +48,18 @@ class CooperativePartialProcurementService:
         listing.inventory.available_stock -= final_quantity
         listing.inventory.reserved_stock += final_quantity
 
-        db.commit()
-        db.refresh(procurement)
+        await db.commit()
+        await db.refresh(procurement)
 
         return procurement
 
-    def finalize_partial_procurement(self, db: Session, procurement: CooperativeProcurement):
+    async def finalize_partial_procurement(
+        self,
+        db: AsyncSession,
+        procurement: CooperativeProcurement
+    ):
         procurement.status = "completed"
-        procurement.completed_at = datetime.utcnow()
-        db.commit()
+        procurement.completed_at = datetime.now(timezone.utc)
+
+        await db.commit()
         return procurement
