@@ -238,7 +238,9 @@ async def sync_escrow_balance(
     db: AsyncSession,
     escrow_account_id: str,
     amount: Decimal,
-    reference: str
+    reference: str,
+    user_id: str,
+    cooperative_id: str
 ):
 
     escrow = await db.get(
@@ -252,10 +254,17 @@ async def sync_escrow_balance(
             "Escrow account not found"
         )
 
-    escrow.total_deposited += amount
-    escrow.available_balance += amount
-    escrow.ledger_balance += amount
-    escrow.version += 1
+    #escrow.total_deposited += amount
+    #escrow.available_balance += amount
+    #escrow.ledger_balance += amount
+    #escrow.version += 1
+
+    await financial_core.escrow_deposit(
+        user_id=user_id,
+        cooperative_id=cooperative_id,
+        amount=amount,
+        reference=reference
+    )
 
     return escrow
 
