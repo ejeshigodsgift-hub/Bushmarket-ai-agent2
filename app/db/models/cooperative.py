@@ -78,7 +78,7 @@ class Cooperative(Base):
     # =========================
     target_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    target_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    target_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
     contribution_per_member: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
@@ -94,8 +94,21 @@ class Cooperative(Base):
         default="draft",
         index=True
     )
-    """
-    draft → active → funded → purchasing → delivered → closed → expired
+    """ 
+    draft
+    active
+    extension_vote
+    partial_vote
+    merge_vote
+    funded
+    procurement_pending
+    purchasing
+    delivered
+    closed
+    expired
+    cancelled
+    refunded
+
     """
 
     # =========================
@@ -121,9 +134,9 @@ class Cooperative(Base):
     # =========================
     pooled_wallet_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    escrow_balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    escrow_balance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
 
-    total_contributed: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    total_contributed: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
 
     # =========================
     # FAILURE HANDLING
