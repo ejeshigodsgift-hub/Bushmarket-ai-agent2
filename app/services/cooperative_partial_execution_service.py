@@ -1,10 +1,10 @@
-from sqlalchemy.orm import Session
+from datetime import datetime, timezone
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.cooperative_partial_procurement_proposal import (
     CooperativePartialProcurementProposal
 )
 from app.db.models.market_product_listing import MarketProductListing
-
 from app.services.cooperative_partial_procurement_service import (
     CooperativePartialProcurementService
 )
@@ -12,9 +12,9 @@ from app.services.cooperative_partial_procurement_service import (
 
 class CooperativePartialExecutionService:
 
-    def execute_from_proposal(
+    async def execute_from_proposal(
         self,
-        db: Session,
+        db: AsyncSession,
         proposal_id: str,
         listing: MarketProductListing
     ):
@@ -22,7 +22,7 @@ class CooperativePartialExecutionService:
         Executes partial procurement ONLY after full approval.
         """
 
-        proposal = db.get(
+        proposal = await db.get(
             CooperativePartialProcurementProposal,
             proposal_id
         )
@@ -30,9 +30,6 @@ class CooperativePartialExecutionService:
         if not proposal:
             raise ValueError("Proposal not found")
 
-        # =====================================
-        # STATE VALIDATION (CRITICAL GUARD)
-        # =====================================
         if proposal.status != "approved":
             raise ValueError(f"Proposal not approved: {proposal.status}")
 
@@ -42,28 +39,22 @@ class CooperativePartialExecutionService:
         if proposal.status == "expired":
             raise ValueError("Proposal expired")
 
-        # =====================================
-        # EXECUTION ENGINE
-        # =====================================
         service = CooperativePartialProcurementService()
 
-        procurement = service.create_partial_procurement(
+        procurement = await service.create_partial_procurement(
             db=db,
             cooperative_id=proposal.cooperative_id,
             listing=listing,
             requested_quantity=proposal.requested_quantity,
             available_quantity=proposal.available_quantity,
-            member_count=0,  # can later be injected from membership service
+            member_count=0,
             total_cost=proposal.total_cost
         )
 
-        # =====================================
-        # UPDATE PROPOSAL STATE
-        # =====================================
         proposal.status = "executed"
-        proposal.executed_at = datetime.utcnow()
+        proposal.executed_at = datetime.now(timezone.utc)
 
-        db.commit()
-        db.refresh(procurement)
+        await db.commit()
+        await db.refresh(procurement)
 
         return procurement
