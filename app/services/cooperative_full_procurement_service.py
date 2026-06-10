@@ -1,6 +1,8 @@
 from decimal import Decimal
 from datetime import datetime
-from sqlalchemy.orm import Session
+#from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.db.models.cooperative_procurement import CooperativeProcurement
 from app.db.models.market_product_listing import MarketProductListing
@@ -9,9 +11,9 @@ from app.db.models.inventory import Inventory
 
 class CooperativeFullProcurementService:
 
-    def create_full_procurement(
+  Async def create_full_procurement(
         self,
-        db: Session,
+        db: AsyncSession,
         cooperative_id: str,
         listing: MarketProductListing,
         quantity: int,
@@ -45,14 +47,14 @@ class CooperativeFullProcurementService:
         inventory.available_stock -= quantity
         inventory.reserved_stock += quantity
 
-        db.commit()
-        db.refresh(procurement)
+        await db.commit()
+        await db.refresh(procurement)
 
         return procurement
 
-    def complete_procurement(self, db: Session, procurement: CooperativeProcurement):
+  Async def complete_procurement(self, db: AsyncSession, procurement: CooperativeProcurement):
         procurement.status = "completed"
         procurement.completed_at = datetime.utcnow()
 
-        db.commit()
-        return procurement
+        await db.commit()
+        await return procurement
