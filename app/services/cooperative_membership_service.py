@@ -35,6 +35,18 @@ class CooperativeMembershipService:
                 404,
                 "Cooperative not found"
            )
+       stmt_count = select(func.count(CooperativeMembership.id)).where(
+    CooperativeMembership.cooperative_id == cooperative_id,
+        CooperativeMembership.status == "active"
+        )
+
+
+        )
+
+        count = (await   db.execute(stmt_count)).scalar() or 0
+
+        if count >= coop.max_members:
+            raise HTTPException(400,  "Cooperative member limit reached")
 
     # ----------------------------------
     # ENFORCE MAXIMUM MEMBER LIMIT
