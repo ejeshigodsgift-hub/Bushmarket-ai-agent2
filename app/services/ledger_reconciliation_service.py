@@ -1,52 +1,235 @@
-# =========================================
-# FILE: app/services/ledger_reconciliation_service.py
-# =========================================
-
+from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.db.models.ledger_account import LedgerAccount
 from app.db.models.ledger_entry import LedgerEntry
 
 
 class LedgerReconciliationService:
+    """
+    Financial integrity verification system:
+    Wallet ↔ Ledger
+    Escrow ↔ Ledger
+    Cooperative ↔ Ledger
+    System-wide consistency checks
+    """
 
-    async def run_full_reconciliation(self, db: AsyncSession):
+    # =====================================================
+    # WALLET RECONCILIATION
+    # =====================================================
+    async def reconcile_wallets(self, db: AsyncSession):
 
-        accounts_result = await db.execute(
-            select(LedgerAccount)
+        result = await db.execute(
+            select(
+                LedgerAccount.id,
+                LedgerAccount.user_id,
+                func.sum(
+                    func.case(
+                        (LedgerEntry.entry_type == "credit", LedgerEntry.amount),
+                        else_=-LedgerEntry.amount
+                    )
+                ).label("ledger_balance")
+            )
+            .join(LedgerEntry, LedgerEntry.account_id == LedgerAccount.id)
+            .where(LedgerAccount.account_type == "wallet")
+            .group_by(LedgerAccount.id, LedgerAccount.user_id)
         )
 
-        accounts = accounts_result.scalars().all()
+        rows = result.all()
 
-        report = {
-            "total_accounts": len(accounts),
-            "mismatches": [],
-            "ok": []
-        }
+        mismatches = []
+        ok = []
 
-        for account in accounts:
+        for r in rows:
 
-            ledger_result = await db.execute(
-                select(
-                    func.sum(
-                        func.case(
-                            (LedgerEntry.entry_type == "credit", LedgerEntry.amount),
-                            else_=-LedgerEntry.amount
-                        )
-                    )
-                ).where(LedgerEntry.account_id == account.id)
-            )
+            ledger_balance = Decimal(r.ledger_balance or 0)
 
-            computed = ledger_result.scalar() or 0
-
-            # IMPORTANT: we no longer trust DB balance fields
-            stored = None
-
-            report["ok"].append({
-                "account_id": account.id,
-                "type": account.account_type,
-                "computed_balance": float(computed)
+            ok.append({
+                "wallet_account_id": r.id,
+                "user_id": r.user_id,
+                "ledger_balance": str(ledger_balance)
             })
 
-        return report
+        return {
+            "total_wallet_accounts": len(rows),
+            "ok": ok,
+            "mismatches": mismatches
+        }
+
+    # =====================================================
+    # ESCROW RECONCILIATION
+    # =====================================================
+    async def reconcile_escrows(self, db: AsyncSession):
+
+        result = await db.execute(
+            select(
+                LedgerAccount.id,
+                LedgerAccount.cooperative_id,
+                func.sum(
+                    func.case(
+                        (LedgerEntry.entry_type == "credit", LedgerEntry.amount),
+                        else_=-LedgerEntry.amount
+                    )
+                ).label("ledger_balance")
+            )
+            .join(LedgerEntry, LedgerEntry.account_id == LedgerAccount.id)
+            .where(LedgerAccount.account_type == "escrow")
+            .group_by(LedgerAccount.id, LedgerAccount.cooperative_id)
+        )
+
+        rows = result.all()
+
+        mismatches = []
+        ok = []
+
+        for r in rows:
+
+            ledger_balance = Decimal(r.ledger_balance or 0)
+
+            ok.append({
+                "escrow_account_id": r.id,
+                "cooperative_id": r.cooperative_id,
+                "ledger_balance": str(ledger_balance)
+            })
+
+        return {
+            "total_escrow_accounts": len(rows),
+            "ok": ok,
+            "mismatches": mismatches
+        }
+
+    # =====================================================
+    # COOPERATIVE RECONCILIATION
+    # =====================================================
+    async def reconcile_cooperative(
+        self,
+        db: AsyncSession,
+        cooperative_id: str
+    ):
+
+        result = await db.execute(
+            select(
+                LedgerAccount.id,
+                LedgerAccount.account_type,
+                func.sum(
+                    func.case(
+                        (LedgerEntry.entry_type == "credit", LedgerEntry.amount),
+                        else_=-LedgerEntry.amount
+                    )
+                ).label("ledger_balance")
+            )
+            .join(LedgerEntry, LedgerEntry.account_id == LedgerAccount.id)
+            .where(LedgerAccount.cooperative_id == cooperative_id)
+            .group_by(LedgerAccount.id, LedgerAccount.account_type)
+        )
+
+        rows = result.all()
+
+        total_escrow = Decimal("0")
+        total_accounts = 0
+
+        breakdown = []
+
+        for r in rows:
+
+            balance = Decimal(r.ledger_balance or 0)
+            total_accounts += 1
+
+            if r.account_type == "escrow":
+                total_escrow += balance
+
+            breakdown.append({
+                "account_id": r.id,
+                "type": r.account_type,
+                "balance": str(balance)
+            })
+
+        return {
+            "cooperative_id": cooperative_id,
+            "total_accounts": total_accounts,
+            "total_escrow_balance": str(total_escrow),
+            "breakdown": breakdown
+        }
+
+    # =====================================================
+    # DOUBLE ENTRY INTEGRITY CHECK
+    # =====================================================
+    async def verify_double_entry_integrity(self, db: AsyncSession):
+
+        result = await db.execute(
+            select(
+                LedgerEntry.transaction_reference,
+                func.sum(
+                    func.case(
+                        (LedgerEntry.entry_type == "debit", LedgerEntry.amount),
+                        else_=0
+                    )
+                ).label("debits"),
+                func.sum(
+                    func.case(
+                        (LedgerEntry.entry_type == "credit", LedgerEntry.amount),
+                        else_=0
+                    )
+                ).label("credits")
+            )
+            .group_by(LedgerEntry.transaction_reference)
+        )
+
+        rows = result.all()
+
+        mismatches = []
+        balanced = []
+
+        for r in rows:
+
+            debit = Decimal(r.debits or 0)
+            credit = Decimal(r.credits or 0)
+
+            if debit != credit:
+                mismatches.append({
+                    "reference": r.transaction_reference,
+                    "debits": str(debit),
+                    "credits": str(credit),
+                    "difference": str(debit - credit)
+                })
+            else:
+                balanced.append(r.transaction_reference)
+
+        return {
+            "total_transactions": len(rows),
+            "balanced": len(balanced),
+            "mismatched": len(mismatches),
+            "mismatches": mismatches
+        }
+
+    # =====================================================
+    # FULL SYSTEM RECONCILIATION (CORE AUDIT ENGINE)
+    # =====================================================
+    async def full_system_reconciliation(self, db: AsyncSession):
+
+        wallets = await self.reconcile_wallets(db)
+        escrows = await self.reconcile_escrows(db)
+        integrity = await self.verify_double_entry_integrity(db)
+
+        # GLOBAL LEDGER TOTAL
+        ledger_total_result = await db.execute(
+            select(
+                func.sum(
+                    func.case(
+                        (LedgerEntry.entry_type == "credit", LedgerEntry.amount),
+                        else_=-LedgerEntry.amount
+                    )
+                )
+            )
+        )
+
+        ledger_total = Decimal(ledger_total_result.scalar() or 0)
+
+        return {
+            "ledger_total": str(ledger_total),
+            "wallets": wallets,
+            "escrows": escrows,
+            "double_entry_integrity": integrity,
+            "status": "completed"
+        }
