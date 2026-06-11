@@ -205,6 +205,119 @@ class FinancialCoreService:
         return escrow
 
     # =========================================================
+    # ESCROW REFUND
+    # =========================================================
+
+
+
+    async def escrow_refund(
+        self,
+        db: AsyncSession,
+        escrow_id: str,
+        amount: Decimal,
+        reference: str
+    ):
+        await self._ensure_idempotent(db,  reference)
+
+        if amount <= 0:
+            raise HTTPException(400,   "Invalid refund amount")
+
+        escrow = await self._lock_escrow(db, escrow_id)
+
+        if escrow.total_deposited < amount:
+            raise HTTPException(400, "Invalid refund")
+
+        escrow.total_deposited -= amount
+
+    # keep balance consistency
+        escrow.available_balance = max(
+            escrow.available_balance -  amount,
+            Decimal("0")
+        )
+
+        escrow.version += 1
+
+        await outbox_service.queue_event(
+            db=db,
+            topic="financial.escrow.refund",
+            payload={
+                "escrow_id": escrow.id,
+                "amount": str(amount),
+                "reference": reference
+            }
+        )
+
+        return escrow
+
+
+    # =========================================================
+    # FREEZE ESCROW 
+    # =========================================================
+
+
+
+    async def freeze_escrow(
+        self,
+        db: AsyncSession,
+        escrow_id: str,
+        reference: str
+    ):
+        await self._ensure_idempotent(db, reference)
+
+        escrow = await self._lock_escrow(db, escrow_id)
+
+        escrow.is_frozen = True
+        escrow.status = "frozen"
+        escrow.version += 1
+
+        await outbox_service.queue_event(
+            db=db,
+            topic="financial.escrow.frozen",
+            payload={
+                "escrow_id": escrow.id,
+                "reference": reference
+            }
+        )
+
+        return escrow
+
+
+    # =========================================================
+    # UNFREEZE ESCROW 
+    # =========================================================
+
+
+    async def unfreeze_escrow(
+        self,
+        db: AsyncSession,
+        escrow_id: str,
+        reference: str
+    ):
+        await self._ensure_idempotent(db,  reference)
+
+        escrow = await self._lock_escrow(db, escrow_id)
+
+        escrow.is_frozen = False
+        escrow.status = "active"
+        escrow.version += 1
+
+        await outbox_service.queue_event(
+            db=db,
+          topic="financial.escrow.unfrozen",
+            payload={
+                "escrow_id": escrow.id,
+                "reference": reference
+            }
+        )
+
+        return escrow
+
+    
+
+
+    
+
+    # =========================================================
     # WALLET → WALLET TRANSFER (SAFE INTERNAL MOVEMENT)
     # =========================================================
     async def transfer(
@@ -233,6 +346,13 @@ class FinancialCoreService:
                 status_code=400,
                 detail="Cannot transfer to same wallet"
             )
+
+
+    
+
+    
+
+
 
     # =====================================================
     # DEADLOCK PREVENTION
@@ -490,6 +610,58 @@ class FinancialCoreService:
         )
 
         return wallet
+
+
+
+    # =========================================================
+    # WALLET DEBIT
+    # =========================================================
+
+
+
+    async def wallet_debit(
+        self,
+        db: AsyncSession,
+        wallet_id: str,
+        amount: Decimal,
+        reference: str,
+        debit_ledger_account: str,
+        credit_ledger_account: str
+    ):
+        await self._ensure_idempotent(db, reference)
+
+        if amount <= 0:
+            raise HTTPException(400, "Invalid amount")
+
+        wallet = await self._lock_wallet(db, wallet_id)
+
+        if wallet.balance < amount:
+            raise HTTPException(400, "Insufficient balance")
+
+        wallet.balance -= amount
+        wallet.version += 1
+
+        await self._post_double_entry(
+            db=db,
+      debit_account_id=debit_ledger_account,
+    credit_account_id=credit_ledger_account,
+        amount=amount,
+        reference=reference,
+        description="Wallet Debit"
+    )
+
+        await outbox_service.queue_event(
+            db=db,
+            topic="financial.wallet.debit",
+            payload={
+                "wallet_id": wallet.id,
+                "amount": str(amount),
+                "reference": reference
+            }
+        )
+
+        return wallet
+
 
 # =========================================================
     # ESCROW DEPOSIT (PAYMENT GATEWAY → ESCROW ONLY)
