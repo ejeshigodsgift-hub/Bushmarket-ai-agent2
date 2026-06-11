@@ -28,38 +28,54 @@ class CooperativeMembershipService:
         cooperative_id: str,
         ip: str | None = None
     ):
-        coop = await db.get(Cooperative, cooperative_id)
+        coop = await db.get(Cooperative,    cooperative_id)
 
         if not coop:
-            raise HTTPException(404, "Cooperative not found")
+            raise HTTPException(
+                404,
+                "Cooperative not found"
+           )
 
-        # -----------------------------
-        # CHECK EXISTING MEMBERSHIP
-        # -----------------------------
-        stmt = select(CooperativeMembership).where(
-            CooperativeMembership.user_id == user_id,
-            CooperativeMembership.cooperative_id == cooperative_id
+    # ----------------------------------
+    # ENFORCE MAXIMUM MEMBER LIMIT
+    # ----------------------------------
+        if coop.current_members >=    coop.max_members:
+            raise HTTPException(
+                400,
+                "Cooperative member limit  reached"
+           )
+
+    # -----------------------------
+    # CHECK EXISTING MEMBERSHIP
+    # -----------------------------
+        stmt =   select(CooperativeMembership).where(
+           CooperativeMembership.user_id   == user_id,
+        CooperativeMembership.cooperative_id == cooperative_id
         )
 
-        existing = (await db.execute(stmt)).scalar_one_or_none()
+        existing = (await   db.execute(stmt)).scalar_one_or_none()
 
         if existing:
             # STRICT STATE HANDLING
-            if existing.status in ["active", "pending"]:
-                raise HTTPException(409, "Membership already exists")
+            if existing.status in  ["active", "pending"]:
+                raise HTTPException(
+                    409,
+                    "Membership already  exists"
+                )
 
             if existing.status == "failed":
                 # allow retry reuse (soft recovery pattern)
                 membership = existing
             else:
                 membership = existing
+
         else:
-            membership = CooperativeMembership(
+            membership =   CooperativeMembership(
                 user_id=user_id,
-                cooperative_id=cooperative_id,
+              cooperative_id=cooperative_id,
                 status="pending",
-                contribution_amount=coop.contribution_per_member,
-                created_at=datetime.now(timezone.utc)
+            contribution_amount=coop.contribution_per_member,
+            created_at=datetime.now(timezone.utc)
             )
             db.add(membership)
 
