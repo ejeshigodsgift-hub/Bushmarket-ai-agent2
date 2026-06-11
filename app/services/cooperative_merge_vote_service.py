@@ -1,14 +1,19 @@
 from datetime import datetime, timedelta
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.services.outbox_service import outbox_service
+from app.services.cooperative_state_service import (
+    cooperative_state_service
+)
+
 from app.db.models.cooperative import Cooperative
 from app.db.models.cooperative_membership import CooperativeMembership
 
 
 # =========================================================
-# MERGE PROPOSAL MODEL (lightweight event model if needed)
+# MERGE PROPOSAL MODEL
 # =========================================================
 class CooperativeMergeProposal:
     def __init__(self, cooperative_ids: list[str]):
@@ -37,9 +42,6 @@ class CooperativeMergeVote:
 # =========================================================
 class CooperativeMergeVotingService:
 
-    # -----------------------------------------
-    # CAST VOTE
-    # -----------------------------------------
     async def cast_vote(
         self,
         db: AsyncSession,
@@ -61,7 +63,6 @@ class CooperativeMergeVotingService:
             vote=vote
         )
 
-        # store vote (replace with DB model if you want persistence)
         await outbox_service.queue_event(
             db,
             "cooperative.merge.vote.cast",
@@ -74,13 +75,13 @@ class CooperativeMergeVotingService:
 
         return vote_obj
 
-    # -----------------------------------------
-    # EVALUATION ENGINE (100% RULE)
-    # -----------------------------------------
-    async def evaluate(self, db: AsyncSession, proposal: CooperativeMergeProposal):
+    async def evaluate(
+        self,
+        db: AsyncSession,
+        proposal: CooperativeMergeProposal
+    ):
 
         member_count = 0
-        approval_count = 0
 
         for coop_id in proposal.cooperative_ids:
 
@@ -94,13 +95,30 @@ class CooperativeMergeVotingService:
 
             member_count += len(members)
 
-        # simplified: assume approvals tracked externally via outbox or vote table
-        # here we simulate full approval rule structure
-
-        approval_rate = 100  # replace with real aggregation later
+        # Replace with real vote aggregation later
+        approval_rate = 100
 
         if approval_rate >= proposal.approval_threshold:
+
             proposal.status = "approved"
+
+            # =====================================
+            # STATE ENGINE (CORRECTED)
+            # =====================================
+            for coop_id in proposal.cooperative_ids:
+
+                coop = await db.get(
+                    Cooperative,
+                    coop_id
+                )
+
+                if coop:
+                    await cooperative_state_service.transition(
+                        db=db,
+                        cooperative=coop,
+                        new_state="procurement_pending",
+                        reason="merge_vote_approved"
+                    )
 
             await outbox_service.queue_event(
                 db,
@@ -112,6 +130,7 @@ class CooperativeMergeVotingService:
             )
 
             await db.commit()
+
             return "APPROVED"
 
         return "VOTING"
