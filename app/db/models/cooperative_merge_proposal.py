@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from sqlalchemy.orm import relationship
 
 from sqlalchemy import (
     String,
@@ -158,4 +159,14 @@ class CooperativeMergeProposal(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False
+    )
+
+# =====================================
+# RELATIONSHIP TO COOPERATIVES
+# =====================================
+    cooperatives = relationship(
+     "CooperativeMergeProposalCooperative",
+        back_populates="proposal",
+        lazy="selectin",
+        cascade="all, delete-orphan"
     )
