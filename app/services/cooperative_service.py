@@ -38,6 +38,32 @@ class CooperativeService:
         if data["lifespan_days"] > 60:
             raise HTTPException(400, "Max lifespan exceeded")
 
+
+        # ----------------------------------
+# PREVENT DUPLICATE ACTIVE COOPERATIVE
+# FOR SAME CREATOR + SAME PRODUCT
+# ----------------------------------
+
+        stmt = select(Cooperative).where(
+            Cooperative.creator_id == creator.id,
+            Cooperative.status.in_(["draft",   "funding", "active"])
+        )
+
+        existing_coops = (
+            await db.execute(stmt)
+        ).scalars().all()
+
+        new_products = set(data["product_ids"])
+
+        for existing in existing_coops:
+            existing_products =   set(existing.product_ids or [])
+
+            if  new_products.intersection(existing_products):
+                raise HTTPException(
+                    400,
+                    "You already have an   active cooperative for one or more   selected products"
+                )
+
         # -----------------------------
         # CREATE COOPERATIVE
         # -----------------------------
