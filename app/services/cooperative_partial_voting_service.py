@@ -132,13 +132,16 @@ class CooperativePartialVotingService:
         approvals = sum(
             1 for v in votes if v.vote
         )
+     
+        if total_members else 0
+            return "VOTING_IN_PROGRESS"
 
         approval_rate = (
             (approvals / total_members) * 100
-            if total_members else 0
+            
         )
 
-        if approval_rate >= 100:
+        if approval_rate >= 80:
 
             proposal.status = "approved"
 
