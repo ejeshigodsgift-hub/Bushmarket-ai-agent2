@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,23 +6,21 @@ from sqlalchemy import select
 
 from app.db.models.cooperative import Cooperative
 from app.db.models.cooperative_procurement import CooperativeProcurement
+from app.db.models.cooperative_merge_proposal import CooperativeMergeProposal
+from app.db.models.cooperative_merge_proposal_cooperative import (
+    CooperativeMergeProposalCooperative
+)
 
 from app.services.outbox_service import outbox_service
-from app.services.cooperative_state_service import (
-    cooperative_state_service
-)
+from app.services.cooperative_state_service import cooperative_state_service
 
 
 class CooperativeMergeService:
     """
-    Detects merge candidates + generates merge proposals + triggers workflow
+    Detects merge candidates + generates merge proposals + executes merge
     """
 
-    async def find_merge_candidates(
-        self,
-        db: AsyncSession
-    ) -> List[Cooperative]:
-
+    async def find_merge_candidates(self, db: AsyncSession) -> List[Cooperative]:
         stmt = select(Cooperative).where(
             Cooperative.status == "active",
             Cooperative.ends_at > datetime.utcnow()
@@ -54,9 +52,7 @@ class CooperativeMergeService:
 
                 if (
                     other.market_id == coop.market_id
-                    and abs(
-                        (other.ends_at - coop.ends_at).total_seconds()
-                    ) < 86400
+                    and abs((other.ends_at - coop.ends_at).total_seconds()) < 86400
                 ):
                     group.append(other)
                     used.add(other.id)
@@ -66,10 +62,7 @@ class CooperativeMergeService:
 
         return groups
 
-    async def generate_merge_proposals(
-        self,
-        db: AsyncSession
-    ):
+    async def generate_merge_proposals(self, db: AsyncSession):
 
         cooperatives = await self.find_merge_candidates(db)
         groups = await self.build_merge_groups(cooperatives)
@@ -78,24 +71,37 @@ class CooperativeMergeService:
 
         for group in groups:
 
-            proposal = {
-                "id": f"merge_{datetime.utcnow().timestamp()}",
-                "cooperative_ids": [c.id for c in group],
-                "status": "voting",
-                "created_at": datetime.utcnow(),
-                "approval_threshold": 100
-            }
+            proposal = CooperativeMergeProposal(
+                approval_threshold=70,
+                expires_at=datetime.utcnow() + timedelta(hours=48),
+                status="voting"
+            )
 
-            proposals.append(proposal)
+            db.add(proposal)
+            await db.flush()  # get proposal.id
+
+            # link cooperatives via junction table
+            for coop in group:
+                db.add(
+                    CooperativeMergeProposalCooperative(
+                        proposal_id=proposal.id,
+                        cooperative_id=coop.id
+                    )
+                )
+
+            proposals.append(proposal.id)
 
             await outbox_service.queue_event(
                 db,
                 "cooperative.merge.proposal.created",
-                proposal
+                {
+                    "proposal_id": proposal.id,
+                    "cooperative_ids": [c.id for c in group],
+                    "status": "voting"
+                }
             )
 
         await db.commit()
-
         return proposals
 
     async def execute_merge(
@@ -103,9 +109,6 @@ class CooperativeMergeService:
         db: AsyncSession,
         cooperatives: List[Cooperative],
     ):
-        """
-        Converts multiple cooperatives → single merged procurement context
-        """
 
         from app.services.cooperative_merge_procurement_service import (
             CooperativeMergeProcurementService
@@ -117,21 +120,14 @@ class CooperativeMergeService:
 
             stmt = select(CooperativeProcurement).where(
                 CooperativeProcurement.cooperative_id == coop.id,
-                CooperativeProcurement.status.in_(
-                    ["approved", "pending"]
-                )
+                CooperativeProcurement.status.in_(["approved", "pending"])
             )
 
             result = await db.execute(stmt)
-
-            all_procurements.extend(
-                result.scalars().all()
-            )
+            all_procurements.extend(result.scalars().all())
 
         if not all_procurements:
-            raise ValueError(
-                "No procurements available for merge"
-            )
+            raise ValueError("No procurements available for merge")
 
         merger = CooperativeMergeProcurementService()
 
@@ -141,33 +137,24 @@ class CooperativeMergeService:
             procurements=all_procurements
         )
 
-        # =====================================
-        # STATE ENGINE (CORRECTED)
-        # =====================================
         for coop in cooperatives:
-
             await cooperative_state_service.transition(
                 db=db,
                 cooperative=coop,
                 new_state="procurement_pending",
-                reason="cooperative_merge_approved"
+                reason="cooperative_merge_executed"
             )
-
-        await db.commit()
 
         await outbox_service.queue_event(
             db,
             "cooperative.merge.executed",
             {
                 "merged_id": merged.id,
-                "cooperatives": [
-                    c.id for c in cooperatives
-                ]
+                "cooperatives": [c.id for c in cooperatives]
             }
         )
 
         await db.commit()
-
         return merged
 
 
