@@ -28,55 +28,58 @@ class CooperativeMembershipService:
         cooperative_id: str,
         ip: str | None = None
     ):
-        coop = await db.get(Cooperative,    cooperative_id)
+        coop = await db.get(Cooperative, cooperative_id)
 
         if not coop:
-            raise HTTPException(
-                404,
-                "Cooperative not found"
-           )
-       stmt_count = select(func.count(CooperativeMembership.id)).where(
-    CooperativeMembership.cooperative_id == cooperative_id,
-        CooperativeMembership.status == "active"
+            raise HTTPException(404, "Cooperative not found")
+
+    # -----------------------------
+    # LOAD PLATFORM SETTINGS
+    # -----------------------------
+        settings = await db.scalar(
+            select(PlatformSettings).where(
+                PlatformSettings.is_active == True
+            )
         )
 
+        if not settings:
+            raise HTTPException(500,  "Platform settings not configured")
 
+    # -----------------------------
+    # ENFORCE MAX MEMBERS (GLOBAL RULE)
+    # -----------------------------
+        stmt_count = select(func.count(CooperativeMembership.id)).where(
+        CooperativeMembership.cooperative_id == cooperative_id,
+            CooperativeMembership.status == "active"
         )
 
         count = (await   db.execute(stmt_count)).scalar() or 0
 
-        if count >= coop.max_members:
-            raise HTTPException(400,  "Cooperative member limit reached")
+        if count >= settings.max_members:
+            raise HTTPException(
+                400,
+                "Cooperative member limit reached"
+            )
 
-    
     # -----------------------------
     # CHECK EXISTING MEMBERSHIP
     # -----------------------------
-        stmt =   select(CooperativeMembership).where(
-           CooperativeMembership.user_id   == user_id,
+        stmt = select(CooperativeMembership).where(
+            CooperativeMembership.user_id == user_id,
         CooperativeMembership.cooperative_id == cooperative_id
         )
 
-        existing = (await   db.execute(stmt)).scalar_one_or_none()
+        existing = (await db.execute(stmt)).scalar_one_or_none()
 
         if existing:
-            # STRICT STATE HANDLING
-            if existing.status in  ["active", "pending"]:
-                raise HTTPException(
-                    409,
-                    "Membership already  exists"
-                )
+            if existing.status in ["active", "pending"]:
+                raise HTTPException(409,  "Membership already exists")
 
-            if existing.status == "failed":
-                # allow retry reuse (soft recovery pattern)
-                membership = existing
-            else:
-                membership = existing
-
+            membership = existing
         else:
-            membership =   CooperativeMembership(
+            membership =  CooperativeMembership(
                 user_id=user_id,
-              cooperative_id=cooperative_id,
+             cooperative_id=cooperative_id,
                 status="pending",
             contribution_amount=coop.contribution_per_member,
             created_at=datetime.now(timezone.utc)
@@ -84,6 +87,8 @@ class CooperativeMembershipService:
             db.add(membership)
 
         await db.flush()
+
+        return membership
 
         # -----------------------------
         # CREATE PAYMENT INTENT (FINANCIAL CORE)
