@@ -13,7 +13,7 @@ from sqlalchemy import (
     Index
 )
 
-from sqlalchemy.dialects.postgresql import ARRAY
+
 
 from sqlalchemy.orm import (
     Mapped,
@@ -72,13 +72,7 @@ class CooperativeMergeProposal(Base):
         default=lambda: str(uuid.uuid4())
     )
 
-    # =====================================
-    # COOPERATIVES INVOLVED
-    # =====================================
-    cooperative_ids: Mapped[list[str]] = mapped_column(
-        ARRAY(String),
-        nullable=False
-    )
+    
 
     # =====================================
     # APPROVAL CONFIG
