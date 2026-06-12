@@ -26,18 +26,32 @@ class CooperativeService:
         data: dict,
         ip: str | None = None
     ):
+
         # -----------------------------
-        # BUSINESS RULES (SOFT-CODED LATER)
+        # LOAD PLATFORM SETTINGS
         # -----------------------------
+        settings = await db.scalar(
+            select(PlatformSettings).where(
+                PlatformSettings.is_active == True
+            )
+        )
+
+        # -----------------------------
+        # BUSINESS RULES
+        # -----------------------------
+        if data["max_members"] > settings.max_cooperative_members:
+            raise HTTPException(
+                400,
+                "Maximum member limit exceeded"
+            )
+
         if len(data["product_ids"]) > 3:
             raise HTTPException(400, "Max 3 products allowed")
-
-        if data["max_members"] > 30:
-            raise HTTPException(400, "Max 30 members allowed")
 
         if data["lifespan_days"] > 60:
             raise HTTPException(400, "Max lifespan exceeded")
 
+        
 
         # ----------------------------------
 # PREVENT DUPLICATE ACTIVE COOPERATIVE
