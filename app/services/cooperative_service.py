@@ -1,21 +1,31 @@
 from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
+
+import hashlib
+import json
 
 from app.db.models.cooperative import Cooperative
 from app.db.models.cooperative_membership import CooperativeMembership
 
 from app.services.audit_service import AuditService
 from app.services.outbox_service import outbox_service
-from app.integrations.redis_client import redis_client
-
 from app.db.models.platform_settings import PlatformSettings
+
 
 class CooperativeService:
 
     def __init__(self):
         self.audit = AuditService()
+
+    # ====================================================
+    # HASH BUILDER (ADDED)
+    # ====================================================
+    def build_target_product_hash(self, product_ids: list[str]) -> str:
+        return hashlib.sha256(
+            json.dumps(sorted(product_ids)).encode()
+        ).hexdigest()
 
     # ====================================================
     # CREATE COOPERATIVE (ASYNC)
@@ -37,102 +47,77 @@ class CooperativeService:
             )
         )
 
-
         if not settings:
             raise HTTPException(
                 500,
-                "Platform settings not   configured"
+                "Platform settings not configured"
             )
 
-# -----------------------------
-# PRODUCT VALIDATION
-# -----------------------------
+        # -----------------------------
+        # PRODUCT VALIDATION
+        # -----------------------------
         product_count = len(data.get("product_ids", []))
 
-        if product_count <   settings.min_products:
-            raise HTTPException(
-                400,
-                "At least one target product required"
-            )
+        if product_count < settings.min_products:
+            raise HTTPException(400, "At least one target product required")
 
         if product_count > settings.max_products:
-            raise HTTPException(
-                400,
-                "Maximum target product limit exceeded"
-            )
+            raise HTTPException(400, "Maximum target product limit exceeded")
 
-# -----------------------------
-# MEMBER VALIDATION
-# -----------------------------
-        if data["max_members"] <   settings.min_members:
-            raise HTTPException(
-                400,
-                "Minimum member requirement not met"
-            )
+        # -----------------------------
+        # MEMBER VALIDATION
+        # -----------------------------
+        if data["max_members"] < settings.min_members:
+            raise HTTPException(400, "Minimum member requirement not met")
 
-        if data["max_members"] >   settings.max_members:
-            raise HTTPException(
-                400,
-                "Maximum member limit exceeded"
-            )
+        if data["max_members"] > settings.max_members:
+            raise HTTPException(400, "Maximum member limit exceeded")
 
-# -----------------------------
-# QUANTITY VALIDATION
-# -----------------------------
-        if data["target_quantity"] <  settings.min_coop_quantity:
-            raise HTTPException(
-                400,
-                "Target quantity below minimum allowed"
-            )
+        # -----------------------------
+        # QUANTITY VALIDATION
+        # -----------------------------
+        if data["target_quantity"] < settings.min_coop_quantity:
+            raise HTTPException(400, "Target quantity below minimum allowed")
 
         if data["target_quantity"] > settings.max_coop_quantity:
-            raise HTTPException(
-                400,
-                "Target quantity exceeds maximum allowed"
-            )
+            raise HTTPException(400, "Target quantity exceeds maximum allowed")
 
-# -----------------------------
-# LIFESPAN VALIDATION
-# -----------------------------
-        if data["lifespan_days"] <   settings.min_lifespan_days:
-            raise HTTPException(
-                400,
-                "Lifespan below minimum allowed"
-            )
+        # -----------------------------
+        # LIFESPAN VALIDATION
+        # -----------------------------
+        if data["lifespan_days"] < settings.min_lifespan_days:
+            raise HTTPException(400, "Lifespan below minimum allowed")
 
-        if data["lifespan_days"] >   settings.max_lifespan_days:
-            raise HTTPException(
-                400,
-                "Lifespan exceeds maximum   allowed"
-            )
+        if data["lifespan_days"] > settings.max_lifespan_days:
+            raise HTTPException(400, "Lifespan exceeds maximum allowed")
 
-        
-        
-
-        # ----------------------------------
-# PREVENT DUPLICATE ACTIVE COOPERATIVE
-# FOR SAME CREATOR + SAME PRODUCT
-# ----------------------------------
-
+        # -----------------------------
+        # PREVENT DUPLICATE ACTIVE COOPERATIVE
+        # -----------------------------
         stmt = select(Cooperative).where(
             Cooperative.creator_id == creator.id,
-            Cooperative.status.in_(["draft",   "funding", "active"])
+            Cooperative.status.in_(["draft", "funding", "active"])
         )
 
-        existing_coops = (
-            await db.execute(stmt)
-        ).scalars().all()
+        existing_coops = (await db.execute(stmt)).scalars().all()
 
         new_products = set(data["product_ids"])
 
         for existing in existing_coops:
-            existing_products =   set(existing.product_ids or [])
+            existing_products = set(existing.product_ids or [])
 
-            if  new_products.intersection(existing_products):
+            if new_products.intersection(existing_products):
                 raise HTTPException(
                     400,
-                    "You already have an   active cooperative for one or more   selected products"
+                    "You already have an active cooperative for one or more selected products"
                 )
+
+        # -----------------------------
+        # BUILD TARGET PRODUCT HASH (ADDED HERE)
+        # -----------------------------
+        target_product_hash = self.build_target_product_hash(
+            data["product_ids"]
+        )
 
         # -----------------------------
         # CREATE COOPERATIVE
@@ -141,6 +126,7 @@ class CooperativeService:
             creator_id=creator.id,
             title=data["title"],
             product_ids=data["product_ids"],
+            target_product_hash=target_product_hash,  # ✅ ADDED
             target_quantity=data["target_quantity"],
             target_amount=data["target_amount"],
             contribution_per_member=data["contribution_per_member"],
@@ -214,7 +200,7 @@ class CooperativeService:
         return result.scalars().all()
 
     # ====================================================
-    # GET USER COOPERATIVES (FIXED MISSING METHOD)
+    # GET USER COOPERATIVES
     # ====================================================
     async def get_user_cooperatives(
         self,
