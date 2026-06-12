@@ -1,15 +1,13 @@
 from datetime import datetime, timedelta
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.services.outbox_service import outbox_service
-from app.services.cooperative_state_service import (
-    cooperative_state_service
-)
+from app.services.cooperative_state_service import cooperative_state_service
 
 from app.db.models.cooperative import Cooperative
 from app.db.models.cooperative_membership import CooperativeMembership
+from app.db.models.cooperative_merge_vote import CooperativeMergeVote
 
 
 # =========================================================
@@ -22,7 +20,9 @@ class CooperativeMergeProposal:
         self.status = "voting"
         self.created_at = datetime.utcnow()
         self.expires_at = datetime.utcnow() + timedelta(hours=48)
-        self.approval_threshold = 100
+
+        # 70% approval rule
+        self.approval_threshold = 70
 
 
 # =========================================================
@@ -63,6 +63,8 @@ class CooperativeMergeVotingService:
             vote=vote
         )
 
+        db.add(vote_obj)
+
         await outbox_service.queue_event(
             db,
             "cooperative.merge.vote.cast",
@@ -75,49 +77,73 @@ class CooperativeMergeVotingService:
 
         return vote_obj
 
+    # =========================================================
+    # EVALUATION ENGINE (70% MEMBERSHIP RULE)
+    # =========================================================
     async def evaluate(
         self,
         db: AsyncSession,
         proposal: CooperativeMergeProposal
     ):
 
-        member_count = 0
+        # -------------------------------------------------
+        # COUNT TOTAL ACTIVE MEMBERS ACROSS COOPERATIVES
+        # -------------------------------------------------
+        stmt_members = select(CooperativeMembership).where(
+            CooperativeMembership.cooperative_id.in_(
+                proposal.cooperative_ids
+            ),
+            CooperativeMembership.status == "active"
+        )
 
-        for coop_id in proposal.cooperative_ids:
+        result = await db.execute(stmt_members)
+        members = result.scalars().all()
 
-            stmt = select(CooperativeMembership).where(
-                CooperativeMembership.cooperative_id == coop_id,
-                CooperativeMembership.status == "active"
-            )
+        member_count = len(members)
 
-            result = await db.execute(stmt)
-            members = result.scalars().all()
+        if member_count == 0:
+            return "NO_MEMBERS"
 
-            member_count += len(members)
+        # -------------------------------------------------
+        # FETCH VOTES FOR THIS PROPOSAL
+        # -------------------------------------------------
+        stmt_votes = select(CooperativeMergeVote).where(
+            CooperativeMergeVote.proposal_id == proposal.id
+        )
 
-        # Replace with real vote aggregation later
-        approval_rate = 100
+        vote_result = await db.execute(stmt_votes)
+        votes = vote_result.scalars().all()
 
-        if approval_rate >= proposal.approval_threshold:
+        total_votes = len(votes)
+
+        approvals = sum(
+            1 for v in votes if v.vote is True
+        )
+
+        # -------------------------------------------------
+        # APPROVAL RATE CALCULATION
+        # -------------------------------------------------
+        approval_rate = (
+            approvals / member_count
+        ) * 100
+
+        # =================================================
+        # DECISION RULE: 70% MEMBERSHIP APPROVAL
+        # =================================================
+        if approval_rate >= 70:
 
             proposal.status = "approved"
 
-            # =====================================
-            # STATE ENGINE (CORRECTED)
-            # =====================================
             for coop_id in proposal.cooperative_ids:
 
-                coop = await db.get(
-                    Cooperative,
-                    coop_id
-                )
+                coop = await db.get(Cooperative, coop_id)
 
                 if coop:
                     await cooperative_state_service.transition(
                         db=db,
                         cooperative=coop,
                         new_state="procurement_pending",
-                        reason="merge_vote_approved"
+                        reason="merge_vote_approved_70_percent"
                     )
 
             await outbox_service.queue_event(
@@ -125,12 +151,15 @@ class CooperativeMergeVotingService:
                 "cooperative.merge.approved",
                 {
                     "proposal_id": proposal.id,
-                    "cooperative_ids": proposal.cooperative_ids
+                    "cooperative_ids": proposal.cooperative_ids,
+                    "approval_rate": approval_rate
                 }
             )
 
             await db.commit()
-
             return "APPROVED"
 
+        # =================================================
+        # NOT ENOUGH APPROVAL
+        # =================================================
         return "VOTING"
