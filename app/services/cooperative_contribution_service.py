@@ -1,5 +1,6 @@
 from decimal import Decimal
 from datetime import datetime, timezone
+from app.integrations.payment_status import PaymentStatus
 
 from fastapi import HTTPException
 from sqlalchemy import select, func
@@ -45,7 +46,7 @@ class CooperativeContributionService:
         # -----------------------------
         # ENFORCE PAID MEMBERSHIP ONLY
         # -----------------------------
-        if membership.payment_status != "paid":
+        if membership.payment_status !=   PaymentStatus.SUCCESS:
             raise HTTPException(403, "Membership not fully paid")
 
         contribution = CooperativeContribution(
