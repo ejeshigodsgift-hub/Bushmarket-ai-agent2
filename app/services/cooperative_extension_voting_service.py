@@ -66,7 +66,7 @@ class CooperativeExtensionVoteService:
         )
 
     # =====================================================
-    # EVALUATION ENGINE (100% RULE)
+    # EVALUATION ENGINE (80% RULE)
     # =====================================================
     async def evaluate_round(
         self,
@@ -109,7 +109,7 @@ class CooperativeExtensionVoteService:
         # -------------------------------------
         # DECISION ENGINE
         # -------------------------------------
-        if approval_rate >= 100:
+        if approval_rate >= 80:
 
             await outbox_service.queue_event(
                 db,
@@ -121,7 +121,7 @@ class CooperativeExtensionVoteService:
             )
 
             await db.commit()
-            return "APPROVED_100_PERCENT"
+            return "APPROVED_80_PERCENT"
 
         if approval_rate < 50:
 
