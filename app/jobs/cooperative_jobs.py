@@ -50,16 +50,26 @@ class CooperativeJobs:
         # (useful if votes are still pending evaluation)
         await self._evaluate_pending_partial_votes(db)
 
-    async def _evaluate_pending_partial_votes(self, db: AsyncSession):
-        """
-        Safety sweep: ensures no vote remains unprocessed.
-        """
-        # This assumes your service has evaluate method already
-        await self.partial_vote_service.evaluate_votes(
-            db=db,
-            proposal=None  # replace with batch logic if implemented
+    async def _evaluate_pending_partial_votes(self, db:   AsyncSession):
+
+        from app.db.models.cooperative_partial_procure ment_proposal import (
+        CooperativePartialProcurementProposal
         )
 
+        from sqlalchemy import select
+
+        stmt = select(CooperativePartialProcurementProposal).where(
+        CooperativePartialProcurementProposal.status == "voting"
+        )
+
+        result = await db.execute(stmt)
+        proposals = result.scalars().all()
+
+        for proposal in proposals:
+            await self.partial_vote_service.evaluate_votes(
+                db=db,
+                proposal=proposal
+            )
     # =====================================================
     # EXTENSION VOTE JOBS
     # =====================================================
