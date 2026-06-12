@@ -36,6 +36,75 @@ class CooperativeService:
             )
         )
 
+
+        if not settings:
+            raise HTTPException(
+                500,
+                "Platform settings not   configured"
+            )
+
+# -----------------------------
+# PRODUCT VALIDATION
+# -----------------------------
+        product_count = len(data["product_ids"])
+
+        if product_count <   settings.min_products:
+            raise HTTPException(
+                400,
+                "At least one target product required"
+            )
+
+        if product_count > settings.max_products:
+            raise HTTPException(
+                400,
+                "Maximum target product limit exceeded"
+            )
+
+# -----------------------------
+# MEMBER VALIDATION
+# -----------------------------
+        if data["max_members"] <   settings.min_members:
+            raise HTTPException(
+                400,
+                "Minimum member requirement not met"
+            )
+
+        if data["max_members"] >   settings.max_members:
+            raise HTTPException(
+                400,
+                "Maximum member limit exceeded"
+            )
+
+# -----------------------------
+# QUANTITY VALIDATION
+# -----------------------------
+        if data["target_quantity"] <  settings.min_coop_quantity:
+            raise HTTPException(
+                400,
+                "Target quantity below minimum allowed"
+            )
+
+        if data["target_quantity"] > settings.max_coop_quantity:
+            raise HTTPException(
+                400,
+                "Target quantity exceeds maximum allowed"
+            )
+
+# -----------------------------
+# LIFESPAN VALIDATION
+# -----------------------------
+        if data["lifespan_days"] <   settings.min_lifespan_days:
+            raise HTTPException(
+                400,
+                "Lifespan below minimum allowed"
+            )
+
+        if data["lifespan_days"] >   settings.max_lifespan_days:
+            raise HTTPException(
+                400,
+                "Lifespan exceeds maximum   allowed"
+            )
+
         # -----------------------------
         # BUSINESS RULES
         # -----------------------------
