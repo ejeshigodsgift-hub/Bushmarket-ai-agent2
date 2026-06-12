@@ -48,15 +48,7 @@ class CooperativeMembershipService:
         if count >= coop.max_members:
             raise HTTPException(400,  "Cooperative member limit reached")
 
-    # ----------------------------------
-    # ENFORCE MAXIMUM MEMBER LIMIT
-    # ----------------------------------
-        if coop.current_members >=    coop.max_members:
-            raise HTTPException(
-                400,
-                "Cooperative member limit  reached"
-           )
-
+    
     # -----------------------------
     # CHECK EXISTING MEMBERSHIP
     # -----------------------------
