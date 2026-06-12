@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 from typing import List
+import hashlib
+import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -20,7 +22,23 @@ class CooperativeMergeService:
     Detects merge candidates + generates merge proposals + executes merge
     """
 
+    # =====================================================
+    # HASH BUILDER (CORE FIX)
+    # =====================================================
+    def build_target_product_hash(self, product_ids: list) -> str:
+        """
+        Creates deterministic hash for product comparison
+        """
+        normalized = sorted(product_ids or [])
+        return hashlib.sha256(
+            json.dumps(normalized).encode()
+        ).hexdigest()
+
+    # =====================================================
+    # FIND CANDIDATES
+    # =====================================================
     async def find_merge_candidates(self, db: AsyncSession) -> List[Cooperative]:
+
         stmt = select(Cooperative).where(
             Cooperative.status == "active",
             Cooperative.ends_at > datetime.utcnow()
@@ -29,6 +47,9 @@ class CooperativeMergeService:
         result = await db.execute(stmt)
         return result.scalars().all()
 
+    # =====================================================
+    # BUILD GROUPS (FIXED LOGIC)
+    # =====================================================
     async def build_merge_groups(
         self,
         cooperatives: List[Cooperative]
@@ -50,9 +71,12 @@ class CooperativeMergeService:
                 if other.id in used:
                     continue
 
+                # =========================================
+                # ✅ CORE RULE: SAME TARGET PRODUCT HASH
+                # =========================================
                 if (
-                    other.market_id == coop.market_id
-                    and abs((other.ends_at - coop.ends_at).total_seconds()) < 86400
+                    other.target_product_hash
+                    == coop.target_product_hash
                 ):
                     group.append(other)
                     used.add(other.id)
@@ -62,6 +86,9 @@ class CooperativeMergeService:
 
         return groups
 
+    # =====================================================
+    # GENERATE MERGE PROPOSALS
+    # =====================================================
     async def generate_merge_proposals(self, db: AsyncSession):
 
         cooperatives = await self.find_merge_candidates(db)
@@ -78,9 +105,9 @@ class CooperativeMergeService:
             )
 
             db.add(proposal)
-            await db.flush()  # get proposal.id
+            await db.flush()
 
-            # link cooperatives via junction table
+            # link cooperatives
             for coop in group:
                 db.add(
                     CooperativeMergeProposalCooperative(
@@ -104,6 +131,9 @@ class CooperativeMergeService:
         await db.commit()
         return proposals
 
+    # =====================================================
+    # EXECUTE MERGE
+    # =====================================================
     async def execute_merge(
         self,
         db: AsyncSession,
