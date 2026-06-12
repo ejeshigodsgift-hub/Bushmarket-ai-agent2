@@ -10,6 +10,7 @@ from app.services.audit_service import AuditService
 from app.services.outbox_service import outbox_service
 from app.integrations.redis_client import redis_client
 
+from app.db.models.platform_settings import PlatformSettings
 
 class CooperativeService:
 
@@ -46,7 +47,7 @@ class CooperativeService:
 # -----------------------------
 # PRODUCT VALIDATION
 # -----------------------------
-        product_count = len(data["product_ids"])
+        product_count = len(data.get("product_ids", []))
 
         if product_count <   settings.min_products:
             raise HTTPException(
@@ -105,21 +106,7 @@ class CooperativeService:
                 "Lifespan exceeds maximum   allowed"
             )
 
-        # -----------------------------
-        # BUSINESS RULES
-        # -----------------------------
-        if data["max_members"] > settings.max_cooperative_members:
-            raise HTTPException(
-                400,
-                "Maximum member limit exceeded"
-            )
-
-        if len(data["product_ids"]) > 3:
-            raise HTTPException(400, "Max 3 products allowed")
-
-        if data["lifespan_days"] > 60:
-            raise HTTPException(400, "Max lifespan exceeded")
-
+        
         
 
         # ----------------------------------
