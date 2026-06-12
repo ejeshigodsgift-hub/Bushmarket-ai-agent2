@@ -94,11 +94,14 @@ class CooperativePartialVotingService:
         )
 
         await db.commit()
+        
+        await db.refresh(proposal)
 
         return await self.evaluate_votes(
             db,
             proposal
         )
+
 
     async def evaluate_votes(
         self,
