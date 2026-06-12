@@ -198,3 +198,8 @@ class CooperativeContributionService:
         await db.commit()
 
         return count
+
+
+cooperative_contribution_service = (
+    CooperativeContributionService()
+)
