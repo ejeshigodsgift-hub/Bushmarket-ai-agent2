@@ -1,5 +1,3 @@
-
-
 from decimal import Decimal
 from datetime import datetime, timezone
 
@@ -11,297 +9,192 @@ from app.db.models.cooperative import Cooperative
 from app.db.models.cooperative_membership import CooperativeMembership
 from app.db.models.cooperative_contribution import CooperativeContribution
 from app.db.models.escrow_account import EscrowAccount
-from app.db.models.payment_intent import PaymentIntent
-from app.db.models.payment_transaction import PaymentTransaction
 
 from app.services.financial_core_service import FinancialCoreService
 from app.services.outbox_service import outbox_service
 
+
 class CooperativeContributionService:
 
-def __init__(self):
-    self.financial = FinancialCoreService()
+    def __init__(self):
+        self.financial = FinancialCoreService()
 
-# =====================================================
-# RECORD CONTRIBUTION
-# =====================================================
+    # =====================================================
+    # RECORD CONTRIBUTION (STRICT MEMBERSHIP CHECK)
+    # =====================================================
+    async def record_contribution(
+        self,
+        db: AsyncSession,
+        cooperative_id: str,
+        membership_id: str,
+        user_id: str,
+        payment_intent_id: str,
+        payment_reference: str,
+        escrow_account_id: str,
+        amount: Decimal,
+    ):
 
-async def record_contribution(
-    self,
-    db: AsyncSession,
-    cooperative_id: str,
-    membership_id: str,
-    user_id: str,
-    payment_intent_id: str,
-    payment_reference: str,
-    escrow_account_id: str,
-    amount: Decimal,
-) -> CooperativeContribution:
+        cooperative = await db.get(Cooperative, cooperative_id)
+        if not cooperative:
+            raise HTTPException(404, "Cooperative not found")
 
-    cooperative = await db.get(
-        Cooperative,
-        cooperative_id
-    )
+        membership = await db.get(CooperativeMembership, membership_id)
+        if not membership:
+            raise HTTPException(404, "Membership not found")
 
-    if not cooperative:
-        raise HTTPException(
-            404,
-            "Cooperative not found"
+        # -----------------------------
+        # ENFORCE PAID MEMBERSHIP ONLY
+        # -----------------------------
+        if membership.payment_status != "paid":
+            raise HTTPException(403, "Membership not fully paid")
+
+        contribution = CooperativeContribution(
+            cooperative_id=cooperative_id,
+            membership_id=membership_id,
+            user_id=user_id,
+            amount=amount,
+            payment_reference=payment_reference,
+            payment_intent_id=payment_intent_id,
+            status="completed",
+            created_at=datetime.now(timezone.utc)
         )
 
-    membership = await db.get(
-        CooperativeMembership,
-        membership_id
-    )
+        db.add(contribution)
 
-    if not membership:
-        raise HTTPException(
-            404,
-            "Membership not found"
+        cooperative.total_contributed += amount
+
+        if membership.status != "active":
+            membership.status = "active"
+            membership.activated_at = datetime.now(timezone.utc)
+            cooperative.current_members += 1
+
+        # -----------------------------
+        # ESCROW SYNC
+        # -----------------------------
+        await self.financial.escrow_deposit(
+            db=db,
+            escrow_id=escrow_account_id,
+            amount=amount,
+            reference=f"coop_contribution_{contribution.id}",
+            debit_ledger_account="escrow_debit",
+            credit_ledger_account="escrow_credit"
         )
 
-    contribution = CooperativeContribution(
-        cooperative_id=cooperative_id,
-        membership_id=membership_id,
-        user_id=user_id,
-        amount=amount,
-        payment_reference=payment_reference,
-        payment_intent_id=payment_intent_id,
-        status="completed"
-    )
-
-    db.add(contribution)
-
-    cooperative.total_contributed += amount
-
-    if membership.status != "active":
-        membership.status = "active"
-        membership.activated_at = datetime.now(
-            timezone.utc
-        )
-        cooperative.current_members += 1
-
-    await self.sync_escrow_balance(
-        db=db,
-        escrow_account_id=escrow_account_id,
-        amount=amount,
-        reference=f"coop_contribution_{contribution.id}"
-    )
-
-    await outbox_service.queue_event(
-        db=db,
-        topic="cooperative.contribution.recorded",
-        payload={
-            "cooperative_id": cooperative_id,
-            "membership_id": membership_id,
-            "amount": str(amount)
-        }
-    )
-
-    await db.commit()
-    await db.refresh(contribution)
-
-    return contribution
-
-# =====================================================
-# REVERSE CONTRIBUTION
-# =====================================================
-
-async def reverse_contribution(
-    self,
-    db: AsyncSession,
-    contribution_id: str,
-    reason: str
-):
-
-    contribution = await db.get(
-        CooperativeContribution,
-        contribution_id
-    )
-
-    if not contribution:
-        raise HTTPException(
-            404,
-            "Contribution not found"
+        await outbox_service.queue_event(
+            db=db,
+            topic="cooperative.contribution.recorded",
+            payload={
+                "cooperative_id": cooperative_id,
+                "membership_id": membership_id,
+                "amount": str(amount)
+            }
         )
 
-    if contribution.status != "completed":
-        raise HTTPException(
-            400,
-            "Contribution already processed"
+        await db.commit()
+        return contribution
+
+    # =====================================================
+    # REVERSE CONTRIBUTION
+    # =====================================================
+    async def reverse_contribution(self, db, contribution_id: str, reason: str):
+        contribution = await db.get(CooperativeContribution, contribution_id)
+
+        if not contribution:
+            raise HTTPException(404, "Contribution not found")
+
+        if contribution.status != "completed":
+            raise HTTPException(400, "Already processed")
+
+        cooperative = await db.get(Cooperative, contribution.cooperative_id)
+
+        contribution.status = "reversed"
+        contribution.notes = reason
+
+        cooperative.total_contributed -= contribution.amount
+
+        await db.commit()
+        return contribution
+
+    # =====================================================
+    # REFUND CONTRIBUTION
+    # =====================================================
+    async def refund_contribution(self, db, contribution_id: str, reason: str):
+        contribution = await db.get(CooperativeContribution, contribution_id)
+
+        if not contribution:
+            raise HTTPException(404, "Contribution not found")
+
+        contribution.status = "refunded"
+        contribution.notes = reason
+
+        cooperative = await db.get(Cooperative, contribution.cooperative_id)
+        cooperative.total_contributed -= contribution.amount
+
+        membership = await db.get(CooperativeMembership, contribution.membership_id)
+        if membership:
+            membership.status = "refunded"
+            membership.payment_status = "refunded"
+            membership.refunded_at = datetime.now(timezone.utc)
+
+        await db.commit()
+        return contribution
+
+    # =====================================================
+    # TOTAL CALCULATION
+    # =====================================================
+    async def calculate_total(
+        self,
+        db: AsyncSession,
+        cooperative_id: str
+    ) -> Decimal:
+
+        stmt = select(
+            func.coalesce(
+                func.sum(CooperativeContribution.amount),
+                0
+            )
+        ).where(
+            CooperativeContribution.cooperative_id == cooperative_id,
+            CooperativeContribution.status == "completed"
         )
 
-    cooperative = await db.get(
-        Cooperative,
-        contribution.cooperative_id
-    )
+        result = await db.execute(stmt)
 
-    contribution.status = "reversed"
-    contribution.notes = reason
+        return Decimal(str(result.scalar() or 0))
 
-    cooperative.total_contributed -= contribution.amount
+    # =====================================================
+    # MEMBER COUNT SYNCHRONIZATION
+    # =====================================================
+    async def sync_member_count(
+        self,
+        db: AsyncSession,
+        cooperative_id: str
+    ) -> int:
 
-    await db.commit()
-
-    return contribution
-
-# =====================================================
-# REFUND CONTRIBUTION
-# =====================================================
-
-async def refund_contribution(
-    self,
-    db: AsyncSession,
-    contribution_id: str,
-    reason: str
-):
-
-    contribution = await db.get(
-        CooperativeContribution,
-        contribution_id
-    )
-
-    if not contribution:
-        raise HTTPException(
-            404,
-            "Contribution not found"
+        stmt = select(
+            func.count(CooperativeMembership.id)
+        ).where(
+            CooperativeMembership.cooperative_id == cooperative_id,
+            CooperativeMembership.status == "active"
         )
 
-    contribution.status = "refunded"
-    contribution.notes = reason
+        result = await db.execute(stmt)
 
-    cooperative = await db.get(
-        Cooperative,
-        contribution.cooperative_id
-    )
+        count = result.scalar() or 0
 
-    cooperative.total_contributed -= contribution.amount
-
-    membership = await db.get(
-        CooperativeMembership,
-        contribution.membership_id
-    )
-
-    if membership:
-        membership.status = "refunded"
-        membership.refunded_at = datetime.now(
-            timezone.utc
+        cooperative = await db.get(
+            Cooperative,
+            cooperative_id
         )
 
-    await outbox_service.queue_event(
-        db=db,
-        topic="cooperative.contribution.refunded",
-        payload={
-            "contribution_id": contribution.id,
-            "cooperative_id": contribution.cooperative_id
-        }
-    )
+        if not cooperative:
+            raise HTTPException(
+                404,
+                "Cooperative not found"
+            )
 
-    await db.commit()
+        cooperative.current_members = count
 
-    return contribution
+        await db.commit()
 
-# =====================================================
-# CALCULATE TOTAL
-# =====================================================
-
-async def calculate_total(
-    self,
-    db: AsyncSession,
-    cooperative_id: str
-) -> Decimal:
-
-    stmt = select(
-        func.coalesce(
-            func.sum(
-                CooperativeContribution.amount
-            ),
-            0
-        )
-    ).where(
-        CooperativeContribution.cooperative_id == cooperative_id,
-        CooperativeContribution.status == "completed"
-    )
-
-    result = await db.execute(stmt)
-
-    return Decimal(
-        str(result.scalar() or 0)
-    )
-
-# =====================================================
-# ESCROW SYNCHRONIZATION
-# =====================================================
-
-async def sync_escrow_balance(
-    self,
-    db: AsyncSession,
-    escrow_account_id: str,
-    amount: Decimal,
-    reference: str,
-    user_id: str,
-    cooperative_id: str
-):
-
-    escrow = await db.get(
-        EscrowAccount,
-        escrow_account_id
-    )
-
-    if not escrow:
-        raise HTTPException(
-            404,
-            "Escrow account not found"
-        )
-
-    #escrow.total_deposited += amount
-    #escrow.available_balance += amount
-    #escrow.ledger_balance += amount
-    #escrow.version += 1
-
-    await financial_core.escrow_deposit(
-        user_id=user_id,
-        cooperative_id=cooperative_id,
-        amount=amount,
-        reference=reference
-    )
-
-    return escrow
-
-# =====================================================
-# MEMBER COUNT SYNCHRONIZATION
-# =====================================================
-
-async def sync_member_count(
-    self,
-    db: AsyncSession,
-    cooperative_id: str
-) -> int:
-
-    stmt = select(
-        func.count(
-            CooperativeMembership.id
-        )
-    ).where(
-        CooperativeMembership.cooperative_id == cooperative_id,
-        CooperativeMembership.status == "active"
-    )
-
-    result = await db.execute(stmt)
-
-    count = result.scalar() or 0
-
-    cooperative = await db.get(
-        Cooperative,
-        cooperative_id
-    )
-
-    cooperative.current_members = count
-
-    await db.commit()
-
-    return count
-
-cooperative_contribution_service = (
-CooperativeContributionService()
-)
+        return count
