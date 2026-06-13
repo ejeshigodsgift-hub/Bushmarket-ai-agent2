@@ -8,7 +8,9 @@ from app.services.cooperative_payment_service import cooperative_payment_service
 from app.services.audit_service import AuditService
 from app.integrations.financial_core import financial_core
 
-from app.engines.cooperative_state_engine import CooperativeStateEngine
+from app.services.cooperative_state_service import (
+    cooperative_state_service
+)
 
 
 class CooperativeEngine:
