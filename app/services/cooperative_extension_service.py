@@ -1,14 +1,14 @@
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.cooperative import Cooperative
 from app.db.models.cooperative_membership import CooperativeMembership
+from app.db.models.cooperative_extension_vote import CooperativeExtensionVote
 
 from app.services.cooperative_state_service import cooperative_state_service
 from app.services.outbox_service import outbox_service
-
 from app.services.cooperative_extension_vote_service import (
     CooperativeExtensionVoteService
 )
@@ -33,18 +33,51 @@ class CooperativeExtensionService:
         )
 
         await outbox_service.queue_event(
-            db,
-            "cooperative.extension.vote.opened",
-            {
+            db=db,
+            topic="cooperative.extension.vote.opened",
+            payload={
                 "cooperative_id": cooperative.id
             }
         )
 
-        await db.commit()
         return cooperative
 
     # ====================================================
-    # APPROVE EXTENSION (USES EVALUATION ENGINE)
+    # CHECK TOTAL MEMBERS
+    # ====================================================
+    async def _get_total_members(
+        self,
+        db: AsyncSession,
+        cooperative_id: str
+    ) -> int:
+
+        stmt = select(func.count(CooperativeMembership.id)).where(
+            CooperativeMembership.cooperative_id == cooperative_id
+        )
+
+        return (await db.execute(stmt)).scalar() or 0
+
+    # ====================================================
+    # CHECK VOTES EXIST (TRUTH SOURCE)
+    # ====================================================
+    async def _votes_exist(
+        self,
+        db: AsyncSession,
+        cooperative_id: str,
+        round_number: int
+    ) -> bool:
+
+        stmt = select(func.count(CooperativeExtensionVote.id)).where(
+            CooperativeExtensionVote.cooperative_id == cooperative_id,
+            CooperativeExtensionVote.round_number == round_number
+        )
+
+        count = (await db.execute(stmt)).scalar() or 0
+
+        return count > 0
+
+    # ====================================================
+    # APPROVE EXTENSION (80% RULE + REAL VALIDATION)
     # ====================================================
     async def approve_extension(
         self,
@@ -55,7 +88,28 @@ class CooperativeExtensionService:
     ):
 
         # -------------------------------------
-        # RUN EVALUATION ENGINE (SINGLE SOURCE OF TRUTH)
+        # SAFETY CHECK: MEMBERS EXIST
+        # -------------------------------------
+        total_members = await self._get_total_members(
+            db=db,
+            cooperative_id=cooperative.id
+        )
+
+        if total_members == 0:
+            raise ValueError("No members in cooperative")
+
+        # -------------------------------------
+        # SAFETY CHECK: VOTES EXIST
+        # -------------------------------------
+        if not await self._votes_exist(
+            db=db,
+            cooperative_id=cooperative.id,
+            round_number=round_number
+        ):
+            raise ValueError("No extension votes recorded")
+
+        # -------------------------------------
+        # EVALUATION ENGINE (80% RULE)
         # -------------------------------------
         result = await CooperativeExtensionVoteService().evaluate_round(
             db=db,
@@ -63,12 +117,9 @@ class CooperativeExtensionService:
             round_number=round_number
         )
 
-        # -------------------------------------
-        # STRICT ENFORCEMENT
-        # -------------------------------------
         if result != "APPROVED_80_PERCENT":
             raise ValueError(
-                f"Extension not approved. Result: {result}"
+                f"Extension not approved: {result}"
             )
 
         # -------------------------------------
@@ -84,9 +135,9 @@ class CooperativeExtensionService:
         )
 
         await outbox_service.queue_event(
-            db,
-            "cooperative.extension.approved",
-            {
+            db=db,
+            topic="cooperative.extension.approved",
+            payload={
                 "cooperative_id": cooperative.id,
                 "extension_days": extension_days,
                 "new_expiry": cooperative.ends_at.isoformat(),
@@ -94,7 +145,6 @@ class CooperativeExtensionService:
             }
         )
 
-        await db.commit()
         return cooperative
 
     # ====================================================
@@ -115,15 +165,14 @@ class CooperativeExtensionService:
         )
 
         await outbox_service.queue_event(
-            db,
-            "cooperative.extension.rejected",
-            {
+            db=db,
+            topic="cooperative.extension.rejected",
+            payload={
                 "cooperative_id": cooperative.id,
                 "round_number": round_number
             }
         )
 
-        await db.commit()
         return cooperative
 
 
