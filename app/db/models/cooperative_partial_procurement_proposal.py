@@ -28,13 +28,23 @@ class CooperativePartialProcurementProposal(Base):
             "idx_partial_procurement_status",
             "status"
         ),
+        Index(
+            "idx_partial_procurement_expires",
+            "expires_at"
+        ),
     )
 
+    # =========================
+    # PRIMARY KEY
+    # =========================
     id: Mapped[str] = mapped_column(
         String,
         primary_key=True
     )
 
+    # =========================
+    # CORE REFERENCES
+    # =========================
     cooperative_id: Mapped[str] = mapped_column(
         String,
         index=True,
@@ -46,6 +56,9 @@ class CooperativePartialProcurementProposal(Base):
         nullable=False
     )
 
+    # =========================
+    # PROCUREMENT DATA
+    # =========================
     requested_quantity: Mapped[int] = mapped_column(
         Integer,
         nullable=False
@@ -61,6 +74,9 @@ class CooperativePartialProcurementProposal(Base):
         nullable=False
     )
 
+    # =========================
+    # LIFECYCLE STATUS
+    # =========================
     status: Mapped[str] = mapped_column(
         String,
         default="pending",
@@ -75,12 +91,18 @@ class CooperativePartialProcurementProposal(Base):
     executed
     """
 
+    # =========================
+    # VOTING RULES
+    # =========================
     approval_threshold: Mapped[int] = mapped_column(
         Integer,
         default=100,
         nullable=False
     )
 
+    # =========================
+    # TIMESTAMPS
+    # =========================
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,
