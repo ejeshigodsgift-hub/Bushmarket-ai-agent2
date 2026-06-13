@@ -1,16 +1,21 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import HTTPException
 from datetime import datetime, timedelta, timezone
 
-from app.services.cooperative_service import cooperative_service
-from app.services.cooperative_membership_service import cooperative_membership_service
-from app.services.cooperative_payment_service import cooperative_payment_service
-from app.services.audit_service import AuditService
-from app.integrations.financial_core import financial_core
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.cooperative_state_service import (
-    cooperative_state_service
+from app.services.cooperative_service import cooperative_service
+from app.services.cooperative_membership_service import (
+    cooperative_membership_service,
 )
+from app.services.cooperative_payment_service import (
+    cooperative_payment_service,
+)
+from app.services.cooperative_state_service import (
+    cooperative_state_service,
+)
+from app.services.audit_service import AuditService
+
+from app.integrations.financial_core import financial_core
 
 
 class CooperativeEngine:
@@ -21,23 +26,36 @@ class CooperativeEngine:
     # ====================================================
     # JOIN COOPERATIVE
     # ====================================================
-    async def join_cooperative(self, db, user_id, cooperative_id, ip=None):
+    async def join_cooperative(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        cooperative_id: str,
+        ip: str | None = None,
+    ):
 
-        membership = await cooperative_membership_service.create_pending_membership(
-            db=db,
-            user_id=user_id,
-            cooperative_id=cooperative_id,
-            ip=ip
+        membership = (
+            await cooperative_membership_service.create_pending_membership(
+                db=db,
+                user_id=user_id,
+                cooperative_id=cooperative_id,
+                ip=ip,
+            )
         )
 
-        coop = await cooperative_service.get_cooperative(db, cooperative_id)
+        coop = await cooperative_service.get_cooperative(
+            db,
+            cooperative_id,
+        )
 
-        payment_intent = await cooperative_payment_service.initiate_membership_payment(
-            db=db,
-            membership_id=membership.id,
-            user_id=user_id,
-            amount=float(coop.contribution_per_member),
-            cooperative_id=cooperative_id
+        payment_intent = (
+            await cooperative_payment_service.initiate_membership_payment(
+                db=db,
+                membership_id=membership.id,
+                user_id=user_id,
+                amount=float(coop.contribution_per_member),
+                cooperative_id=cooperative_id,
+            )
         )
 
         await self.audit.log(
@@ -46,27 +64,46 @@ class CooperativeEngine:
             action="coop_join_initiated",
             entity_type="cooperative",
             entity_id=cooperative_id,
-            metadata={"membership_id": membership.id}
+            metadata={
+                "membership_id": membership.id
+            },
         )
 
-        return {"status": "pending_payment", "payment_intent": payment_intent}
+        return {
+            "status": "pending_payment",
+            "payment_intent": payment_intent,
+        }
 
     # ====================================================
     # PAYMENT SUCCESS
     # ====================================================
-    async def handle_payment_success(self, db, membership_id, payment_reference, user_id):
+    async def handle_payment_success(
+        self,
+        db: AsyncSession,
+        membership_id: str,
+        payment_reference: str,
+        user_id: str,
+    ):
 
-        membership = await cooperative_membership_service.activate_membership(
-            db=db,
-            membership_id=membership_id,
-            payment_reference=payment_reference
+        membership = (
+            await cooperative_membership_service.activate_membership(
+                db=db,
+                membership_id=membership_id,
+                payment_reference=payment_reference,
+            )
         )
 
-        coop = await cooperative_service.get_cooperative(db, membership.cooperative_id)
+        coop = await cooperative_service.get_cooperative(
+            db,
+            membership.cooperative_id,
+        )
 
         coop.current_members += 1
 
-        await self._evaluate_cooperative_state(db, coop)
+        await self._evaluate_cooperative_state(
+            db,
+            coop,
+        )
 
         await self.audit.log(
             db=db,
@@ -74,25 +111,37 @@ class CooperativeEngine:
             action="coop_payment_success",
             entity_type="cooperative",
             entity_id=coop.id,
-            metadata={}
+            metadata={},
         )
 
         await db.commit()
 
-        return {"status": "processed", "cooperative_status": coop.status}
+        return {
+            "status": "processed",
+            "cooperative_status": coop.status,
+        }
 
     # ====================================================
-    # CORE STATE ENGINE (FIXED)
+    # STATE EVALUATION
     # ====================================================
-    async def _evaluate_cooperative_state(self, db: AsyncSession, coop):
+    async def _evaluate_cooperative_state(
+        self,
+        db: AsyncSession,
+        coop,
+    ):
 
-        total_funds = coop.current_members * float(coop.contribution_per_member)
+        total_funds = (
+            coop.current_members
+            * float(coop.contribution_per_member)
+        )
 
-        # FULL FUNDING
         if total_funds >= float(coop.target_amount):
 
-            await CooperativeStateEngine.apply_transition(
-                db, coop, "funded", reason="target reached"
+            await cooperative_state_service.transition(
+                db=db,
+                cooperative=coop,
+                new_state="funded",
+                reason="target reached",
             )
 
             await self.audit.log(
@@ -101,33 +150,49 @@ class CooperativeEngine:
                 action="coop_funded",
                 entity_type="cooperative",
                 entity_id=coop.id,
-                metadata={"total_funds": total_funds}
+                metadata={
+                    "total_funds": total_funds
+                },
             )
 
-        # STILL ACTIVE
         elif coop.current_members < coop.max_members:
 
-            await CooperativeStateEngine.apply_transition(
-                db, coop, "active", reason="still recruiting"
-            )
+            # Already active → no transition needed
+            if coop.status != "active":
+                await cooperative_state_service.transition(
+                    db=db,
+                    cooperative=coop,
+                    new_state="active",
+                    reason="still recruiting",
+                )
 
-        # CAPACITY FULL BUT NOT FUNDED
         else:
 
-            await CooperativeStateEngine.apply_transition(
-                db, coop, "active", reason="capacity reached"
-            )
+            if coop.status != "active":
+                await cooperative_state_service.transition(
+                    db=db,
+                    cooperative=coop,
+                    new_state="active",
+                    reason="capacity reached",
+                )
 
     # ====================================================
     # EXPIRY HANDLER
     # ====================================================
-    async def handle_expiry(self, db, coop):
+    async def handle_expiry(
+        self,
+        db: AsyncSession,
+        coop,
+    ):
 
         if coop.status in ["funded", "closed"]:
             return coop
 
-        await CooperativeStateEngine.apply_transition(
-            db, coop, "expired", reason="lifespan ended"
+        await cooperative_state_service.transition(
+            db=db,
+            cooperative=coop,
+            new_state="expired",
+            reason="lifespan ended",
         )
 
         await self.audit.log(
@@ -136,57 +201,79 @@ class CooperativeEngine:
             action="coop_expired",
             entity_type="cooperative",
             entity_id=coop.id,
-            metadata={}
+            metadata={},
         )
 
-        return await self._evaluate_post_expiry_options(db, coop)
+        return await self._evaluate_post_expiry_options(
+            db,
+            coop,
+        )
 
     # ====================================================
     # POST EXPIRY
     # ====================================================
-    async def _evaluate_post_expiry_options(self, db, coop):
+    async def _evaluate_post_expiry_options(
+        self,
+        db: AsyncSession,
+        coop,
+    ):
 
         if coop.allow_extension:
 
-            coop.expiry_extended_at = datetime.now(timezone.utc) + timedelta(hours=48)
-
-            await CooperativeStateEngine.apply_transition(
-                db, coop, "extension_vote"
+            coop.expiry_extended_at = (
+                datetime.now(timezone.utc)
+                + timedelta(hours=48)
             )
 
             return coop
 
-        return await self._trigger_partial_procurement(db, coop)
+        return await self._trigger_partial_procurement(
+            db,
+            coop,
+        )
 
     # ====================================================
     # PARTIAL PROCUREMENT
     # ====================================================
-    async def _trigger_partial_procurement(self, db, coop):
+    async def _trigger_partial_procurement(
+        self,
+        db: AsyncSession,
+        coop,
+    ):
 
-        await CooperativeStateEngine.apply_transition(
-            db, coop, "procurement_pending"
+        await cooperative_state_service.transition(
+            db=db,
+            cooperative=coop,
+            new_state="procurement_pending",
+            reason="partial procurement initiated",
         )
 
-        escrow = await financial_core.get_cooperative_escrow(cooperative_id=coop.id)
+        escrow = await financial_core.get_cooperative_escrow(
+            cooperative_id=coop.id,
+        )
 
         available = escrow["available_balance"]
 
         if available <= 0:
 
-            await CooperativeStateEngine.apply_transition(
-                db, coop, "expired"
+            await cooperative_state_service.transition(
+                db=db,
+                cooperative=coop,
+                new_state="refunded",
+                reason="no funds available for procurement",
             )
+
             return coop
 
         await financial_core.reserve_for_partial_procurement(
             cooperative_id=coop.id,
-            amount=available
+            amount=available,
         )
 
         await financial_core.create_partial_order(
             cooperative_id=coop.id,
             amount=available,
-            mode="partial"
+            mode="partial",
         )
 
         return coop
@@ -194,17 +281,27 @@ class CooperativeEngine:
     # ====================================================
     # MANUAL EXTENSION
     # ====================================================
-    async def extend_cooperative_48h(self, db, cooperative_id, user_id):
+    async def extend_cooperative_48h(
+        self,
+        db: AsyncSession,
+        cooperative_id: str,
+        user_id: str,
+    ):
 
-        coop = await cooperative_service.get_cooperative(db, cooperative_id)
+        coop = await cooperative_service.get_cooperative(
+            db,
+            cooperative_id,
+        )
 
         if coop.status != "expired":
-            raise HTTPException(400, "Only expired cooperatives can be extended")
+            raise HTTPException(
+                400,
+                "Only expired cooperatives can be extended",
+            )
 
-        coop.expiry_extended_at = datetime.now(timezone.utc) + timedelta(hours=48)
-
-        await CooperativeStateEngine.apply_transition(
-            db, coop, "active", reason="manual extension"
+        coop.expiry_extended_at = (
+            datetime.now(timezone.utc)
+            + timedelta(hours=48)
         )
 
         await self.audit.log(
@@ -212,26 +309,35 @@ class CooperativeEngine:
             user_id=user_id,
             action="coop_48h_extension",
             entity_type="cooperative",
-            entity_id=coop.id
+            entity_id=coop.id,
         )
 
         return coop
 
+    # ====================================================
+    # PAYMENT SYNC
+    # ====================================================
+    async def sync_payment_from_financial_core(
+        self,
+        db: AsyncSession,
+        payment_reference: str,
+    ):
 
-    async def   sync_payment_from_financial_core(self,   db, payment_reference):
-
-        payment = await   financial_core.verify_payment(payment_ref erence)
+        payment = await financial_core.verify_payment(
+            payment_reference
+        )
 
         if payment["status"] == "success":
-            return await   self.handle_payment_success(
+
+            return await self.handle_payment_success(
                 db=db,
-             membership_id=payment["metadata"] ["membership_id"],
-            payment_reference=payment_reference,
-                user_id=payment["user_id"]
+                membership_id=payment["metadata"]["membership_id"],
+                payment_reference=payment_reference,
+                user_id=payment["user_id"],
             )
 
-         return await  self.handle_payment_failed(
+        return await self.handle_payment_failed(
             db=db,
             membership_id=payment["metadata"]["membership_id"],
-            reason="failed"
+            reason="failed",
         )
