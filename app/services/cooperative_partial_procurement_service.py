@@ -3,11 +3,19 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.cooperative_procurement import CooperativeProcurement
-from app.db.models.market_product_listing import MarketProductListing
+from app.services.procurement_base_service import ProcurementBaseService
+
+from app.db.models.cooperative_procurement import (
+    CooperativeProcurement,
+)
+from app.db.models.market_product_listing import (
+    MarketProductListing,
+)
 
 
-class CooperativePartialProcurementService:
+class CooperativePartialProcurementService(
+    ProcurementBaseService
+):
 
     async def create_partial_procurement(
         self,
@@ -21,26 +29,39 @@ class CooperativePartialProcurementService:
     ) -> CooperativeProcurement:
 
         if available_quantity <= 0:
-            raise ValueError("No stock available for partial procurement")
+            raise ValueError(
+                "No stock available for partial procurement"
+            )
 
-        final_quantity = min(requested_quantity, available_quantity)
+        final_quantity = min(
+            requested_quantity,
+            available_quantity,
+        )
 
-        fulfillment_ratio = Decimal(final_quantity) / Decimal(requested_quantity)
+        fulfillment_ratio = (
+            Decimal(final_quantity)
+            / Decimal(requested_quantity)
+        )
 
         adjusted_cost = total_cost * fulfillment_ratio
+
+        savings = self.calculate_savings(
+            unit_price=listing.unit_price,
+            qty=final_quantity,
+            cost=adjusted_cost,
+        )
 
         procurement = CooperativeProcurement(
             cooperative_id=cooperative_id,
             procurement_type="partial",
             procurement_value=adjusted_cost,
             procurement_quantity=final_quantity,
-            estimated_retail_value=listing.unit_price * final_quantity,
+            estimated_retail_value=savings["retail"],
             cooperative_buying_value=adjusted_cost,
-            estimated_savings=(listing.unit_price * final_quantity) - adjusted_cost,
-            savings_percentage=((listing.unit_price * final_quantity) - adjusted_cost)
-            / (listing.unit_price * final_quantity) * Decimal("100"),
+            estimated_savings=savings["savings"],
+            savings_percentage=savings["percent"],
             status="approved",
-            approved_at=datetime.now(timezone.utc)
+            approved_at=datetime.now(timezone.utc),
         )
 
         db.add(procurement)
@@ -56,10 +77,14 @@ class CooperativePartialProcurementService:
     async def finalize_partial_procurement(
         self,
         db: AsyncSession,
-        procurement: CooperativeProcurement
+        procurement: CooperativeProcurement,
     ):
+
         procurement.status = "completed"
-        procurement.completed_at = datetime.now(timezone.utc)
+        procurement.completed_at = datetime.now(
+            timezone.utc
+        )
 
         await db.commit()
+
         return procurement
