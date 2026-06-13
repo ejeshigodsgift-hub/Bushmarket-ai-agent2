@@ -1,6 +1,17 @@
 from datetime import datetime
-from sqlalchemy import String, Integer, DateTime, ForeignKey, Numeric
-from sqlalchemy.orm import Mapped, mapped_column
+
+from sqlalchemy import (
+    String,
+    Integer,
+    DateTime,
+    Numeric,
+    Index
+)
+
+from sqlalchemy.orm import (
+    Mapped,
+    mapped_column
+)
 
 from app.db.base import Base
 
@@ -8,20 +19,90 @@ from app.db.base import Base
 class CooperativePartialProcurementProposal(Base):
     __tablename__ = "cooperative_partial_procurement_proposals"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    __table_args__ = (
+        Index(
+            "idx_partial_procurement_cooperative",
+            "cooperative_id"
+        ),
+        Index(
+            "idx_partial_procurement_status",
+            "status"
+        ),
+    )
 
-    cooperative_id: Mapped[str] = mapped_column(String, index=True)
-    listing_id: Mapped[str] = mapped_column(String)
+    id: Mapped[str] = mapped_column(
+        String,
+        primary_key=True
+    )
 
-    requested_quantity: Mapped[int] = mapped_column(Integer)
-    available_quantity: Mapped[int] = mapped_column(Integer)
+    cooperative_id: Mapped[str] = mapped_column(
+        String,
+        index=True,
+        nullable=False
+    )
 
-    total_cost: Mapped[float] = mapped_column(Numeric(18, 2))
+    listing_id: Mapped[str] = mapped_column(
+        String,
+        nullable=False
+    )
 
-    status: Mapped[str] = mapped_column(String, default="pending")
-    # pending | voting | approved | rejected | executed
+    requested_quantity: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False
+    )
 
-    approval_threshold: Mapped[int] = mapped_column(Integer, default=100)
+    available_quantity: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False
+    )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    total_cost: Mapped[float] = mapped_column(
+        Numeric(18, 2),
+        nullable=False
+    )
+
+    status: Mapped[str] = mapped_column(
+        String,
+        default="pending",
+        nullable=False
+    )
+    """
+    pending
+    voting
+    approved
+    rejected
+    expired
+    executed
+    """
+
+    approval_threshold: Mapped[int] = mapped_column(
+        Integer,
+        default=100,
+        nullable=False
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False
+    )
+
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True
+    )
+
+    rejected_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True
+    )
+
+    executed_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True
+    )
