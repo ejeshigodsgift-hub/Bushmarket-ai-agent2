@@ -87,7 +87,7 @@ class CooperativePartialVoteScheduler:
                     # =================================================
                     result = await service.evaluate_votes(db, proposal)
 
-                    if result == "APPROVED_100_PERCENT":
+                    if result == "APPROVED_80_PERCENT":
                         await cooperative_state_service.transition(
                             db=db,
                             cooperative_id=proposal.cooperative_id,
