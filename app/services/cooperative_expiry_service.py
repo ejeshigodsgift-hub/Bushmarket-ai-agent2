@@ -4,9 +4,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.cooperative import Cooperative
+
 from app.services.outbox_service import outbox_service
 from app.services.cooperative_state_service import (
     cooperative_state_service
+)
+from app.services.cooperative_extension_service import (
+    cooperative_extension_service
 )
 
 
@@ -14,6 +18,9 @@ class CooperativeExpiryService:
 
     VOTE_WINDOW_HOURS = 48
 
+    # =====================================================
+    # DETECT COOPERATIVES ENTERING EXPIRY WINDOW
+    # =====================================================
     async def detect_expiring_cooperatives(
         self,
         db: AsyncSession
@@ -31,21 +38,38 @@ class CooperativeExpiryService:
         )
 
         result = await db.execute(stmt)
+
         cooperatives = result.scalars().all()
 
+        opened = 0
+
         for coop in cooperatives:
+
+            # ----------------------------------------
+            # OPEN EXTENSION VOTING AUTOMATICALLY
+            # ----------------------------------------
+            await cooperative_extension_service.open_extension_vote(
+                db=db,
+                cooperative=coop
+            )
+
             await outbox_service.queue_event(
-                db,
-                "cooperative.expiry.window_open",
-                {
+                db=db,
+                topic="cooperative.expiry.window_open",
+                payload={
                     "cooperative_id": coop.id
                 }
             )
 
+            opened += 1
+
         await db.commit()
 
-        return len(cooperatives)
+        return opened
 
+    # =====================================================
+    # EXPIRE COOPERATIVES
+    # =====================================================
     async def expire_cooperatives(
         self,
         db: AsyncSession
@@ -55,11 +79,19 @@ class CooperativeExpiryService:
 
         stmt = select(Cooperative).where(
             Cooperative.ends_at <= now,
-            Cooperative.status == "active"
+            Cooperative.status.in_(
+                [
+                    "active",
+                    "extension_vote"
+                ]
+            )
         )
 
         result = await db.execute(stmt)
+
         cooperatives = result.scalars().all()
+
+        expired = 0
 
         for coop in cooperatives:
 
@@ -71,13 +103,18 @@ class CooperativeExpiryService:
             )
 
             await outbox_service.queue_event(
-                db,
-                "cooperative.expired",
-                {
+                db=db,
+                topic="cooperative.expired",
+                payload={
                     "cooperative_id": coop.id
                 }
             )
 
+            expired += 1
+
         await db.commit()
 
-        return len(cooperatives)
+        return expired
+
+
+cooperative_expiry_service = CooperativeExpiryService()
