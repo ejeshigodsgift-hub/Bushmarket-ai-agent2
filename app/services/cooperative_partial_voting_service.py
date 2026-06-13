@@ -133,7 +133,7 @@ class CooperativePartialVotingService:
             1 for v in votes if v.vote
         )
      
-        if total_members else 0
+        if total_members == 0
             return "VOTING_IN_PROGRESS"
 
         approval_rate = (
