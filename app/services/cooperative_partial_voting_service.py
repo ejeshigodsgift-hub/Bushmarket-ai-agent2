@@ -141,10 +141,9 @@ class CooperativePartialVotingService:
             
         )
 
-        if approval_rate >=      proposal.approval_threshold:
-
+        if approval_rate >= proposal.approval_threshold:
             proposal.status = "approved"
-
+            proposal.approved_at =   datetime.utcnow()
             # =====================================
             # STATE ENGINE (CORRECTED)
             # =====================================
@@ -166,8 +165,8 @@ class CooperativePartialVotingService:
             return "APPROVED_80_PERCENT"
 
         if approval_rate < 50:
-
             proposal.status = "rejected"
+            proposal.rejected_at =   datetime.utcnow()
 
             await db.commit()
 
