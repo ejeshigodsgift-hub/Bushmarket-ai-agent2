@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from app.db.models.cooperative import Cooperative
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -88,12 +89,18 @@ class CooperativePartialVoteScheduler:
                     result = await service.evaluate_votes(db, proposal)
 
                     if result == "APPROVED_80_PERCENT":
-                        await cooperative_state_service.transition(
-                            db=db,
-                            cooperative_id=proposal.cooperative_id,
-                            new_state="procurement_pending",
-                            reason="partial_procurement_approved"
-                        )
+                        coop = await  db.get(
+                            Cooperative,
+                            proposal.cooperative_id
+)
+
+                        if coop:
+                            await   cooperative_state_service.transition(
+                                db=db,
+                                cooperative=coop,
+                new_state="procurement_pending",
+          reason="partial_procurement_approved"
+                            )
 
                         await outbox_service.queue_event(
                             db,
