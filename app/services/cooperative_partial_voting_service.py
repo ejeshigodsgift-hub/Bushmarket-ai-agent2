@@ -36,7 +36,7 @@ class CooperativePartialVotingService:
             available_quantity=available_quantity,
             total_cost=total_cost,
             status="voting",
-            approval_threshold=100,
+            approval_threshold=80,
             expires_at=datetime.now(timezone.utc)
             + timedelta(hours=voting_window_hours)
         )
@@ -163,7 +163,7 @@ class CooperativePartialVotingService:
 
             await db.commit()
 
-            return "APPROVED_100_PERCENT"
+            return "APPROVED_80_PERCENT"
 
         if approval_rate < 50:
 
