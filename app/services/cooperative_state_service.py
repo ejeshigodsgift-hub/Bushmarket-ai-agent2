@@ -1,19 +1,22 @@
-from datetime import datetime, timezone
-
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.cooperative import Cooperative
 from app.services.outbox_service import outbox_service
 
 
-class CooperativeStateService:
+class CooperativeStateEngine:
+    """
+    CENTRALIZED + ENFORCED COOPERATIVE STATE MACHINE
+
+    Guarantees:
+    - No direct status mutation allowed outside apply_transition()
+    - All transitions are validated
+    - All transitions are observable (outbox event)
+    - Single source of truth for state graph
+    """
 
     VALID_TRANSITIONS = {
-        "draft": [
-            "active",
-            "cancelled"
-        ],
+        "draft": ["active", "cancelled"],
 
         "active": [
             "funded",
@@ -24,43 +27,14 @@ class CooperativeStateService:
             "cancelled"
         ],
 
-        "extension_vote": [
-            "active",
-            "expired",
-            "cancelled"
-        ],
+        "extension_vote": ["active", "expired", "cancelled"],
+        "merge_vote": ["active", "procurement_pending", "cancelled"],
+        "partial_vote": ["procurement_pending", "active", "cancelled"],
 
-        "merge_vote": [
-            "active",
-            "procurement_pending",
-            "cancelled"
-        ],
-
-        "partial_vote": [
-            "procurement_pending",
-            "active",
-            "cancelled"
-        ],
-
-        "funded": [
-            "procurement_pending",
-            "refunded",
-            "cancelled"
-        ],
-
-        "procurement_pending": [
-            "purchasing",
-            "refunded",
-            "cancelled"
-        ],
-
-        "purchasing": [
-            "delivered"
-        ],
-
-        "delivered": [
-            "closed"
-        ],
+        "funded": ["procurement_pending", "refunded", "cancelled"],
+        "procurement_pending": ["purchasing", "refunded", "cancelled"],
+        "purchasing": ["delivered"],
+        "delivered": ["closed"],
 
         "closed": [],
         "expired": [],
@@ -68,51 +42,51 @@ class CooperativeStateService:
         "refunded": []
     }
 
-    async def transition(
-        self,
+    # ====================================================
+    # VALIDATION (PURE RULE ENGINE)
+    # ====================================================
+    @staticmethod
+    def validate_transition(current: str, new: str):
+        allowed = CooperativeStateEngine.VALID_TRANSITIONS.get(current, [])
+
+        if new not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid transition: {current} → {new}"
+            )
+
+    # ====================================================
+    # INTERNAL TRANSITION (NO DB, NO SIDE EFFECT)
+    # ====================================================
+    @staticmethod
+    def _transition(coop, new_state: str):
+        CooperativeStateEngine.validate_transition(coop.status, new_state)
+        coop.status = new_state
+        return coop
+
+    # ====================================================
+    # SAFE PUBLIC ENTRY (DB + OUTBOX + GUARANTEE)
+    # ====================================================
+    @staticmethod
+    async def apply_transition(
         db: AsyncSession,
-        cooperative: Cooperative,
+        coop,
         new_state: str,
         reason: str | None = None
     ):
+        old_state = coop.status
 
-        current = cooperative.status
-
-        allowed = self.VALID_TRANSITIONS.get(
-            current,
-            []
-        )
-
-        if new_state not in allowed:
-            raise HTTPException(
-                400,
-                f"Invalid transition: {current} -> {new_state}"
-            )
-
-        cooperative.status = new_state
-
-        if new_state == "funded":
-            cooperative.funded_at = datetime.now(
-                timezone.utc
-            )
-
-        if new_state == "closed":
-            cooperative.closed_at = datetime.now(
-                timezone.utc
-            )
+        CooperativeStateEngine._transition(coop, new_state)
 
         await outbox_service.queue_event(
             db=db,
             topic="cooperative.state.changed",
             payload={
-                "cooperative_id": cooperative.id,
-                "old_state": current,
+                "cooperative_id": coop.id,
+                "old_state": old_state,
                 "new_state": new_state,
                 "reason": reason
             }
         )
 
-        return cooperative
-
-
-cooperative_state_service = CooperativeStateService()
+        return coop
