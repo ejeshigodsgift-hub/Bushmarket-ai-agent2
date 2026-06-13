@@ -141,7 +141,7 @@ class CooperativePartialVotingService:
             
         )
 
-        if approval_rate >= 80:
+        if approval_rate >=      proposal.approval_threshold:
 
             proposal.status = "approved"
 
