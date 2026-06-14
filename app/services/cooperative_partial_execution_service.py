@@ -75,9 +75,9 @@ class CooperativePartialExecutionService:
         # =========================================================
 
         members_result = await db.execute(
-            select(CooperativeMembership).where(
-                CooperativeMembership.cooperative_id == proposal.cooperative_id,
-                CooperativeMembership.status == "active"
+        select(CooperativeMembership).where(
+        CooperativeMembership.cooperative_id == proposal.cooperative_id,
+               CooperativeMembership.status == "active"
             )
         )
 
@@ -88,27 +88,42 @@ class CooperativePartialExecutionService:
 
         # distribute evenly across members
         per_member_quantity = (
-            procurement.procurement_quantity / len(members)
+            procurement.procurement_quantity /  len(members)
         )
 
         for member in members:
 
-            allocation = CooperativePartialProcurement(
-                cooperative_id=proposal.cooperative_id,
+            allocation =   CooperativePartialProcurement(
+         cooperative_id=proposal.cooperative_id,
                 proposal_id=proposal.id,
                 member_id=member.id,
                 procurement_id=procurement.id,
 
-                allocated_quantity=per_member_quantity,
-                unit_price=listing.unit_price,
-                total_value=per_member_quantity * listing.unit_price,
+         allocated_quantity=per_member_quantity,
+              unit_price=listing.unit_price,
+            total_value=per_member_quantity *  listing.unit_price,
 
                 status="allocated",
-                allocated_at=datetime.now(timezone.utc)
+          allocated_at=datetime.now(timezone.utc)
             )
 
             db.add(allocation)
 
+# =====================================================
+# CONTRIBUTION LINKING (NEW FIX ADDED HERE)
+# =====================================================
+
+        contrib_result = await db.execute(
+     select(CooperativeContribution).where(
+         CooperativeContribution.cooperative_id ==   proposal.cooperative_id,
+                CooperativeContribution.status == "completed"
+            )
+        )
+
+        contributions =   contrib_result.scalars().all()
+
+        for c in contributions:
+            c.procurement_id = procurement.id
         # -----------------------------
         # UPDATE PROPOSAL STATE
         # -----------------------------
