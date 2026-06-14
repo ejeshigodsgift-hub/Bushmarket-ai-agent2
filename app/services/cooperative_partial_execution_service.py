@@ -124,6 +124,7 @@ class CooperativePartialExecutionService:
 
         for c in contributions:
             c.procurement_id = procurement.id
+          c.is_partial_procurement_related = True
         # -----------------------------
         # UPDATE PROPOSAL STATE
         # -----------------------------
