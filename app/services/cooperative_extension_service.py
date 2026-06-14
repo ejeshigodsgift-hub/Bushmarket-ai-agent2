@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.cooperative import Cooperative
 from app.db.models.cooperative_membership import CooperativeMembership
 from app.db.models.cooperative_extension_vote import CooperativeExtensionVote
+from app.db.models.cooperative_extension_proposal import CooperativeExtensionProposal
 
 from app.services.cooperative_state_service import cooperative_state_service
 from app.services.outbox_service import outbox_service
@@ -17,14 +18,34 @@ from app.services.cooperative_extension_vote_service import (
 class CooperativeExtensionService:
 
     # ====================================================
-    # OPEN VOTE ROUND
+    # OPEN VOTE ROUND (NOW CREATES PROPOSAL)
     # ====================================================
     async def open_extension_vote(
         self,
         db: AsyncSession,
-        cooperative: Cooperative
+        cooperative: Cooperative,
+        extension_days: int,
+        round_number: int = 1
     ):
+        """
+        Creates a proper extension proposal before voting starts
+        """
 
+        proposal = CooperativeExtensionProposal(
+            cooperative_id=cooperative.id,
+            requested_extension_days=extension_days,
+            max_extension_days=extension_days,
+            min_extension_days=extension_days,
+            approval_threshold=80,
+            status="voting",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=48)
+        )
+
+        db.add(proposal)
+        await db.commit()
+        await db.refresh(proposal)
+
+        # transition cooperative state
         await cooperative_state_service.transition(
             db=db,
             cooperative=cooperative,
@@ -36,11 +57,14 @@ class CooperativeExtensionService:
             db=db,
             topic="cooperative.extension.vote.opened",
             payload={
-                "cooperative_id": cooperative.id
+                "cooperative_id": cooperative.id,
+                "proposal_id": proposal.id,
+                "extension_days": extension_days,
+                "round_number": round_number
             }
         )
 
-        return cooperative
+        return proposal
 
     # ====================================================
     # CHECK TOTAL MEMBERS
@@ -58,7 +82,7 @@ class CooperativeExtensionService:
         return (await db.execute(stmt)).scalar() or 0
 
     # ====================================================
-    # CHECK VOTES EXIST (TRUTH SOURCE)
+    # CHECK VOTES EXIST
     # ====================================================
     async def _votes_exist(
         self,
@@ -73,23 +97,34 @@ class CooperativeExtensionService:
         )
 
         count = (await db.execute(stmt)).scalar() or 0
-
         return count > 0
 
     # ====================================================
-    # APPROVE EXTENSION (80% RULE + REAL VALIDATION)
+    # APPROVE EXTENSION (PROPOSAL-BASED)
     # ====================================================
     async def approve_extension(
         self,
         db: AsyncSession,
         cooperative: Cooperative,
+        proposal_id: str,
         extension_days: int,
         round_number: int
     ):
 
-        # -------------------------------------
-        # SAFETY CHECK: MEMBERS EXIST
-        # -------------------------------------
+        proposal = await db.get(
+            CooperativeExtensionProposal,
+            proposal_id
+        )
+
+        if not proposal:
+            raise ValueError("Proposal not found")
+
+        if proposal.status != "voting":
+            raise ValueError(f"Invalid proposal state: {proposal.status}")
+
+        # -----------------------------
+        # VALIDATION
+        # -----------------------------
         total_members = await self._get_total_members(
             db=db,
             cooperative_id=cooperative.id
@@ -98,9 +133,6 @@ class CooperativeExtensionService:
         if total_members == 0:
             raise ValueError("No members in cooperative")
 
-        # -------------------------------------
-        # SAFETY CHECK: VOTES EXIST
-        # -------------------------------------
         if not await self._votes_exist(
             db=db,
             cooperative_id=cooperative.id,
@@ -108,9 +140,9 @@ class CooperativeExtensionService:
         ):
             raise ValueError("No extension votes recorded")
 
-        # -------------------------------------
-        # EVALUATION ENGINE (80% RULE)
-        # -------------------------------------
+        # -----------------------------
+        # VOTE EVALUATION
+        # -----------------------------
         result = await CooperativeExtensionVoteService().evaluate_round(
             db=db,
             cooperative_id=cooperative.id,
@@ -118,14 +150,18 @@ class CooperativeExtensionService:
         )
 
         if result != "APPROVED_80_PERCENT":
-            raise ValueError(
-                f"Extension not approved: {result}"
-            )
+            proposal.status = "rejected"
+            proposal.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+            raise ValueError(f"Extension not approved: {result}")
 
-        # -------------------------------------
+        # -----------------------------
         # APPLY EXTENSION
-        # -------------------------------------
+        # -----------------------------
         cooperative.ends_at = cooperative.ends_at + timedelta(days=extension_days)
+
+        proposal.status = "approved"
+        proposal.approved_at = datetime.now(timezone.utc)
 
         await cooperative_state_service.transition(
             db=db,
@@ -139,23 +175,37 @@ class CooperativeExtensionService:
             topic="cooperative.extension.approved",
             payload={
                 "cooperative_id": cooperative.id,
+                "proposal_id": proposal.id,
                 "extension_days": extension_days,
                 "new_expiry": cooperative.ends_at.isoformat(),
                 "round_number": round_number
             }
         )
 
+        await db.commit()
         return cooperative
 
     # ====================================================
-    # REJECT EXTENSION
+    # REJECT EXTENSION (PROPOSAL UPDATED)
     # ====================================================
     async def reject_extension(
         self,
         db: AsyncSession,
         cooperative: Cooperative,
+        proposal_id: str,
         round_number: int
     ):
+
+        proposal = await db.get(
+            CooperativeExtensionProposal,
+            proposal_id
+        )
+
+        if not proposal:
+            raise ValueError("Proposal not found")
+
+        proposal.status = "rejected"
+        proposal.updated_at = datetime.now(timezone.utc)
 
         await cooperative_state_service.transition(
             db=db,
@@ -169,10 +219,12 @@ class CooperativeExtensionService:
             topic="cooperative.extension.rejected",
             payload={
                 "cooperative_id": cooperative.id,
+                "proposal_id": proposal.id,
                 "round_number": round_number
             }
         )
 
+        await db.commit()
         return cooperative
 
 
