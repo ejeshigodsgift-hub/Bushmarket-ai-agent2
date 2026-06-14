@@ -97,19 +97,7 @@ class CooperativePartialVoteScheduler:
 
                     if result == "APPROVED_80_PERCENT":
 
-                        listing = await db.get(
-                           MarketProductListing,
-                            proposal.listing_id
-                        )
-
-                        if not listing:
-                            raise ValueError("Listing not found")
-
-                        await  CooperativePartialExecutionService().execute_from_proposal(
-                            db=db,
-                      proposal_id=proposal.id,
-                            listing=listing
-                        )
+                        
 
     await outbox_service.queue_event(
         db,
