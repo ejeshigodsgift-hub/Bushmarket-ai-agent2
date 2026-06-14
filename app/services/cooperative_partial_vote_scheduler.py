@@ -1,5 +1,12 @@
 from datetime import datetime, timezone
 from app.db.models.cooperative import Cooperative
+from app.services.cooperative_partial_execution_service import (
+    CooperativePartialExecutionService
+)
+
+from app.db.models.market_product_listing import (
+    MarketProductListing
+)
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -89,15 +96,29 @@ class CooperativePartialVoteScheduler:
                     result = await service.evaluate_votes(db, proposal)
 
                     if result == "APPROVED_80_PERCENT":
-                        
-                        await outbox_service.queue_event(
-                            db,
-                            "cooperative.partial_vote.approved",
-                            {
-                                "proposal_id": proposal.id,
-                                "cooperative_id": proposal.cooperative_id
-                            }
+
+                        listing = await db.get(
+                           MarketProductListing,
+                            proposal.listing_id
                         )
+
+                        if not listing:
+                            raise ValueError("Listing not found")
+
+                        await  CooperativePartialExecutionService().execute_from_proposal(
+                            db=db,
+                      proposal_id=proposal.id,
+                            listing=listing
+                        )
+
+    await outbox_service.queue_event(
+        db,
+        "cooperative.partial_vote.approved",
+        {
+            "proposal_id": proposal.id,
+            "cooperative_id": proposal.cooperative_id
+        }
+    )
 
                     elif result == "REJECTED":
                         await outbox_service.queue_event(
