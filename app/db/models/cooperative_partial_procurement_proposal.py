@@ -1,16 +1,18 @@
-from datetime import datetime
+import datetime
 
 from sqlalchemy import (
     String,
     Integer,
     DateTime,
     Numeric,
+    ForeignKey,
     Index
 )
 
 from sqlalchemy.orm import (
     Mapped,
-    mapped_column
+    mapped_column,
+    relationship
 )
 
 from app.db.base import Base
@@ -43,16 +45,19 @@ class CooperativePartialProcurementProposal(Base):
     )
 
     # =========================
-    # CORE REFERENCES
+    # CORE REFERENCES (FIXED)
     # =========================
     cooperative_id: Mapped[str] = mapped_column(
         String,
+        ForeignKey("cooperatives.id", ondelete="CASCADE"),
         index=True,
         nullable=False
     )
 
     listing_id: Mapped[str] = mapped_column(
         String,
+        ForeignKey("market_product_listings.id", ondelete="CASCADE"),
+        index=True,
         nullable=False
     )
 
@@ -103,28 +108,41 @@ class CooperativePartialProcurementProposal(Base):
     # =========================
     # TIMESTAMPS
     # =========================
-    created_at: Mapped[datetime] = mapped_column(
+    created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=datetime.datetime.utcnow,
         nullable=False
     )
 
-    expires_at: Mapped[datetime] = mapped_column(
+    expires_at: Mapped[datetime.datetime] = mapped_column(
         DateTime,
         nullable=False
     )
 
-    approved_at: Mapped[datetime | None] = mapped_column(
+    approved_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime,
         nullable=True
     )
 
-    rejected_at: Mapped[datetime | None] = mapped_column(
+    rejected_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime,
         nullable=True
     )
 
-    executed_at: Mapped[datetime | None] = mapped_column(
+    executed_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime,
         nullable=True
+    )
+
+    # =========================
+    # RELATIONSHIPS (OPTIONAL BUT RECOMMENDED)
+    # =========================
+    cooperative = relationship(
+        "Cooperative",
+        lazy="selectin"
+    )
+
+    listing = relationship(
+        "MarketProductListing",
+        lazy="selectin"
     )
