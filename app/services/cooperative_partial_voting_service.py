@@ -1,17 +1,19 @@
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.cooperative import Cooperative
-from app.db.models.cooperative_partial_procurement_proposal import (
-    CooperativePartialProcurementProposal
-)
-from app.db.models.cooperative_partial_vote import CooperativePartialVote
 from app.db.models.cooperative_membership import CooperativeMembership
+from app.db.models.cooperative_partial_procurement_proposal import (
+    CooperativePartialProcurementProposal,
+)
+from app.db.models.cooperative_partial_vote import (
+    CooperativePartialVote,
+)
 
 from app.services.cooperative_state_service import (
-    cooperative_state_service
+    cooperative_state_service,
 )
 
 
@@ -25,7 +27,7 @@ class CooperativePartialVotingService:
         requested_quantity: int,
         available_quantity: int,
         total_cost: float,
-        voting_window_hours: int = 48
+        voting_window_hours: int = 48,
     ):
 
         proposal = CooperativePartialProcurementProposal(
@@ -38,7 +40,7 @@ class CooperativePartialVotingService:
             status="voting",
             approval_threshold=80,
             expires_at=datetime.now(timezone.utc)
-            + timedelta(hours=voting_window_hours)
+            + timedelta(hours=voting_window_hours),
         )
 
         db.add(proposal)
@@ -53,7 +55,7 @@ class CooperativePartialVotingService:
         db: AsyncSession,
         proposal_id: str,
         member_id: str,
-        vote: bool
+        vote: bool,
     ):
 
         result = await db.execute(
@@ -64,10 +66,13 @@ class CooperativePartialVotingService:
 
         proposal = result.scalar_one_or_none()
 
-        if not proposal or proposal.status != "voting":
+        if not proposal:
+            raise ValueError("Proposal not found")
+
+        if proposal.status != "voting":
             raise ValueError("Voting not active")
 
-        if proposal.expires_at < datetime.now(timezone.utc):
+        if proposal.expires_at <= datetime.now(timezone.utc):
             proposal.status = "expired"
             await db.commit()
             raise ValueError("Voting expired")
@@ -75,7 +80,7 @@ class CooperativePartialVotingService:
         result = await db.execute(
             select(CooperativePartialVote).where(
                 CooperativePartialVote.proposal_id == proposal_id,
-                CooperativePartialVote.member_id == member_id
+                CooperativePartialVote.member_id == member_id,
             )
         )
 
@@ -84,30 +89,31 @@ class CooperativePartialVotingService:
         if existing:
             raise ValueError("Already voted")
 
-        db.add(
-            CooperativePartialVote(
-                id=f"v_{datetime.now(timezone.utc).timestamp()}",
-                proposal_id=proposal_id,
-                member_id=member_id,
-                vote=vote
-            )
+        vote_record = CooperativePartialVote(
+            id=f"v_{datetime.now(timezone.utc).timestamp()}",
+            proposal_id=proposal_id,
+            member_id=member_id,
+            vote=vote,
         )
+
+        db.add(vote_record)
 
         await db.commit()
-        
-        await db.refresh(proposal)
 
         return await self.evaluate_votes(
-            db,
-            proposal
+            db=db,
+            proposal=proposal,
         )
-
 
     async def evaluate_votes(
         self,
         db: AsyncSession,
-        proposal
+        proposal: CooperativePartialProcurementProposal,
     ):
+
+        # Prevent re-processing
+        if proposal.status != "voting":
+            return proposal.status.upper()
 
         votes_result = await db.execute(
             select(CooperativePartialVote).where(
@@ -121,7 +127,7 @@ class CooperativePartialVotingService:
             select(CooperativeMembership).where(
                 CooperativeMembership.cooperative_id
                 == proposal.cooperative_id,
-                CooperativeMembership.status == "active"
+                CooperativeMembership.status == "active",
             )
         )
 
@@ -129,47 +135,62 @@ class CooperativePartialVotingService:
 
         total_members = len(members)
 
-        approvals = sum(
-            1 for v in votes if v.vote
-        )
-     
-        if total_members == 0
+        if total_members == 0:
             return "VOTING_IN_PROGRESS"
 
-        approval_rate = (
-            (approvals / total_members) * 100
-            
+        approvals = sum(
+            1 for v in votes if v.vote is True
         )
 
+        approval_rate = (
+            approvals / total_members
+        ) * 100
+
+        # ==========================================
+        # APPROVED
+        # ==========================================
         if approval_rate >= proposal.approval_threshold:
+
             proposal.status = "approved"
-            proposal.approved_at =   datetime.utcnow()
-            # =====================================
-            # STATE ENGINE (CORRECTED)
-            # =====================================
-            coop = await db.get(
-                Cooperative,
-                proposal.cooperative_id
+            proposal.approved_at = datetime.now(
+                timezone.utc
             )
 
-            if coop:
+            coop = await db.get(
+                Cooperative,
+                proposal.cooperative_id,
+            )
+
+            if (
+                coop
+                and coop.status == "partial_vote"
+            ):
                 await cooperative_state_service.transition(
                     db=db,
                     cooperative=coop,
                     new_state="procurement_pending",
-                    reason="partial_procurement_approved"
+                    reason="partial_procurement_approved",
                 )
 
             await db.commit()
 
             return "APPROVED_80_PERCENT"
 
+        # ==========================================
+        # REJECTED
+        # ==========================================
         if approval_rate < 50:
+
             proposal.status = "rejected"
-            proposal.rejected_at =   datetime.utcnow()
+            proposal.rejected_at = datetime.now(
+                timezone.utc
+            )
 
             await db.commit()
 
             return "REJECTED"
 
+        # ==========================================
+        # STILL VOTING
+        # ==========================================
         return "VOTING_IN_PROGRESS"
