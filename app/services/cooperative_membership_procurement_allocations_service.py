@@ -88,6 +88,19 @@ class CooperativeMembershipProcurementAllocationService:
             db.add(allocation)
             allocations.append(allocation)
 
+        # =========================================
+# ALLOCATION ROUNDING RECONCILIATION
+# =========================================
+
+        allocated_total = sum(
+            a.allocated_quantity for a in    allocations
+        )
+
+        remaining =    procurement_allocation.allocated_quantity   - allocated_total
+
+        if remaining > 0:
+            allocations[0].allocated_quantity +=  remaining
+
         await db.commit()
 
         return allocations
