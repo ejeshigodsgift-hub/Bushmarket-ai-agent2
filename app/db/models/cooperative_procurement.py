@@ -73,11 +73,7 @@ class CooperativeProcurement(Base):
         nullable=False
     )
 
-    parent_cooperative_id: Mapped[str |    None] = mapped_column(
-        String(36),
-        ForeignKey("cooperatives.id"),
-        nullable=True
-    )
+    
 
     # ====================================
     # PROCUREMENT TYPE
