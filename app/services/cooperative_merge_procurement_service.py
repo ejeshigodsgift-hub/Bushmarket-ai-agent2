@@ -1,6 +1,7 @@
 from decimal import Decimal
-from datetime import datetime
 from typing import List, Dict
+from app.db.models.cooperative_merge_history import CooperativeMergeHistory
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
