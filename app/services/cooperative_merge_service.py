@@ -71,6 +71,21 @@ class CooperativeMergeService:
                 if other.id in used:
                     continue
 
+            # Same funding/sourcing stage  check
+                if other.status !=   coop.status:
+                    continue
+
+                if (
+                  other.target_product_hash
+                    ==     coop.target_product_hash
+               ):
+                    group.append(other)
+                    used.add(other.id)
+
+            if len(group) > 1:
+                groups.append(group)
+
+        return groups
                 # =========================================
                 # ✅ CORE RULE: SAME TARGET PRODUCT HASH
                 # =========================================
