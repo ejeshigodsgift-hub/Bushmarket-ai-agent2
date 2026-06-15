@@ -3,24 +3,27 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.db.models.market_product_listing import (
-    MarketProductListing
-)
+from app.db.models.market_product_listing import MarketProductListing
+from app.db.models.cooperative import Cooperative
 
 from app.db.models.cooperative_partial_procurement_proposal import (
-    CooperativePartialProcurementProposal
+    CooperativePartialProcurementProposal,
 )
 
 from app.db.models.cooperative_partial_procurement import (
-    CooperativePartialProcurement
+    CooperativePartialProcurement,
 )
 
 from app.db.models.cooperative_membership import (
-    CooperativeMembership
+    CooperativeMembership,
 )
 
 from app.services.cooperative_partial_procurement_service import (
-    CooperativePartialProcurementService
+    CooperativePartialProcurementService,
+)
+
+from app.services.cooperative_state_service import (
+    cooperative_state_service,
 )
 
 
@@ -41,9 +44,6 @@ class CooperativePartialExecutionService:
         if not proposal:
             raise ValueError("Proposal not found")
 
-        # -----------------------------
-        # IDENTITY / IDEMPOTENCY GUARD
-        # -----------------------------
         if proposal.status == "executed":
             return None
 
@@ -51,15 +51,13 @@ class CooperativePartialExecutionService:
             raise ValueError("Proposal expired")
 
         if proposal.status != "approved":
-            raise ValueError(
-                f"Proposal not approved: {proposal.status}"
-            )
+            raise ValueError(f"Proposal not approved: {proposal.status}")
 
         procurement_service = CooperativePartialProcurementService()
 
-        # -----------------------------
-        # CREATE PROCUREMENT RECORD
-        # -----------------------------
+        # =========================
+        # CREATE PROCUREMENT
+        # =========================
         procurement = await procurement_service.create_partial_procurement(
             db=db,
             cooperative_id=proposal.cooperative_id,
@@ -70,30 +68,26 @@ class CooperativePartialExecutionService:
             total_cost=proposal.total_cost
         )
 
-        coop = await db.get(
-            Cooperative,
-            proposal.cooperative_id
-        )
+        # =========================
+        # STATE TRANSITION
+        # =========================
+        coop = await db.get(Cooperative, proposal.cooperative_id)
 
-        if (
-            coop
-            and coop.status ==   "procurement_pending"
-        ):
-            await   cooperative_state_service.transition(
+        if coop and coop.status == "procurement_pending":
+            await cooperative_state_service.transition(
                 db=db,
                 cooperative=coop,
                 new_state="purchasing",
-         reason="partial_procurement_executed"
+                reason="partial_procurement_executed"
             )
 
-        # =========================================================
-        # MEMBER ALLOCATION LOGIC (FIXED - WAS MISSING)
-        # =========================================================
-
+        # =========================
+        # MEMBERS FETCH
+        # =========================
         members_result = await db.execute(
-        select(CooperativeMembership).where(
-        CooperativeMembership.cooperative_id == proposal.cooperative_id,
-               CooperativeMembership.status == "active"
+            select(CooperativeMembership).where(
+                CooperativeMembership.cooperative_id == proposal.cooperative_id,
+                CooperativeMembership.status == "active"
             )
         )
 
@@ -102,53 +96,58 @@ class CooperativePartialExecutionService:
         if not members:
             raise ValueError("No active members for allocation")
 
-        # distribute evenly across members
-        per_member_quantity = (
-            procurement.procurement_quantity /  len(members)
-        )
+        member_count = len(members)
+        total_qty = procurement.procurement_quantity
 
-        for member in members:
+        # =========================
+        # FLOOR + REMAINDER ALLOCATION
+        # =========================
+        base_qty = total_qty // member_count
+        remainder = total_qty % member_count
 
-            allocation =   CooperativePartialProcurement(
-         cooperative_id=proposal.cooperative_id,
+        for i, member in enumerate(members):
+
+            allocated_qty = base_qty + (1 if i < remainder else 0)
+
+            allocation = CooperativePartialProcurement(
+                cooperative_id=proposal.cooperative_id,
                 proposal_id=proposal.id,
                 member_id=member.id,
                 procurement_id=procurement.id,
-
-         allocated_quantity=per_member_quantity,
-              unit_price=listing.unit_price,
-            total_value=per_member_quantity *  listing.unit_price,
-
+                allocated_quantity=allocated_qty,
+                unit_price=listing.unit_price,
+                total_value=allocated_qty * listing.unit_price,
                 status="allocated",
-          allocated_at=datetime.now(timezone.utc)
+                allocated_at=datetime.now(timezone.utc)
             )
 
             db.add(allocation)
 
-# =====================================================
-# CONTRIBUTION LINKING (NEW FIX ADDED HERE)
-# =====================================================
+        # =========================
+        # CONTRIBUTION LINKING
+        # =========================
+        from app.db.models.cooperative_contribution import CooperativeContribution
 
         contrib_result = await db.execute(
-     select(CooperativeContribution).where(
-         CooperativeContribution.cooperative_id ==   proposal.cooperative_id,
+            select(CooperativeContribution).where(
+                CooperativeContribution.cooperative_id == proposal.cooperative_id,
                 CooperativeContribution.status == "completed"
             )
         )
 
-        contributions =   contrib_result.scalars().all()
+        contributions = contrib_result.scalars().all()
 
         for c in contributions:
             c.procurement_id = procurement.id
-          c.is_partial_procurement_related = True
-        # -----------------------------
-        # UPDATE PROPOSAL STATE
-        # -----------------------------
+            c.is_partial_procurement_related = True
+
+        # =========================
+        # FINALIZE PROPOSAL
+        # =========================
         proposal.status = "executed"
         proposal.executed_at = datetime.now(timezone.utc)
 
         await db.commit()
-
         await db.refresh(procurement)
 
         return procurement
