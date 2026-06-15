@@ -146,6 +146,35 @@ class CooperativeMergeVotingService:
             approvals / member_count
         ) * 100
 
+
+        # =====================================================
+# ADD REJECTION LOGIC HERE (RIGHT AFTER approval_rate)
+# =====================================================
+
+        rejections = sum(
+            1 for v in votes
+            if not v.vote
+        )
+
+        rejection_rate = (
+            rejections / member_count
+        ) * 100
+
+        if rejection_rate > 20:
+           proposal.status = "rejected"
+
+            await outbox_service.queue_event(
+                db,
+                "cooperative.merge.rejected",
+                {
+                    "proposal_id": proposal.id
+                }
+            )
+
+            await db.commit()
+
+            return "REJECTED"
+
         if approval_rate >= proposal.approval_threshold:
 
             proposal.status = "approved"
