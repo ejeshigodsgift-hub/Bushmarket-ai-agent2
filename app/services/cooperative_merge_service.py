@@ -114,7 +114,7 @@ class CooperativeMergeService:
         for group in groups:
 
             proposal = CooperativeMergeProposal(
-                approval_threshold=70,
+                approval_threshold=80,
                 expires_at=datetime.utcnow() + timedelta(hours=48),
                 status="voting"
             )
