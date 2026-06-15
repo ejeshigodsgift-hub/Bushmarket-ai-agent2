@@ -12,8 +12,17 @@ from app.db.models.cooperative_procurement_allocation import (
     CooperativeProcurementAllocation
 )
 
+from app.services.cooperative_membership_procurement_allocations_service import (
+    CooperativeMembershipProcurementAllocationService
+)
+
 
 class CooperativeMergeProcurementService:
+
+    def __init__(self):
+        self.membership_allocation_service = (
+            CooperativeMembershipProcurementAllocationService()
+        )
 
     # =========================================
     # MERGE PROCUREMENTS (ASYNC)
@@ -28,17 +37,30 @@ class CooperativeMergeProcurementService:
         if not procurements:
             raise ValueError("No procurements to merge")
 
-        total_quantity = sum(p.procurement_quantity for p in procurements)
-        total_value = sum(p.procurement_value for p in procurements)
+        total_quantity = sum(
+            p.procurement_quantity
+            for p in procurements
+        )
+
+        total_value = sum(
+            p.procurement_value
+            for p in procurements
+        )
 
         merged = CooperativeProcurement(
             cooperative_id=cooperative_id,
             procurement_type="merged",
             procurement_quantity=total_quantity,
             procurement_value=total_value,
-            estimated_retail_value=sum(p.estimated_retail_value for p in procurements),
+            estimated_retail_value=sum(
+                p.estimated_retail_value
+                for p in procurements
+            ),
             cooperative_buying_value=total_value,
-            estimated_savings=sum(p.estimated_savings for p in procurements),
+            estimated_savings=sum(
+                p.estimated_savings
+                for p in procurements
+            ),
             savings_percentage=Decimal("0"),
             status="approved",
             approved_at=datetime.utcnow()
@@ -46,8 +68,8 @@ class CooperativeMergeProcurementService:
 
         db.add(merged)
 
-        for p in procurements:
-            p.status = "merged"
+        for procurement in procurements:
+            procurement.status = "merged"
 
         await db.commit()
         await db.refresh(merged)
@@ -55,7 +77,7 @@ class CooperativeMergeProcurementService:
         return merged
 
     # =========================================
-    # ALLOCATION ENGINE (ASYNC FIX)
+    # COOPERATIVE ALLOCATION ENGINE
     # =========================================
     async def create_allocations(
         self,
@@ -63,54 +85,79 @@ class CooperativeMergeProcurementService:
         merged_procurement: CooperativeProcurement,
     ) -> List[CooperativeProcurementAllocation]:
 
-        # STEP 1: GET CONTRIBUTIONS (ASYNC)
-        stmt = select(CooperativeContribution).where(
-            CooperativeContribution.cooperative_id == merged_procurement.cooperative_id,
+        stmt = select(
+            CooperativeContribution
+        ).where(
+            CooperativeContribution.cooperative_id
+            == merged_procurement.cooperative_id,
             CooperativeContribution.status == "completed"
         )
 
         result = await db.execute(stmt)
+
         contributions = result.scalars().all()
 
         if not contributions:
-            raise ValueError("No contributions found for allocation")
-
-        # STEP 2: GROUP BY COOPERATIVE
-        coop_totals: Dict[str, Decimal] = {}
-
-        for c in contributions:
-            coop_totals[c.cooperative_id] = coop_totals.get(
-                c.cooperative_id,
-                Decimal("0")
-            ) + Decimal(str(c.amount))
-
-        total_contributed = sum(coop_totals.values())
-
-        if total_contributed == 0:
-            raise ValueError("Invalid contribution total")
-
-        allocations: List[CooperativeProcurementAllocation] = []
-
-        # STEP 3: PROPORTIONAL ALLOCATION
-        for cooperative_id, amount in coop_totals.items():
-
-            share_ratio = amount / total_contributed
-
-            allocated_quantity = int(
-                Decimal(merged_procurement.procurement_quantity) * share_ratio
+            raise ValueError(
+                "No contributions found for allocation"
             )
 
-            allocated_value = Decimal(
-                merged_procurement.procurement_value
-            ) * share_ratio
+        coop_totals: Dict[str, Decimal] = {}
 
-            allocation = CooperativeProcurementAllocation(
-                procurement_id=merged_procurement.id,
-                cooperative_id=cooperative_id,
-                allocation_ratio=share_ratio,
-                allocated_quantity=allocated_quantity,
-                allocated_value=allocated_value,
-                created_at=datetime.utcnow()
+        for contribution in contributions:
+
+            coop_totals[
+                contribution.cooperative_id
+            ] = (
+                coop_totals.get(
+                    contribution.cooperative_id,
+                    Decimal("0")
+                )
+                + Decimal(str(contribution.amount))
+            )
+
+        total_contributed = sum(
+            coop_totals.values()
+        )
+
+        if total_contributed <= 0:
+            raise ValueError(
+                "Invalid contribution total"
+            )
+
+        allocations: List[
+            CooperativeProcurementAllocation
+        ] = []
+
+        for cooperative_id, amount in coop_totals.items():
+
+            share_ratio = (
+                amount / total_contributed
+            )
+
+            allocated_quantity = int(
+                Decimal(
+                    merged_procurement.procurement_quantity
+                ) * share_ratio
+            )
+
+            allocated_value = (
+                Decimal(
+                    str(
+                        merged_procurement.procurement_value
+                    )
+                ) * share_ratio
+            )
+
+            allocation = (
+                CooperativeProcurementAllocation(
+                    procurement_id=merged_procurement.id,
+                    cooperative_id=cooperative_id,
+                    allocation_ratio=share_ratio,
+                    allocated_quantity=allocated_quantity,
+                    allocated_value=allocated_value,
+                    created_at=datetime.utcnow()
+                )
             )
 
             db.add(allocation)
@@ -121,7 +168,7 @@ class CooperativeMergeProcurementService:
         return allocations
 
     # =========================================
-    # FINALIZE MERGE (ASYNC)
+    # FINALIZE MERGE (ORCHESTRATOR)
     # =========================================
     async def finalize_merge(
         self,
@@ -129,10 +176,30 @@ class CooperativeMergeProcurementService:
         merged: CooperativeProcurement
     ) -> CooperativeProcurement:
 
-        # STEP 1: CREATE ALLOCATIONS
-        await self.create_allocations(db, merged)
+        # ---------------------------------
+        # STEP 1
+        # Cooperative Allocations
+        # ---------------------------------
+        coop_allocations = (
+            await self.create_allocations(
+                db,
+                merged
+            )
+        )
 
-        # STEP 2: COMPLETE MERGE
+        # ---------------------------------
+        # STEP 2
+        # Membership Allocations
+        # ---------------------------------
+        await self.membership_allocation_service.distribute_for_procurement(
+            db,
+            coop_allocations
+        )
+
+        # ---------------------------------
+        # STEP 3
+        # Complete Merge
+        # ---------------------------------
         merged.status = "completed"
         merged.completed_at = datetime.utcnow()
 
