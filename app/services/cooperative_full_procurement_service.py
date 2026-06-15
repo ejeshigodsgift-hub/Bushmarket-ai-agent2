@@ -63,6 +63,19 @@ class CooperativeFullProcurementService(
         await db.commit()
         await db.refresh(procurement)
 
+        coop = await db.get(
+            Cooperative,
+            cooperative_id
+        )
+
+        if coop and coop.status ==    "procurement_pending":
+            await   cooperative_state_service.transition(
+                db=db,
+                cooperative=coop,
+                new_state="purchasing",
+                reason="full_procurement_created"
+    )
+
         return procurement
 
     async def complete_procurement(
