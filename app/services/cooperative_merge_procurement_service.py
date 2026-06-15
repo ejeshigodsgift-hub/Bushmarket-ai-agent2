@@ -206,4 +206,17 @@ class CooperativeMergeProcurementService:
         await db.commit()
         await db.refresh(merged)
 
+        history =  CooperativeMergeHistory(
+            proposal_id=merged.id,  # or  proposal id if passed separately
+            merged_procurement_id=merged.id,
+            cooperative_ids=[
+                allocation.cooperative_id
+                for allocation in    coop_allocations
+            ],
+      executed_at=datetime.now(timezone.utc)
+        )
+
+        db.add(history)
+        await db.commit()
+
         return merged
