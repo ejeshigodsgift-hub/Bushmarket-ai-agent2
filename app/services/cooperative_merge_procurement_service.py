@@ -169,13 +169,15 @@ class CooperativeMergeProcurementService:
 # =========================================
 
         allocated_total = sum(
-            a.allocated_quantity for a in    allocations
+            a.allocated_quantity for a in   allocations
         )
 
-        remaining =   merged_procurement.procurement_quantity -   allocated_total
+        remaining =   merged_procurement.procurement_quantity -    allocated_total
 
-        if remaining > 0:
-            allocations[0].allocated_quantity +=  remaining
+        if remaining != 0:
+            if allocations:
+                 allocations[0].allocated_quantity +=  remaining
+                db.add(allocations[0])
 
         await db.commit()
 
