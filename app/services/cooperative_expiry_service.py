@@ -9,8 +9,17 @@ from app.services.outbox_service import outbox_service
 from app.services.cooperative_state_service import (
     cooperative_state_service
 )
+
 from app.services.cooperative_extension_service import (
     cooperative_extension_service
+)
+
+from app.services.cooperative_partial_service import (
+    cooperative_partial_service
+)
+
+from app.services.cooperative_merge_service import (
+    cooperative_merge_service
 )
 
 
@@ -28,9 +37,7 @@ class CooperativeExpiryService:
 
         now = datetime.now(timezone.utc)
 
-        cutoff = now + timedelta(
-            hours=self.VOTE_WINDOW_HOURS
-        )
+        cutoff = now + timedelta(hours=self.VOTE_WINDOW_HOURS)
 
         stmt = select(Cooperative).where(
             Cooperative.ends_at <= cutoff,
@@ -38,26 +45,47 @@ class CooperativeExpiryService:
         )
 
         result = await db.execute(stmt)
-
         cooperatives = result.scalars().all()
 
         opened = 0
 
         for coop in cooperatives:
 
-            # ----------------------------------------
-            # OPEN EXTENSION VOTING AUTOMATICALLY
-            # ----------------------------------------
+            # =================================================
+            # 1. EXTENSION VOTE
+            # =================================================
             await cooperative_extension_service.open_extension_vote(
                 db=db,
                 cooperative=coop
             )
 
+            # =================================================
+            # 2. PARTIAL VOTE (NEW)
+            # =================================================
+            await cooperative_partial_service.open_partial_vote(
+                db=db,
+                cooperative=coop
+            )
+
+            # =================================================
+            # 3. MERGE VOTE (NEW)
+            # =================================================
+            await cooperative_merge_service.open_merge_vote(
+                db=db,
+                cooperative=coop
+            )
+
+            # =================================================
+            # EVENT NOTIFICATION (UI DASHBOARD TRIGGER)
+            # =================================================
             await outbox_service.queue_event(
                 db=db,
                 topic="cooperative.expiry.window_open",
                 payload={
-                    "cooperative_id": coop.id
+                    "cooperative_id": coop.id,
+                    "extension_vote": True,
+                    "partial_vote": True,
+                    "merge_vote": True
                 }
             )
 
@@ -80,15 +108,11 @@ class CooperativeExpiryService:
         stmt = select(Cooperative).where(
             Cooperative.ends_at <= now,
             Cooperative.status.in_(
-                [
-                    "active",
-                    "extension_vote"
-                ]
+                ["active", "extension_vote"]
             )
         )
 
         result = await db.execute(stmt)
-
         cooperatives = result.scalars().all()
 
         expired = 0
