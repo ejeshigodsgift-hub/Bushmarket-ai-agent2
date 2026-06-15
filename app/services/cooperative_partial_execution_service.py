@@ -70,6 +70,22 @@ class CooperativePartialExecutionService:
             total_cost=proposal.total_cost
         )
 
+        coop = await db.get(
+            Cooperative,
+            proposal.cooperative_id
+        )
+
+        if (
+            coop
+            and coop.status ==   "procurement_pending"
+        ):
+            await   cooperative_state_service.transition(
+                db=db,
+                cooperative=coop,
+                new_state="purchasing",
+         reason="partial_procurement_executed"
+            )
+
         # =========================================================
         # MEMBER ALLOCATION LOGIC (FIXED - WAS MISSING)
         # =========================================================
