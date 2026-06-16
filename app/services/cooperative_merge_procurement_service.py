@@ -83,16 +83,19 @@ class CooperativeMergeProcurementService:
     async def create_allocations(
         self,
         db: AsyncSession,
-        merged_procurement: CooperativeProcurement,
-    ) -> List[CooperativeProcurementAllocation]:
+        merged_procurement:   CooperativeProcurement,
+        cooperative_ids: list[str]
+    ) 
+List[CooperativeProcurementAllocation]:
 
         stmt = select(
             CooperativeContribution
         ).where(
-            CooperativeContribution.cooperative_id
-            == merged_procurement.cooperative_id,
-            CooperativeContribution.status == "completed"
-        )
+      CooperativeContribution.cooperative_id.in_(
+        cooperative_ids
+        ),
+    CooperativeContribution.status ==  "completed"
+    )
 
         result = await db.execute(stmt)
 
