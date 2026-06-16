@@ -190,7 +190,9 @@ List[CooperativeProcurementAllocation]:
     async def finalize_merge(
         self,
         db: AsyncSession,
-        merged: CooperativeProcurement
+        merged: CooperativeProcurement,
+        proposal_id: str,
+        cooperative_ids: list[str]
     ) -> CooperativeProcurement:
 
         # ---------------------------------
@@ -200,7 +202,8 @@ List[CooperativeProcurementAllocation]:
         coop_allocations = (
             await self.create_allocations(
                 db,
-                merged
+                merged,
+                cooperative_ids
             )
         )
 
@@ -223,14 +226,15 @@ List[CooperativeProcurementAllocation]:
         await db.commit()
         await db.refresh(merged)
 
-        history =  CooperativeMergeHistory(
-            proposal_id=merged.id,  # or  proposal id if passed separately
+        # ---------------------------------
+        # STEP 4
+        # FIXED HISTORY (Correction 6)
+        # ---------------------------------
+        history = CooperativeMergeHistory(
+            proposal_id=proposal_id,   # ✅ FIXED (was merged.id)
             merged_procurement_id=merged.id,
-            cooperative_ids=[
-                allocation.cooperative_id
-                for allocation in    coop_allocations
-            ],
-      executed_at=datetime.now(timezone.utc)
+            cooperative_ids=cooperative_ids,
+            executed_at=datetime.now(timezone.utc)
         )
 
         db.add(history)
