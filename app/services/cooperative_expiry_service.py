@@ -1,4 +1,7 @@
 from datetime import datetime, timedelta, timezone
+from app.db.models.cooperative_extension_proposal import (
+    CooperativeExtensionProposal
+)
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,14 +33,14 @@ class CooperativeExpiryService:
     # =====================================================
     # DETECT COOPERATIVES ENTERING EXPIRY WINDOW
     # =====================================================
-    async def detect_expiring_cooperatives(
+    async def  detect_expiring_cooperatives(
         self,
         db: AsyncSession
     ):
 
         now = datetime.now(timezone.utc)
 
-        cutoff = now + timedelta(hours=self.VOTE_WINDOW_HOURS)
+        cutoff = now +  timedelta(hours=self.VOTE_WINDOW_HOURS)
 
         stmt = select(Cooperative).where(
             Cooperative.ends_at <= cutoff,
@@ -51,14 +54,30 @@ class CooperativeExpiryService:
 
         for coop in cooperatives:
 
-            # =================================================
-            # 1. EXTENSION VOTE
-            # =================================================
-            await cooperative_extension_service.open_extension_vote(
-                db=db,
-                cooperative=coop
+            stmt =   select(CooperativeExtensionProposal).where(
+            CooperativeExtensionProposal.cooperative_id == coop.id,
+            CooperativeExtensionProposal.status == "voting"
             )
 
+            existing = (
+                await db.execute(stmt)
+            ).scalar_one_or_none()
+
+            if not existing:
+
+                await cooperative_extension_service.open_extension_vote(
+                    db=db,
+                    cooperative=coop
+                )
+
+                opened += 1
+
+        await db.commit()
+
+        return opened
+
+            
+            
             # =================================================
             # 2. PARTIAL VOTE (NEW)
             # =================================================
