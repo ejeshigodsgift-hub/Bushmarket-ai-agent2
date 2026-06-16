@@ -137,6 +137,10 @@ class CooperativeExpiryService:
         expired = 0
 
         for coop in cooperatives:
+        
+
+            if coop.status == "extension_vote":
+                continue
 
             await cooperative_state_service.transition(
                 db=db,
