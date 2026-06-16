@@ -57,7 +57,7 @@ class CooperativeExtensionRequestService:
             cooperative_id=cooperative_id,
             membership_id=membership_id,
             user_id=membership.user_id,
-            round_number=1,
+     round_number=cooperative.current_extension_round,
             vote=True
         )
 
