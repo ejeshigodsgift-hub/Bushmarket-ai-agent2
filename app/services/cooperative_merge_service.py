@@ -173,6 +173,15 @@ class CooperativeMergeService:
             merge_group_id=merge_group.id,
             procurements=all_procurements
         )
+  
+        await merger.finalize_merge(
+            db=db,
+            merged=merged,
+            cooperative_ids=[
+                c.id for c in cooperatives
+            ]
+        )
+                
 
         for coop in cooperatives:
             await cooperative_state_service.transition(
