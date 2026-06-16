@@ -41,9 +41,12 @@ class CooperativeExtensionService:
         # ----------------------------------------------------
         # SYSTEM CONTROLLED EXTENSION VALUE
         # ----------------------------------------------------
-        # No user input allowed.
-        # Extension is derived from platform policy.
-        extension_days = settings.max_extension_days  # safe default policy-bound value
+      
+        min_days =   settings.min_extension_days
+        max_days = settings.max_extension_days
+
+# SYSTEM PROPOSED VALUE (MIDPOINT STRATEGY)
+        extension_days = (min_days + max_days) // 2  
 
         # ----------------------------------------------------
         # CREATE PROPOSAL
