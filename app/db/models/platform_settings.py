@@ -143,6 +143,26 @@ class PlatformSettings(Base):
         default=60
     )
 
+
+    # =========================
+# EXTENSION RULES (MISSING)
+# =========================
+    min_extension_days: Mapped[int] = mapped_column(
+        nullable=False,
+        default=1
+    )
+
+    max_extension_days: Mapped[int] = mapped_column(
+        nullable=False,
+        default=7
+    )
+
+    default_extension_days: Mapped[int] =   mapped_column(
+        nullable=False,
+        default=3
+    )
+
+
     # ====================================
     # FEATURE FLAGS
     # ====================================
