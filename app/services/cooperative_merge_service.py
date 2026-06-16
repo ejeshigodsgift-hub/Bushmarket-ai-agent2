@@ -111,7 +111,8 @@ class CooperativeMergeService:
                 CooperativeMergeProposal.status.in_(
                         ["voting",  "approved"]
                     ),
-                 CooperativeMergeProposalCooperative.coope rative_id.in_(
+                   
+CooperativeMergeProposalCooperative.cooperative_id.in_(
                         [c.id for c in group]
                     )
                 )
@@ -172,22 +173,25 @@ class CooperativeMergeService:
 
         all_procurements = []
 
-        for coop in cooperatives:
-
-            stmt =  select(Cooperative).where(
-                Cooperative.status.in_([
-                    "active",
-                    "funding",
-                    "sourcing"
-                ]),
-                Cooperative.ends_at >   datetime.utcnow()
+        stmt =  select(CooperativeProcurement).where(
+     CooperativeProcurement.cooperative_id.in_.       (
+                [c.id for c in cooperatives]
             )
+        )
 
-            result = await db.execute(stmt)
-            all_procurements.extend(result.scalars().all())
+        result = await db.execute(stmt)
+
+        all_procurements =  result.scalars().all()
 
         if not all_procurements:
             raise ValueError("No procurements available for merge")
+
+        merge_group =   CooperativeMergeGroup(
+            proposal_id=proposal_id
+        )
+
+        db.add(merge_group)
+        await db.flush()
 
         merger = CooperativeMergeProcurementService()
 
