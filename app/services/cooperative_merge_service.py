@@ -177,6 +177,7 @@ class CooperativeMergeService:
         await merger.finalize_merge(
             db=db,
             merged=merged,
+            proposal_id=proposal.id,
             cooperative_ids=[
                 c.id for c in cooperatives
             ]
