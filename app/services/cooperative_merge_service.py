@@ -86,20 +86,7 @@ class CooperativeMergeService:
                 groups.append(group)
 
         return groups
-                # =========================================
-                # ✅ CORE RULE: SAME TARGET PRODUCT HASH
-                # =========================================
-                if (
-                    other.target_product_hash
-                    == coop.target_product_hash
-                ):
-                    group.append(other)
-                    used.add(other.id)
-
-            if len(group) > 1:
-                groups.append(group)
-
-        return groups
+                
 
     # =====================================================
     # GENERATE MERGE PROPOSALS
@@ -163,9 +150,13 @@ class CooperativeMergeService:
 
         for coop in cooperatives:
 
-            stmt = select(CooperativeProcurement).where(
-                CooperativeProcurement.cooperative_id == coop.id,
-                CooperativeProcurement.status.in_(["approved", "pending"])
+            stmt =  select(Cooperative).where(
+                Cooperative.status.in_([
+                    "active",
+                    "funding",
+                    "sourcing"
+                ]),
+                Cooperative.ends_at >   datetime.utcnow()
             )
 
             result = await db.execute(stmt)
