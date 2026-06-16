@@ -139,6 +139,17 @@ class CooperativeExtensionService:
         if not proposal:
             raise ValueError("Proposal not found")
 
+        
+        if proposal.expires_at <  datetime.now(timezone.utc):
+            await self.reject_extension(
+                db=db,
+                cooperative=cooperative,
+                proposal_id=proposal.id,
+                round_number=round_number
+            )
+
+            raise ValueError("Extension vote expired")
+
         if proposal.status != "voting":
             raise ValueError(f"Invalid proposal state: {proposal.status}")
 
