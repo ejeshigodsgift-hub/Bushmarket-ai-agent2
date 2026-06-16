@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db.models.cooperative import Cooperative
+from app.db.models.cooperative_merge_group import CooperativeMergeGroup
 from app.db.models.cooperative_procurement import CooperativeProcurement
 from app.db.models.cooperative_merge_proposal import CooperativeMergeProposal
 from app.db.models.cooperative_merge_proposal_cooperative import (
@@ -167,9 +168,9 @@ class CooperativeMergeService:
 
         merger = CooperativeMergeProcurementService()
 
-        merged = await merger.merge_procurements(
+        merged = await  merger.merge_procurements(
             db=db,
-            cooperative_id=cooperatives[0].id,
+            merge_group_id=merge_group.id,
             procurements=all_procurements
         )
 
