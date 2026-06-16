@@ -1,5 +1,5 @@
 from datetime import timedelta, datetime, timezone
-from app.db.models.platform_settings import PlatformSettings
+
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,7 +81,7 @@ class CooperativeExtensionService:
                 "cooperative_id": cooperative.id,
                 "proposal_id": proposal.id,
                 "extension_days": extension_days,
-                "round_number": 1
+                "round_number": cooperative.current_extension_round
             }
         )
 
