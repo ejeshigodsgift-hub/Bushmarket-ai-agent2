@@ -92,30 +92,52 @@ class CooperativeMergeService:
     # =====================================================
     # GENERATE MERGE PROPOSALS
     # =====================================================
-    async def generate_merge_proposals(self, db: AsyncSession):
+    async def   generate_merge_proposals(self, db:   AsyncSession):
 
-        cooperatives = await self.find_merge_candidates(db)
-        groups = await self.build_merge_groups(cooperatives)
+        cooperatives = await   self.find_merge_candidates(db)
+        groups = await  self.build_merge_groups(cooperatives)
 
         proposals = []
 
         for group in groups:
 
-            proposal = CooperativeMergeProposal(
+        # =====================================================
+        # CORRECTION 7: PREVENT DUPLICATE ACTIVE PROPOSALS
+        # =====================================================
+            existing = await db.scalar(
+            select(CooperativeMergeProposal)
+                .join(CooperativeMergeProposalCooperative)
+                .where(
+                CooperativeMergeProposal.status.in_(
+                        ["voting",  "approved"]
+                    ),
+                 CooperativeMergeProposalCooperative.coope rative_id.in_(
+                        [c.id for c in group]
+                    )
+                )
+            )
+
+            if existing:
+                continue
+
+        # =====================================================
+        # CREATE PROPOSAL
+        # =====================================================
+            proposal =  CooperativeMergeProposal(
                 approval_threshold=80,
-                expires_at=datetime.utcnow() + timedelta(hours=48),
+                expires_at=datetime.utcnow() +   timedelta(hours=48),
                 status="voting"
             )
 
             db.add(proposal)
             await db.flush()
 
-            # link cooperatives
+        # link cooperatives
             for coop in group:
                 db.add(
-                    CooperativeMergeProposalCooperative(
-                        proposal_id=proposal.id,
-                        cooperative_id=coop.id
+                 CooperativeMergeProposalCooperative(
+                     proposal_id=proposal.id,
+                     cooperative_id=coop.id
                     )
                 )
 
@@ -123,9 +145,9 @@ class CooperativeMergeService:
 
             await outbox_service.queue_event(
                 db,
-                "cooperative.merge.proposal.created",
+             "cooperative.merge.proposal.created",
                 {
-                    "proposal_id": proposal.id,
+                    "proposal_id":  proposal.id,
                     "cooperative_ids": [c.id for c in group],
                     "status": "voting"
                 }
