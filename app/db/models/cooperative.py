@@ -158,6 +158,17 @@ class Cooperative(Base):
         onupdate=func.now()
     )
 
+
+    # =========================
+# LIFECYCLE (CRITICAL)
+# ========================
+
+    current_extension_round: Mapped[int] = mapped_column(
+        Integer,
+        default=1,
+        nullable=False
+    )
+
     funded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     purchasing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
