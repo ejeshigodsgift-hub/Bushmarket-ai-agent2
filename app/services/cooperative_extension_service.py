@@ -193,6 +193,8 @@ class CooperativeExtensionService:
             days=proposal.max_extension_days
         )
 
+        cooperative.current_extension_round += 1
+
         proposal.status = "approved"
         proposal.approved_at = datetime.now(timezone.utc)
 
