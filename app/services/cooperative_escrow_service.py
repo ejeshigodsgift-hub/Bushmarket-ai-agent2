@@ -1,42 +1,34 @@
 from decimal import Decimal
+
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.escrow_account import EscrowAccount
 from app.db.models.escrow_transaction import EscrowTransaction
 
 from app.services.financial_core_service import FinancialCoreService
-from app.services.audit_service import AuditService
 from app.services.outbox_service import outbox_service
-from app.services.idempotency_service import idempotency_service
 
 
 class CooperativeEscrowService:
     """
-    COOPERATIVE ESCROW ORCHESTRATION LAYER (SINGLE SOURCE OF TRUTH)
+    COOPERATIVE ESCROW ORCHESTRATION LAYER
 
-    CONSOLIDATES:
-    - HoldService
-    - EscrowService (partial overlap)
-    - escrow_hold / escrow_release duplication in FinancialCoreService
+    FinancialCoreService remains the ONLY source of truth
+    for money movement, balances, escrow state and ledger entries.
 
-    RESPONSIBILITIES:
-    - deposit funds into escrow
-    - hold (reserve) funds
-    - unhold (release reservation)
-    - release (settlement)
-    - refund orchestration hook
-    - escrow transaction logging
-    - event emission
+    This service:
+    - coordinates cooperative workflows
+    - logs cooperative escrow transactions
+    - emits cooperative domain events
     """
 
     def __init__(self):
         self.financial = FinancialCoreService()
-        self.audit = AuditService()
 
     # =========================================================
     # ESCROW DEPOSIT
     # =========================================================
+
     async def deposit(
         self,
         db: AsyncSession,
@@ -46,48 +38,34 @@ class CooperativeEscrowService:
         debit_ledger_account: str,
         credit_ledger_account: str
     ):
-        await self._idempotent(db, reference)
-
-        if amount <= 0:
-            raise HTTPException(400, "Invalid deposit amount")
-
-        escrow = await self.financial._lock_escrow(db, escrow_id)
-
-        if escrow.is_frozen:
-            raise HTTPException(400, "Escrow is frozen")
-
-        escrow.total_deposited += amount
-        escrow.available_balance += amount
-        escrow.ledger_balance += amount
-        escrow.version += 1
-
-        await self.financial._post_double_entry(
+        escrow = await self.financial.escrow_deposit(
             db=db,
-            debit_account_id=debit_ledger_account,
-            credit_account_id=credit_ledger_account,
+            escrow_id=escrow_id,
             amount=amount,
             reference=reference,
-            description="ESCROW DEPOSIT"
+            debit_ledger_account=debit_ledger_account,
+            credit_ledger_account=credit_ledger_account
         )
 
-        tx = self._log_tx(escrow.id, "deposit", amount, reference)
-        await self._emit(db, "escrow.deposit", tx)
+        tx = self._log_tx(
+            escrow_id=escrow.id,
+            tx_type="deposit",
+            amount=amount,
+            reference=reference
+        )
 
-        await self.audit.log(
+        await self._emit(
             db=db,
-            user_id="system",
-            action="escrow_deposit",
-            entity_type="escrow",
-            entity_id=escrow.id,
-            reference=reference,
-            amount=float(amount)
+            topic="cooperative.escrow.deposit",
+            tx=tx
         )
 
         return escrow
 
     # =========================================================
-    # HOLD (RESERVE FUNDS)
+    # HOLD
     # =========================================================
+
     async def hold(
         self,
         db: AsyncSession,
@@ -97,37 +75,34 @@ class CooperativeEscrowService:
         reserved_ledger_account: str,
         available_ledger_account: str
     ):
-        await self._idempotent(db, reference)
-
-        if amount <= 0:
-            raise HTTPException(400, "Invalid hold amount")
-
-        escrow = await self.financial._lock_escrow(db, escrow_id)
-
-        if escrow.available_balance < amount:
-            raise HTTPException(400, "Insufficient available balance")
-
-        escrow.available_balance -= amount
-        escrow.total_reserved += amount
-        escrow.version += 1
-
-        await self.financial._post_double_entry(
+        escrow = await self.financial.escrow_hold(
             db=db,
-            debit_account_id=reserved_ledger_account,
-            credit_account_id=available_ledger_account,
+            escrow_id=escrow_id,
             amount=amount,
             reference=reference,
-            description="ESCROW HOLD"
+            reserved_ledger_account=reserved_ledger_account,
+            available_ledger_account=available_ledger_account
         )
 
-        tx = self._log_tx(escrow.id, "hold", amount, reference)
-        await self._emit(db, "escrow.hold", tx)
+        tx = self._log_tx(
+            escrow_id=escrow.id,
+            tx_type="hold",
+            amount=amount,
+            reference=reference
+        )
+
+        await self._emit(
+            db=db,
+            topic="cooperative.escrow.hold",
+            tx=tx
+        )
 
         return escrow
 
     # =========================================================
-    # UNHOLD (RELEASE RESERVATION BACK TO AVAILABLE)
+    # UNHOLD
     # =========================================================
+
     async def unhold(
         self,
         db: AsyncSession,
@@ -137,15 +112,16 @@ class CooperativeEscrowService:
         reserved_ledger_account: str,
         available_ledger_account: str
     ):
-        await self._idempotent(db, reference)
-
-        if amount <= 0:
-            raise HTTPException(400, "Invalid unhold amount")
-
-        escrow = await self.financial._lock_escrow(db, escrow_id)
+        escrow = await self.financial._lock_escrow(
+            db,
+            escrow_id
+        )
 
         if escrow.total_reserved < amount:
-            raise HTTPException(400, "Insufficient reserved balance")
+            raise HTTPException(
+                status_code=400,
+                detail="Insufficient reserved balance"
+            )
 
         escrow.total_reserved -= amount
         escrow.available_balance += amount
@@ -157,17 +133,28 @@ class CooperativeEscrowService:
             credit_account_id=reserved_ledger_account,
             amount=amount,
             reference=reference,
-            description="ESCROW UNHOLD"
+            description="Escrow Unhold"
         )
 
-        tx = self._log_tx(escrow.id, "unhold", amount, reference)
-        await self._emit(db, "escrow.unhold", tx)
+        tx = self._log_tx(
+            escrow.id,
+            "unhold",
+            amount,
+            reference
+        )
+
+        await self._emit(
+            db,
+            "cooperative.escrow.unhold",
+            tx
+        )
 
         return escrow
 
     # =========================================================
-    # RELEASE (SETTLEMENT)
+    # RELEASE
     # =========================================================
+
     async def release(
         self,
         db: AsyncSession,
@@ -177,73 +164,66 @@ class CooperativeEscrowService:
         settlement_ledger_account: str,
         reserved_ledger_account: str
     ):
-        await self._idempotent(db, reference)
-
-        if amount <= 0:
-            raise HTTPException(400, "Invalid release amount")
-
-        escrow = await self.financial._lock_escrow(db, escrow_id)
-
-        if escrow.total_reserved < amount:
-            raise HTTPException(400, "Insufficient reserved balance")
-
-        escrow.total_reserved -= amount
-        escrow.ledger_balance -= amount
-        escrow.version += 1
-
-        await self.financial._post_double_entry(
+        escrow = await self.financial.escrow_release(
             db=db,
-            debit_account_id=settlement_ledger_account,
-            credit_account_id=reserved_ledger_account,
+            escrow_id=escrow_id,
             amount=amount,
             reference=reference,
-            description="ESCROW RELEASE"
+            settlement_ledger_account=settlement_ledger_account,
+            reserved_ledger_account=reserved_ledger_account
         )
 
-        tx = self._log_tx(escrow.id, "release", amount, reference)
-        await self._emit(db, "escrow.release", tx)
+        tx = self._log_tx(
+            escrow_id=escrow.id,
+            tx_type="release",
+            amount=amount,
+            reference=reference
+        )
 
-        await self.audit.log(
+        await self._emit(
             db=db,
-            user_id="system",
-            action="escrow_release",
-            entity_type="escrow",
-            entity_id=escrow.id,
-            reference=reference,
-            amount=float(amount)
+            topic="cooperative.escrow.release",
+            tx=tx
         )
 
         return escrow
 
     # =========================================================
-    # REFUND HOOK (DOMAIN ONLY — NO MONEY LOGIC HERE)
+    # REFUND
     # =========================================================
-    async def refund_hook(
+
+    async def refund(
         self,
         db: AsyncSession,
         escrow_id: str,
         amount: Decimal,
         reference: str
     ):
-        escrow = await self.financial._lock_escrow(db, escrow_id)
+        escrow = await self.financial.escrow_refund(
+            db=db,
+            escrow_id=escrow_id,
+            amount=amount,
+            reference=reference
+        )
 
-        if escrow.total_deposited < amount:
-            raise HTTPException(400, "Invalid refund amount")
+        tx = self._log_tx(
+            escrow_id=escrow.id,
+            tx_type="refund",
+            amount=amount,
+            reference=reference
+        )
 
-        tx = self._log_tx(escrow.id, "refund", amount, reference)
-        await self._emit(db, "escrow.refund", tx)
+        await self._emit(
+            db=db,
+            topic="cooperative.escrow.refund",
+            tx=tx
+        )
 
         return escrow
 
     # =========================================================
-    # INTERNAL HELPERS
+    # HELPERS
     # =========================================================
-    async def _idempotent(self, db, reference: str):
-        exists = await idempotency_service.exists(db=db, key=reference)
-        if exists:
-            raise HTTPException(409, "Duplicate operation")
-
-        await idempotency_service.record(db=db, key=reference)
 
     def _log_tx(
         self,
@@ -260,7 +240,12 @@ class CooperativeEscrowService:
             status="successful"
         )
 
-    async def _emit(self, db: AsyncSession, topic: str, tx: EscrowTransaction):
+    async def _emit(
+        self,
+        db: AsyncSession,
+        topic: str,
+        tx: EscrowTransaction
+    ):
         db.add(tx)
 
         await outbox_service.queue_event(
