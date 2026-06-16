@@ -1,4 +1,5 @@
 from datetime import timedelta, datetime, timezone
+from app.db.models.platform_settings import PlatformSettings
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,8 +34,6 @@ class CooperativeExtensionService:
         settings = await db.scalar(
             select(PlatformSettings).where(
                 PlatformSettings.is_active == True
-            )
-        )
 
         if not settings:
             raise ValueError("Platform settings not configured")
@@ -44,7 +43,7 @@ class CooperativeExtensionService:
         # ----------------------------------------------------
         # No user input allowed.
         # Extension is derived from platform policy.
-        extension_days = settings.max_lifespan_days  # safe default policy-bound value
+        extension_days = settings.max_extension_days  # safe default policy-bound value
 
         # ----------------------------------------------------
         # CREATE PROPOSAL
