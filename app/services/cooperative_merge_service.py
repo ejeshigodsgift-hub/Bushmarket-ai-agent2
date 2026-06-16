@@ -163,6 +163,7 @@ class CooperativeMergeService:
         self,
         db: AsyncSession,
         cooperatives: List[Cooperative],
+        proposal_id: int,
     ):
 
         from app.services.cooperative_merge_procurement_service import (
