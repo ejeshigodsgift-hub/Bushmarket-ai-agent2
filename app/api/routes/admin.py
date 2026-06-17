@@ -23,26 +23,26 @@ admin_service = MarketAdminService()
 # =========================================
 # APPROVE AGENT (DIRECT MARKET APPROVAL)
 # =========================================
-@router.post("/agent/{user_id}/approve")
-async def approve_agent(
-    user_id: str,
-    request: Request,
-    db: AsyncSession = Depends(get_db)
-):
+#@router.post("/agent/{user_id}/approve")
+#async def approve_agent(
+   # user_id: str,
+  #  request: Request,
+  #  db: AsyncSession = Depends(get_db)
+#):
 
-    if not request.state.user:
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized"
-        )
+  #  if not request.state.user:
+       # raise HTTPException(
+           # status_code=401,
+          #  detail="Unauthorized"
+    #    )
 
-    admin_id = request.state.user["id"]
+  #  admin_id = request.state.user["id"]
 
-    return await admin_service.approve_agent(
-        db=db,
-        user_id=user_id,
-        admin_id=admin_id
-    )
+   # return await #admin_service.approve_agent(
+      #  db=db,
+      #  user_id=user_id,
+      #  admin_id=admin_id
+#    )
 
 
 # =========================================
