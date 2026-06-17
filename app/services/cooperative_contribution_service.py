@@ -1,6 +1,5 @@
 from decimal import Decimal
 from datetime import datetime, timezone
-from app.integrations.payment_status import PaymentStatus
 
 from fastapi import HTTPException
 from sqlalchemy import select, func
@@ -9,10 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.cooperative import Cooperative
 from app.db.models.cooperative_membership import CooperativeMembership
 from app.db.models.cooperative_contribution import CooperativeContribution
-from app.db.models.escrow_account import EscrowAccount
 
 from app.services.financial_core_service import FinancialCoreService
 from app.services.outbox_service import outbox_service
+from app.integrations.payment_status import PaymentStatus
 
 
 class CooperativeContributionService:
@@ -46,7 +45,7 @@ class CooperativeContributionService:
         # -----------------------------
         # ENFORCE PAID MEMBERSHIP ONLY
         # -----------------------------
-        if membership.payment_status !=   PaymentStatus.SUCCESS:
+        if membership.payment_status != PaymentStatus.SUCCESS:
             raise HTTPException(403, "Membership not fully paid")
 
         contribution = CooperativeContribution(
@@ -70,13 +69,13 @@ class CooperativeContributionService:
             cooperative.current_members += 1
 
         # -----------------------------
-        # ESCROW SYNC
+        # ESCROW SYNC (SOURCE OF TRUTH)
         # -----------------------------
         await self.financial.escrow_deposit(
             db=db,
             escrow_id=escrow_account_id,
             amount=amount,
-            reference=f"coop_contribution_{contribution.id}",
+            reference=f"coop_contribution_{payment_reference}",
             debit_ledger_account="escrow_debit",
             credit_ledger_account="escrow_credit"
         )
@@ -95,9 +94,17 @@ class CooperativeContributionService:
         return contribution
 
     # =====================================================
-    # REVERSE CONTRIBUTION
+    # REVERSE CONTRIBUTION (FIXED - FINANCIAL CORE CONTROL)
     # =====================================================
-    async def reverse_contribution(self, db, contribution_id: str, reason: str):
+    async def reverse_contribution(
+        self,
+        db: AsyncSession,
+        contribution_id: str,
+        reason: str,
+        escrow_account_id: str,
+        debit_ledger_account: str,
+        credit_ledger_account: str
+    ):
         contribution = await db.get(CooperativeContribution, contribution_id)
 
         if not contribution:
@@ -107,11 +114,37 @@ class CooperativeContributionService:
             raise HTTPException(400, "Already processed")
 
         cooperative = await db.get(Cooperative, contribution.cooperative_id)
+        if not cooperative:
+            raise HTTPException(404, "Cooperative not found")
 
+        # mark contribution reversed
         contribution.status = "reversed"
         contribution.notes = reason
 
+        # adjust cooperative total (business state)
         cooperative.total_contributed -= contribution.amount
+
+        # -----------------------------
+        # CRITICAL FIX:
+        # ESCROW MUST BE UPDATED VIA FINANCIAL CORE
+        # -----------------------------
+        await self.financial.escrow_refund(
+            db=db,
+            escrow_id=escrow_account_id,
+            amount=contribution.amount,
+            reference=f"reverse_contribution_{contribution.id}"
+        )
+
+        await outbox_service.queue_event(
+            db=db,
+            topic="cooperative.contribution.reversed",
+            payload={
+                "cooperative_id": cooperative.id,
+                "contribution_id": contribution.id,
+                "amount": str(contribution.amount),
+                "reason": reason
+            }
+        )
 
         await db.commit()
         return contribution
@@ -119,7 +152,12 @@ class CooperativeContributionService:
     # =====================================================
     # REFUND CONTRIBUTION
     # =====================================================
-    async def refund_contribution(self, db, contribution_id: str, reason: str):
+    async def refund_contribution(
+        self,
+        db: AsyncSession,
+        contribution_id: str,
+        reason: str
+    ):
         contribution = await db.get(CooperativeContribution, contribution_id)
 
         if not contribution:
@@ -183,16 +221,10 @@ class CooperativeContributionService:
 
         count = result.scalar() or 0
 
-        cooperative = await db.get(
-            Cooperative,
-            cooperative_id
-        )
+        cooperative = await db.get(Cooperative, cooperative_id)
 
         if not cooperative:
-            raise HTTPException(
-                404,
-                "Cooperative not found"
-            )
+            raise HTTPException(404, "Cooperative not found")
 
         cooperative.current_members = count
 
@@ -201,6 +233,4 @@ class CooperativeContributionService:
         return count
 
 
-cooperative_contribution_service = (
-    CooperativeContributionService()
-)
+cooperative_contribution_service = CooperativeContributionService()
