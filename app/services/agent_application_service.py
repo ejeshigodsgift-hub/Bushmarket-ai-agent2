@@ -78,8 +78,8 @@ class AgentApplicationService:
             }
         )
 
-        await self.market_admin_service.approve_agent(
-            db=db,
+        #await #self.market_admin_service.approve_agent(
+             #db=db,
             user_id=str(application.user_id),
             admin_id=admin_id
         )
@@ -97,8 +97,8 @@ class AgentApplicationService:
             }
         )
 
-        await self.agent_service.approve_agent(
-            db=db,
+        #await #self.agent_service.approve_agent(
+            #db=db,
             user_id=str(application.user_id),
             admin_id=admin_id
         )
