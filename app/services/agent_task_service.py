@@ -1,12 +1,13 @@
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi import HTTPException
 
 from app.db.models.agent_task import AgentTask
-from app.db.models.role import Role
 
 from app.services.permission_service import PermissionService
+from app.services.agent_permission_service import (
+    agent_permission_service
+)
 from app.repositories.outbox_repository import OutboxRepository
 from app.core.logger import logger
 
@@ -26,31 +27,37 @@ class AgentTaskService:
         agent_id: str,
         task_type: str,
         payload: dict,
-        cooperative_id: str = None
+        cooperative_id: str | None = None
     ):
         # =========================================
-        # PERMISSION CHECK
+        # ADMIN PERMISSION CHECK
         # =========================================
         PermissionService().validate_permission(
             admin_user["roles"],
             "assign_agent_task"
         )
 
+        # =========================================
+        # TASK VALIDATION
+        # =========================================
         if task_type not in self.VALID_TASKS:
-            raise HTTPException(400, "Invalid task type")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid task type"
+            )
 
         # =========================================
-        # VERIFY AGENT ROLE
+        # VERIFY FULL AGENT STATUS
+        #
+        # Requires:
+        # - Role(role="agent")
+        # - MarketAgent.status="approved"
+        # - MarketAgent.is_verified_agent=True
         # =========================================
-        role_stmt = select(Role).where(
-            Role.user_id == agent_id,
-            Role.role == "agent"
+        await agent_permission_service.require_agent(
+            db=db,
+            user_id=agent_id
         )
-
-        role_result = await db.execute(role_stmt)
-        agent_role = role_result.scalar_one_or_none()
-
-        await agent_permission_service.require_agent(db, agent_id)
 
         # =========================================
         # LOGGING
@@ -65,21 +72,23 @@ class AgentTaskService:
         )
 
         # =========================================
-        # BUSINESS WRITE (DB ONLY)
+        # CREATE TASK
         # =========================================
         task = AgentTask(
             agent_id=agent_id,
             admin_id=admin_user["id"],
+            cooperative_id=cooperative_id,
             task_type=task_type,
             payload=payload,
-            cooperative_id=cooperative_id,
             status="assigned"
         )
 
         db.add(task)
 
+        await db.flush()
+
         # =========================================
-        # OUTBOX EVENT (SAME TRANSACTION)
+        # OUTBOX EVENT
         # =========================================
         outbox_repo = OutboxRepository()
 
@@ -89,16 +98,14 @@ class AgentTaskService:
             payload={
                 "task_id": task.id,
                 "agent_id": agent_id,
-                "task_type": task_type
+                "task_type": task_type,
+                "cooperative_id": cooperative_id
             }
         )
 
         # =========================================
-        # AUDIT LOG (OPTIONAL - still DB bound)
+        # COMMIT
         # =========================================
-        # If your audit service writes DB, keep it inside same transaction
-        # Otherwise move it to outbox too in future scaling phase
-
         await db.commit()
         await db.refresh(task)
 
