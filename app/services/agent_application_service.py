@@ -52,8 +52,10 @@ class AgentApplicationService:
         if not application:
             raise HTTPException(404, "Application not found")
 
-        if application.status == "approved":
+        if application.status in ["approved", "approval_requested"]:
             return application
+
+        
 
         if application.status == "suspended":
             raise HTTPException(400, "Application is suspended")
@@ -61,7 +63,7 @@ class AgentApplicationService:
         # =========================================
         # MARK APPLICATION AS PENDING APPROVAL FLOW
         # =========================================
-        application.status = "approved"
+        application.status = "approval_requested"
         application.reviewed_by = admin_id
         application.reviewed_at = datetime.now(timezone.utc)
 
@@ -78,12 +80,7 @@ class AgentApplicationService:
             }
         )
 
-        #await #self.market_admin_service.approve_agent(
-             #db=db,
-            user_id=str(application.user_id),
-            admin_id=admin_id
-        )
-
+      
         # =========================================
         # STEP 2 (REQUEST ROLE APPROVAL)
         # =========================================
@@ -97,11 +94,7 @@ class AgentApplicationService:
             }
         )
 
-        #await #self.agent_service.approve_agent(
-            #db=db,
-            user_id=str(application.user_id),
-            admin_id=admin_id
-        )
+        
 
         # =========================================
         # AUDIT ONLY (NO APPROVAL LOGIC HERE)
