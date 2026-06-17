@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.services.agent_task_lifecycle import AgentTaskLifecycle
-
+from app.services.agent_permission_service import (
+    agent_permission_service
+)
 
 router = APIRouter(
     prefix="/agent",
@@ -29,6 +31,11 @@ async def get_tasks(
     if not request.state.user:
         raise HTTPException(401, "Unauthorized")
 
+    await agent_permission_service.require_agent(
+        db,
+        request.state.user["id"]
+    )
+
     # Placeholder (later: repository fetch with filters/pagination)
     return {
         "tasks": []
@@ -47,6 +54,11 @@ async def start_task(
 
     if not request.state.user:
         raise HTTPException(401, "Unauthorized")
+
+    await agent_permission_service.require_agent(
+        db,
+        request.state.user["id"]
+    )
 
     lifecycle = AgentTaskLifecycle()
 
@@ -74,6 +86,11 @@ async def complete_task(
 
     if not request.state.user:
         raise HTTPException(401, "Unauthorized")
+
+    await agent_permission_service.require_agent(
+        db,
+        request.state.user["id"]
+    )
 
     lifecycle = AgentTaskLifecycle()
 
