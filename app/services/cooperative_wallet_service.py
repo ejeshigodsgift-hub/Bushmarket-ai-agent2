@@ -1,6 +1,7 @@
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
+from app.db.models.milestone_event import MilestoneEvent
 
 from app.db.models.cooperative import Cooperative
 from app.db.models.cooperative_membership import CooperativeMembership
@@ -208,22 +209,28 @@ class CooperativeWalletService:
     # =========================================================
     # 9. AI NOTIFICATION TRIGGERS
     # =========================================================
-    async def trigger_milestones(self, cooperative: Cooperative):
+    
 
-        pct = (cooperative.total_contributed / cooperative.target_amount) * 100
+    async def _trigger_milestone(self,  db, cooperative, milestone: str, message:  str):
+        existing = await db.execute(
+            select(MilestoneEvent).where(
+                MilestoneEvent.cooperative_id == cooperative.id,
+                MilestoneEvent.milestone == milestone
+            )
+        )
 
-        if pct >= 25:
-            await self._notify(cooperative, "25% milestone reached")
+        if existing.scalar_one_or_none():
+            return  # already triggered
 
-        if pct >= 50:
-            await self._notify(cooperative, "50% milestone reached")
+        event = MilestoneEvent(
+            cooperative_id=cooperative.id,
+            milestone=milestone
+        )
 
-        if pct >= 75:
-            await self._notify(cooperative, "75% milestone reached")
+        db.add(event)
 
-        if pct >= 100:
-            await self._notify(cooperative, "100% funded")
-
+        await self._notify(cooperative,  message)
+            
     async def _notify(self, cooperative: Cooperative, message: str):
 
         await outbox_service.queue_event(
