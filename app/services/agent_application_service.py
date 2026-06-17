@@ -18,23 +18,12 @@ from app.services.outbox_service import outbox_service
 
 class AgentApplicationService:
     """
-    AGENT APPLICATION ORCHESTRATOR
+    ORCHESTRATOR ONLY (NO BUSINESS WRITE LOGIC)
 
-    RESPONSIBILITIES
-    ----------------
-    - Review applications
-    - Approve applications
-    - Reject applications
-    - Suspend applications
-
-    APPROVAL WORKFLOW
-    -----------------
-    1. Approve AgentApplication
-    2. Approve MarketAgent
-    3. Assign Agent Role
-
-    This service is the ONLY place that coordinates
-    the complete agent onboarding workflow.
+    It only:
+    - validates application
+    - triggers approval requests
+    - delegates actual approval to domain services
     """
 
     def __init__(self):
@@ -43,7 +32,7 @@ class AgentApplicationService:
         self.audit = AuditService()
 
     # =========================================
-    # APPROVE APPLICATION
+    # APPROVE APPLICATION (ORCHESTRATION ONLY)
     # =========================================
     async def approve_application(
         self,
@@ -61,72 +50,80 @@ class AgentApplicationService:
         application = result.scalar_one_or_none()
 
         if not application:
-            raise HTTPException(
-                status_code=404,
-                detail="Application not found"
-            )
+            raise HTTPException(404, "Application not found")
 
         if application.status == "approved":
             return application
 
         if application.status == "suspended":
-            raise HTTPException(
-                status_code=400,
-                detail="Application is suspended"
-            )
+            raise HTTPException(400, "Application is suspended")
 
-        # =====================================
-        # APPLICATION APPROVAL
-        # =====================================
+        # =========================================
+        # MARK APPLICATION AS PENDING APPROVAL FLOW
+        # =========================================
         application.status = "approved"
         application.reviewed_by = admin_id
-        application.reviewed_at = datetime.now(
-            timezone.utc
+        application.reviewed_at = datetime.now(timezone.utc)
+
+        # =========================================
+        # STEP 1 (REQUEST MARKET APPROVAL)
+        # =========================================
+        await outbox_service.queue_event(
+            db=db,
+            topic="agent.market_approval.requested",
+            payload={
+                "user_id": str(application.user_id),
+                "admin_id": admin_id,
+                "application_id": str(application.id)
+            }
         )
 
-        # =====================================
-        # STEP 1:
-        # MARKET AGENT APPROVAL
-        # =====================================
         await self.market_admin_service.approve_agent(
             db=db,
             user_id=str(application.user_id),
             admin_id=admin_id
         )
 
-        # =====================================
-        # STEP 2:
-        # ROLE ASSIGNMENT
-        # =====================================
+        # =========================================
+        # STEP 2 (REQUEST ROLE APPROVAL)
+        # =========================================
+        await outbox_service.queue_event(
+            db=db,
+            topic="agent.role_approval.requested",
+            payload={
+                "user_id": str(application.user_id),
+                "admin_id": admin_id,
+                "application_id": str(application.id)
+            }
+        )
+
         await self.agent_service.approve_agent(
             db=db,
             user_id=str(application.user_id),
             admin_id=admin_id
         )
 
-        # =====================================
-        # AUDIT
-        # =====================================
+        # =========================================
+        # AUDIT ONLY (NO APPROVAL LOGIC HERE)
+        # =========================================
         await self.audit.log(
             db=db,
             user_id=admin_id,
-            action="agent_application_approved",
+            action="agent_application_processed",
             entity_type="agent_application",
             entity_id=str(application.id),
             metadata={
                 "application_id": str(application.id),
-                "applicant_user_id": str(
-                    application.user_id
-                )
+                "user_id": str(application.user_id)
             }
         )
 
-        # =====================================
-        # OUTBOX EVENT
-        # =====================================
+        # =========================================
+        # FINAL OUTBOX EVENT
+        # =========================================
         await outbox_service.queue_event(
             db=db,
-            topic="agent.application.approved",
+            topic="agent.application.processed",
             payload={
                 "application_id": str(application.id),
                 "user_id": str(application.user_id),
@@ -140,7 +137,7 @@ class AgentApplicationService:
         return application
 
     # =========================================
-    # REJECT APPLICATION
+    # REJECT APPLICATION (UNCHANGED LOGIC STYLE)
     # =========================================
     async def reject_application(
         self,
@@ -159,16 +156,11 @@ class AgentApplicationService:
         application = result.scalar_one_or_none()
 
         if not application:
-            raise HTTPException(
-                status_code=404,
-                detail="Application not found"
-            )
+            raise HTTPException(404, "Application not found")
 
         application.status = "rejected"
         application.reviewed_by = admin_id
-        application.reviewed_at = datetime.now(
-            timezone.utc
-        )
+        application.reviewed_at = datetime.now(timezone.utc)
         application.rejection_reason = reason
 
         await self.audit.log(
@@ -177,61 +169,12 @@ class AgentApplicationService:
             action="agent_application_rejected",
             entity_type="agent_application",
             entity_id=str(application.id),
-            metadata={
-                "reason": reason
-            }
+            metadata={"reason": reason}
         )
 
         await outbox_service.queue_event(
             db=db,
             topic="agent.application.rejected",
-            payload={
-                "application_id": str(application.id),
-                "user_id": str(application.user_id),
-                "admin_id": admin_id,
-                "reason": reason
-            }
-        )
-
-        await db.commit()
-        await db.refresh(application)
-
-        return application
-
-    # =========================================
-    # SUSPEND APPLICATION
-    # =========================================
-    async def suspend_application(
-        self,
-        db: AsyncSession,
-        application_id: str,
-        admin_id: str,
-        reason: str | None = None
-    ):
-
-        result = await db.execute(
-            select(AgentApplication).where(
-                AgentApplication.id == application_id
-            )
-        )
-
-        application = result.scalar_one_or_none()
-
-        if not application:
-            raise HTTPException(
-                status_code=404,
-                detail="Application not found"
-            )
-
-        application.status = "suspended"
-        application.reviewed_by = admin_id
-        application.reviewed_at = datetime.now(
-            timezone.utc
-        )
-
-        await outbox_service.queue_event(
-            db=db,
-            topic="agent.application.suspended",
             payload={
                 "application_id": str(application.id),
                 "user_id": str(application.user_id),
