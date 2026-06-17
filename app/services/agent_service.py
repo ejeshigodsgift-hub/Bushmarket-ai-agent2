@@ -48,7 +48,7 @@ class AgentService:
             }
         )
 
-        await db.commit()
+        #await db.commit()
 
         await db.refresh(role)
 
