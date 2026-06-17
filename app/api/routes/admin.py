@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.services.market_admin_service import MarketAdminService
+from app.services.agent_application_service import agent_application_service
 
 
 router = APIRouter(
@@ -20,7 +21,7 @@ admin_service = MarketAdminService()
 
 
 # =========================================
-# APPROVE AGENT
+# APPROVE AGENT (DIRECT MARKET APPROVAL)
 # =========================================
 @router.post("/agent/{user_id}/approve")
 async def approve_agent(
@@ -65,5 +66,30 @@ async def approve_listing(
     return await admin_service.approve_listing(
         db=db,
         listing_id=listing_id,
+        admin_id=admin_id
+    )
+
+
+# =========================================
+# APPROVE AGENT APPLICATION (BUSHMARKET ADMIN FLOW)
+# =========================================
+@router.post("/agent-applications/{application_id}/approve")
+async def approve_agent_application(
+    application_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+
+    if not request.state.user:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized"
+        )
+
+    admin_id = request.state.user["id"]
+
+    return await agent_application_service.approve_application(
+        db=db,
+        application_id=application_id,
         admin_id=admin_id
     )
