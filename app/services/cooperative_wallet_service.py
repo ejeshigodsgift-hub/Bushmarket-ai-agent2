@@ -12,7 +12,7 @@ from app.db.models.financial_reconciliation import FinancialReconciliation
 from app.services.financial_core_service import FinancialCoreService
 from app.services.audit_service import AuditService
 from app.services.outbox_service import outbox_service
-
+from sqlalchemy import select
 
 class CooperativeWalletService:
     """
@@ -40,7 +40,12 @@ class CooperativeWalletService:
         db: AsyncSession,
         cooperative: Cooperative
     ):
-        escrow = await db.get(EscrowAccount, cooperative.id)
+        result = await db.execute(
+            select(EscrowAccount).where(
+                EscrowAccount.cooperative_id ==  cooperative.id
+            )
+        )
+        escrow = result.scalar_one_or_none()
 
         escrow_balance = escrow.available_balance if escrow else Decimal("0")
         reserved = escrow.total_reserved if escrow else Decimal("0")
