@@ -61,7 +61,7 @@ class MarketAdminService:
             aggregate_type="market_agent"
         )
 
-        await db.commit()
+       # await db.commit()
         await db.refresh(agent)
 
         return agent
