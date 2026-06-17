@@ -174,7 +174,7 @@ class CooperativeRefundService:
         await db.flush()
 
         # Move funds via FinancialCore (escrow release → wallet/ledger settlement)
-        await self.financial_core.escrow_release(
+        await self.financial_core.escrow_refund(
             db=db,
             escrow_id=escrow_id,
             amount=Decimal(str(refund.refund_amount)),
