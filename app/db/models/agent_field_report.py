@@ -60,6 +60,12 @@ class AgentFieldReport(Base):
         index=True
     )
 
+    images: Mapped[list | None] = mapped_column(
+        JSON,
+        nullable=True,
+        default=list
+    )
+
     title: Mapped[str | None] = mapped_column(
         String,
         nullable=True
