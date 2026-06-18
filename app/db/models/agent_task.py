@@ -1,26 +1,46 @@
 import uuid
 
 from datetime import datetime
-
-from sqlalchemy import (
-    String,
-    JSON,
-    DateTime,
-    ForeignKey,
-    func
-)
+from app.db.base import Base
 
 from sqlalchemy.orm import (
     Mapped,
     mapped_column
 )
 
-from app.db.base import Base
 
+from sqlalchemy import (
+    String,
+    JSON,
+    DateTime,
+    ForeignKey,
+    func,
+    CheckConstraint
+)
 
 class AgentTask(Base):
 
     __tablename__ = "agent_tasks"
+
+    __table_args__ = (
+        CheckConstraint(
+            """
+            task_type IN (
+                'product_sourcing',
+                'supplier_verification',
+                'market_price_check',
+                'inventory_check',
+                'live_market_stream',
+                'listing_creation',
+                'delivery_check',
+                'supplier_contact'
+            )
+            """,
+            name="chk_agent_task_type"
+        ),
+    )
+
+    # existing fields remain unchanged
 
     id: Mapped[str] = mapped_column(
         String,
