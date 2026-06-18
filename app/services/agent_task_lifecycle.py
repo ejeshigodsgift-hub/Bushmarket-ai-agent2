@@ -81,3 +81,16 @@ class AgentTaskLifecycle:
         await db.refresh(task)
 
         return task
+
+
+    async def accept_task(
+        self,
+        db: AsyncSession,
+        task_id: str
+    ) -> AgentTask:
+
+        return await self.update_status(
+            db=db,
+            task_id=task_id,
+            new_status="accepted"
+        )
