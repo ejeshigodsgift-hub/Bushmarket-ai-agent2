@@ -30,6 +30,11 @@ async def submit_report(
 
     agent_id = request.state.user["id"]
 
+    await agent_permission_service.require_agent(
+        db=db,     
+        user_id=agent_id
+    )
+
     report = await service.submit_report(
         db=db,
         agent_id=agent_id,
