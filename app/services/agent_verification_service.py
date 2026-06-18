@@ -1,7 +1,8 @@
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.market_agent import MarketAgent
+from app.services.agent_permission_service import (
+    agent_permission_service
+)
 
 
 class AgentVerificationService:
@@ -12,17 +13,7 @@ class AgentVerificationService:
         user_id: str
     ) -> bool:
 
-        result = await db.execute(
-            select(MarketAgent).where(
-                MarketAgent.user_id == user_id,
-                MarketAgent.is_verified_agent == True,
-                MarketAgent.status == "approved"
-            )
+        return await agent_permission_service.is_agent(
+            db=db,
+            user_id=user_id
         )
-
-        agent = result.scalar_one_or_none()
-
-        return bool(agent)
-
-
-agent_verification_service = AgentVerificationService()
