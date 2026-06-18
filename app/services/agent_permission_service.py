@@ -51,34 +51,7 @@ class AgentPermissionService:
                 detail="Agent not approved or inactive"
             )
 
-    # ====================================================
-    # CHECK ONLY APPROVAL STATUS (OPTIONAL UTILITY)
-    # ====================================================
-    async def is_approved_agent(self, db: AsyncSession, user_id: str) -> bool:
-
-        result = await db.execute(
-            select(MarketAgent).where(
-                MarketAgent.user_id == user_id,
-                MarketAgent.status == "approved"
-            )
-        )
-
-        return result.scalar_one_or_none() is not None
-
-    # ====================================================
-    # CHECK VERIFICATION ONLY (OPTIONAL UTILITY)
-    # ====================================================
-    async def is_verified_agent(self, db: AsyncSession, user_id: str) -> bool:
-
-        result = await db.execute(
-            select(MarketAgent).where(
-                MarketAgent.user_id == user_id,
-                MarketAgent.is_verified_agent.is_(True)
-            )
-        )
-
-        return result.scalar_one_or_none() is not None
-
+    
 
 # SINGLETON
 agent_permission_service = AgentPermissionService()
