@@ -7,7 +7,8 @@ class TaskStateMachine:
     # TASK STATE TRANSITIONS
     # ====================================================
     TRANSITIONS = {
-        "assigned": ["in_progress", "cancelled"],
+        "assigned": ["accepted", "cancelled"],
+        "accepted": ["in_progress", "cancelled"],
         "in_progress": ["completed", "failed", "cancelled"],
         "failed": ["assigned"],
         "completed": [],
