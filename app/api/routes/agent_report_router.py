@@ -30,16 +30,12 @@ async def submit_report(
 
     agent_id = request.state.user["id"]
 
-    await agent_permission_service.require_agent(
-        db=db,
-        user_id=agent_id
-    )
-
     report = await service.submit_report(
         db=db,
         agent_id=agent_id,
         report_type=payload.get("report_type"),
         report_data=payload.get("report_data"),
+        images=payload.get("images", []),
         cooperative_id=payload.get("cooperative_id"),
         location=payload.get("location"),
         title=payload.get("title")
@@ -48,6 +44,7 @@ async def submit_report(
     return {
         "id": report.id,
         "report_type": report.report_type,
+        "images_count": len(report.images or []),
         "created_at": report.created_at
     }
 
