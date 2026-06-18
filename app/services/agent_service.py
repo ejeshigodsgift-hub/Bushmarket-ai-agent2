@@ -48,8 +48,12 @@ class AgentService:
             }
         )
 
-        #await db.commit()
 
+        #await db.commit()
+        
+        await db.flush()
         await db.refresh(role)
+
+        
 
         return role
