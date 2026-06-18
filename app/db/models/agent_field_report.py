@@ -44,7 +44,7 @@ class AgentFieldReport(Base):
 
     agent_id: Mapped[str] = mapped_column(
         String,
-        ForeignKey("market_agents.id", ondelete="CASCADE"),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
