@@ -41,6 +41,34 @@ async def get_tasks(
         "tasks": []
     }
 
+@router.post("/task/{task_id}/accept")
+async def accept_task(
+    task_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+
+    if not request.state.user:
+        raise HTTPException(401, "Unauthorized")
+
+    await agent_permission_service.require_agent(
+        db,
+        request.state.user["id"]
+    )
+
+    lifecycle = AgentTaskLifecycle()
+
+    task = await lifecycle.update_status(
+        db=db,
+        task_id=task_id,
+        new_status="accepted"
+    )
+
+    return {
+        "task_id": task.id,
+        "status": task.status
+    }
+
 
 # =========================================
 # START TASK
