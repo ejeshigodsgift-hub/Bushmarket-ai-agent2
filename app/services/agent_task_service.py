@@ -16,6 +16,11 @@ class AgentTaskService:
 
     VALID_TASKS = [
         "product_sourcing",
+        "supplier_verification",
+        "market_price_check",
+        "inventory_check",
+        "live_market_stream",
+        "listing_creation",
         "delivery_check",
         "supplier_contact"
     ]
