@@ -24,6 +24,11 @@ async def create_listing(
 
     agent_id = request.state.user["id"]
 
+    await agent_permission_service.require_agent(
+        db=db,
+        user_id=agent_id
+    )
+
     return await service.create_draft(
         db=db,
         agent_id=agent_id,
@@ -46,6 +51,12 @@ async def submit_listing(
         raise HTTPException(401, "Unauthorized")
 
     agent_id = request.state.user["id"]
+
+
+    await agent_permission_service.require_agent(
+        db=db,
+        user_id=agent_id
+    )
 
     return await service.submit_for_review(
         db=db,
