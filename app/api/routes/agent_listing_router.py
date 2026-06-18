@@ -1,5 +1,8 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.agent_permission_service import (
+    agent_permission_service
+)
 
 from app.db.session import get_db
 from app.services.agent_listing_service import AgentListingService
