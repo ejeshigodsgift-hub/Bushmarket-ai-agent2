@@ -1,5 +1,7 @@
 import uuid
+from fastapi import HTTPException
 
+from sqlalchemy.orm import validates
 from sqlalchemy import (
     String,
     DateTime,
@@ -24,6 +26,13 @@ class ListingAgentActivity(Base):
         Index("idx_listing_activity_user", "agent_id"),
         Index("idx_listing_activity_action", "action_type"),
         Index("idx_listing_activity_created", "created_at"),
+    )
+
+    ALLOWED_ACTIONS = (
+        "draft_created",
+        "submitted_for_review",
+        "admin_approved",
+        "admin_rejected"
     )
 
     # =====================================================
@@ -51,13 +60,25 @@ class ListingAgentActivity(Base):
     )
 
     # =====================================================
-    # ACTION TRACKING
+    # ACTION TYPE (define FIRST)
     # =====================================================
     action_type: Mapped[str] = mapped_column(
         String(50),
         nullable=False
     )
 
+    @validates("action_type")
+    def validate_action_type(self, key, value):
+        if value not in self.ALLOWED_ACTIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid action_type: {value}"
+            )
+        return value
+
+    # =====================================================
+    # ACTION TRACKING
+    # =====================================================
     activity_note: Mapped[str | None] = mapped_column(
         Text,
         nullable=True
@@ -93,9 +114,8 @@ class ListingAgentActivity(Base):
     )
 
     # =====================================================
-    # RELATIONSHIPS (FIXED)
+    # RELATIONSHIPS
     # =====================================================
-
     listing = relationship(
         "MarketProductListing",
         back_populates="listing_activities",
