@@ -48,9 +48,9 @@ class Cart(Base):
         default=lambda: str(uuid.uuid4())
     )
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id",  ondelete="CASCADE"),
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False
     )
 
