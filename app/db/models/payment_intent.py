@@ -83,6 +83,18 @@ class PaymentIntent(Base):
         nullable=False
     )
 
+    checkout_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("checkouts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
+checkout = relationship(
+        "Checkout",
+        lazy="joined"
+    )
+
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
