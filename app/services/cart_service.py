@@ -45,7 +45,8 @@ class CartService:
 
             # refresh expiry on activity
             cart.expires_at = now + timedelta(minutes=self.CART_TTL_MINUTES)
-
+            
+            db.flush()
             return cart
 
         cart = Cart(
@@ -153,6 +154,7 @@ class CartService:
                 )
 
                 db.add(item)
+                db.flush()
 
             # =========================================
             # FIXED: RECOMPUTE CART TOTALS (NO DRIFT)
@@ -236,6 +238,172 @@ class CartService:
         except Exception:
             db.rollback()
             raise HTTPException(500, "Unable to add item to cart")
+
+   
+
+    def remove_from_cart(
+        self,
+        db: Session,
+        user_id: str,
+        cart_item_id: str,
+        ip_address: str
+    ):
+
+        try:
+
+        # =========================
+        # GET CART ITEM
+        # =========================
+            item = db.query(CartItem).filter(
+                CartItem.id == cart_item_id
+            ).first()
+
+            if not item:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Cart item not  found"
+                )
+
+            cart = item.cart
+
+        # =========================
+        # SECURITY CHECK
+        # =========================
+            if str(cart.user_id) != str(user_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Unauthorized cart access"
+                )
+
+            listing = item.listing
+
+            inventory =  db.query(Inventory).filter(
+                Inventory.listing_id == listing.id,
+                Inventory.is_active == True
+            ).with_for_update().first()
+
+            if not inventory:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Inventory not found"
+                )
+
+            removed_quantity = item.quantity
+
+        # =========================
+        # RELEASE RESERVED INVENTORY
+        # =========================
+            self.inventory_service.release_reserved_stock(
+                db=db,
+                inventory=inventory,
+                quantity=removed_quantity,
+                user_id=user_id,
+                ip=ip_address
+            )
+
+        # =========================
+        # REMOVE ITEM
+        # =========================
+            db.delete(item)
+            db.flush()
+
+        # =========================
+        # RECOMPUTE CART TOTALS
+        # =========================
+            items = db.query(CartItem).filter(
+                CartItem.cart_id == cart.id
+            ).all()
+
+            subtotal = Decimal("0.00")
+            market_fee = Decimal("0.00")
+
+            for i in items:
+                subtotal += Decimal(i.quantity) * i.unit_price
+                market_fee += i.market_fee
+
+            cart.subtotal_amount = subtotal
+            cart.total_market_fee = market_fee
+            cart.total_amount = subtotal + market_fee
+
+        # =========================
+        # REFRESH CART EXPIRY
+        # =========================
+            cart.expires_at = datetime.now(timezone.utc) + timedelta(
+                minutes=self.CART_TTL_MINUTES
+            )
+
+            db.commit()
+
+        # =========================
+        # REDIS EVENT
+        # =========================
+            redis_client.publish(
+                "cart.updated",
+                {
+                    "event":  "cart_item_removed",
+                    "cart_id": cart.id,
+                    "user_id": user_id,
+                    "listing_id": listing.id
+                }
+            )
+
+        # =========================
+        # KAFKA EVENT
+        # =========================
+            event_bus.publish(
+                "cart-events",
+                {
+                    "event":  "cart_item_removed",
+                    "cart_id": cart.id,
+                    "listing_id": listing.id,
+                    "product_id": listing.product_id,
+                    "quantity": removed_quantity
+                }
+            )
+
+        # =========================
+        # AUDIT LOG
+        # =========================
+            self.audit_service.log(
+                db=db,
+                user_id=user_id,
+                action="cart_item_removed",
+                entity_type="cart",
+                entity_id=cart.id,
+                metadata={
+                    "cart_item_id": cart_item_id,
+                    "listing_id": listing.id,
+                    "product_id": listing.product_id,
+                    "quantity": removed_quantity,
+                    "market_id": listing.market_id
+                },
+                ip=ip_address
+            )
+
+            return {
+                "message": "Item removed from cart",
+                "cart_id": str(cart.id)
+            }
+
+        except HTTPException:
+            db.rollback()
+            raise
+
+        except SQLAlchemyError:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail="Database transaction failed"
+            )
+
+        except Exception:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to remove item from cart"
+            )
+    
+    
 
     # =========================================
     # CHECKOUT PREPARATION (EXPIRY SAFE)
