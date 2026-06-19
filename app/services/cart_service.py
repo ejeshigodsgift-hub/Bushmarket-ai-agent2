@@ -1,10 +1,9 @@
-# =========================================
-# FILE: app/services/cart_service.py
-# =========================================
-
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from fastapi import HTTPException
+
+from decimal import Decimal
+from datetime import datetime, timedelta, timezone
 
 from app.db.models.cart import Cart
 from app.db.models.cart_item import CartItem
@@ -22,6 +21,8 @@ from app.integrations.kafka_client import event_bus
 
 class CartService:
 
+    CART_TTL_MINUTES = 30
+
     def __init__(self):
         self.audit_service = AuditService()
         self.validation_service = CartValidationService()
@@ -29,7 +30,7 @@ class CartService:
         self.inventory_service = InventoryService()
 
     # =========================================
-    # GET OR CREATE CART
+    # GET OR CREATE CART (WITH EXPIRY FIX)
     # =========================================
     def get_or_create_cart(self, db: Session, user_id: str):
 
@@ -38,16 +39,23 @@ class CartService:
             Cart.status == "active"
         ).first()
 
+        now = datetime.now(timezone.utc)
+
         if cart:
+
+            # refresh expiry on activity
+            cart.expires_at = now + timedelta(minutes=self.CART_TTL_MINUTES)
+
             return cart
 
         cart = Cart(
             user_id=user_id,
             status="active",
-            subtotal_amount=0,
-            total_market_fee=0,
-            total_delivery_fee=0,
-            total_amount=0
+            subtotal_amount=Decimal("0.00"),
+            total_market_fee=Decimal("0.00"),
+            total_delivery_fee=Decimal("0.00"),
+            total_amount=Decimal("0.00"),
+            expires_at=now + timedelta(minutes=self.CART_TTL_MINUTES)
         )
 
         db.add(cart)
@@ -57,7 +65,7 @@ class CartService:
         return cart
 
     # =========================================
-    # ADD TO CART
+    # ADD TO CART (DECIMAL SAFE + NO DRIFT FIX)
     # =========================================
     def add_to_cart(
         self,
@@ -70,60 +78,33 @@ class CartService:
 
         try:
 
-            # =========================
-            # VALIDATE QUANTITY
-            # =========================
             if quantity <= 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Quantity must be greater than zero"
-                )
+                raise HTTPException(400, "Quantity must be greater than zero")
 
-            # =========================
-            # GET LISTING
-            # =========================
             listing = db.query(MarketProductListing).filter(
                 MarketProductListing.id == listing_id
             ).first()
 
             if not listing:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Listing not found"
-                )
+                raise HTTPException(404, "Listing not found")
 
-            # =========================
-            # LISTING VALIDATION GATE (Bushmarket Rule)
-            # =========================
             self.validation_service.validate_listing_for_cart(listing)
 
-            # =========================
-            # LOCK INVENTORY (transaction safety)
-            # =========================
             inventory = db.query(Inventory).filter(
                 Inventory.listing_id == listing.id,
                 Inventory.is_active == True
             ).with_for_update().first()
 
             if not inventory:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Inventory not found"
-                )
+                raise HTTPException(404, "Inventory not found")
 
             self.inventory_service.validate_inventory_for_cart(
                 inventory=inventory,
                 requested_quantity=quantity
             )
 
-            # =========================
-            # GET CART
-            # =========================
             cart = self.get_or_create_cart(db, user_id)
 
-            # =========================
-            # EXISTING ITEM CHECK
-            # =========================
             existing_item = db.query(CartItem).filter(
                 CartItem.cart_id == cart.id,
                 CartItem.listing_id == listing.id
@@ -140,7 +121,7 @@ class CartService:
             )
 
             # =========================
-            # PRICING ENGINE (NO FLOAT DRIFT)
+            # DECIMAL SAFE PRICING
             # =========================
             pricing = self.pricing_service.calculate_item_total(
                 quantity=quantity,
@@ -148,24 +129,12 @@ class CartService:
                 market_fee=listing.market_fee
             )
 
-            # =========================
-            # UPSERT CART ITEM
-            # =========================
             if existing_item:
 
                 existing_item.quantity = final_quantity
-
                 existing_item.unit_price = listing.unit_price
-
-                existing_item.market_fee = (
-                    existing_item.market_fee + pricing["market_fee"]
-                )
-
-                existing_item.total_price = (
-                    existing_item.total_price + pricing["total"]
-                )
-
-                item = existing_item
+                existing_item.market_fee += pricing["market_fee"]
+                existing_item.total_price += pricing["total"]
 
             else:
 
@@ -175,32 +144,42 @@ class CartService:
                     product_id=listing.product_id,
                     market_id=listing.market_id,
                     measurement_unit_id=listing.measurement_unit_id,
-
                     quantity=quantity,
                     unit_price=listing.unit_price,
-
                     market_fee=pricing["market_fee"],
-                    delivery_fee=0,  # reserved for checkout engine
-
+                    delivery_fee=Decimal("0.00"),
                     total_price=pricing["total"],
-
                     status="active"
                 )
 
                 db.add(item)
 
-            # =========================
-            # CART TOTALS (SAFE AGGREGATION)
-            # =========================
-            cart.subtotal_amount = cart.subtotal_amount + pricing["subtotal"]
+            # =========================================
+            # FIXED: RECOMPUTE CART TOTALS (NO DRIFT)
+            # =========================================
+            items = db.query(CartItem).filter(
+                CartItem.cart_id == cart.id
+            ).all()
 
-            cart.total_market_fee = cart.total_market_fee + pricing["market_fee"]
+            subtotal = Decimal("0.00")
+            market_fee = Decimal("0.00")
 
-            cart.total_amount = cart.subtotal_amount + cart.total_market_fee
+            for i in items:
+                subtotal += (Decimal(i.quantity) * i.unit_price)
+                market_fee += i.market_fee
 
-            # =========================
-            # INVENTORY RESERVATION
-            # =========================
+            cart.subtotal_amount = subtotal
+            cart.total_market_fee = market_fee
+            cart.total_amount = subtotal + market_fee
+
+            # =========================================
+            # EXPIRY REFRESH ON ACTIVITY
+            # =========================================
+            cart.expires_at = datetime.now(timezone.utc) + timedelta(
+                minutes=self.CART_TTL_MINUTES
+            )
+
+            # inventory reservation stays unchanged
             self.inventory_service.reserve_inventory(
                 db=db,
                 inventory=inventory,
@@ -209,9 +188,6 @@ class CartService:
 
             db.commit()
 
-            # =========================
-            # REDIS EVENT
-            # =========================
             redis_client.publish(
                 "cart.updated",
                 {
@@ -221,9 +197,6 @@ class CartService:
                 }
             )
 
-            # =========================
-            # KAFKA EVENT
-            # =========================
             event_bus.publish(
                 "cart-events",
                 {
@@ -235,9 +208,6 @@ class CartService:
                 }
             )
 
-            # =========================
-            # AUDIT LOG
-            # =========================
             self.audit_service.log(
                 db=db,
                 user_id=user_id,
@@ -253,7 +223,7 @@ class CartService:
                 ip=ip_address
             )
 
-            return item
+            return existing_item if existing_item else item
 
         except HTTPException:
             db.rollback()
@@ -261,36 +231,27 @@ class CartService:
 
         except SQLAlchemyError:
             db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail="Database transaction failed"
-            )
+            raise HTTPException(500, "Database transaction failed")
 
         except Exception:
             db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail="Unable to add item to cart"
-            )
+            raise HTTPException(500, "Unable to add item to cart")
 
     # =========================================
-    # CHECKOUT PREPARATION (NEW EXTENSION)
+    # CHECKOUT PREPARATION (EXPIRY SAFE)
     # =========================================
     def prepare_checkout(self, db: Session, user_id: str):
 
         cart = self.get_or_create_cart(db, user_id)
 
         if not cart:
-            raise HTTPException(
-                status_code=404,
-                detail="Cart not found"
-            )
+            raise HTTPException(404, "Cart not found")
 
         if cart.total_amount <= 0:
-            raise HTTPException(
-                status_code=400,
-                detail="Cart is empty"
-            )
+            raise HTTPException(400, "Cart is empty")
+
+        if cart.expires_at and cart.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(400, "Cart expired")
 
         return {
             "cart_id": cart.id,
@@ -298,5 +259,6 @@ class CartService:
             "market_fee": cart.total_market_fee,
             "delivery_fee": cart.total_delivery_fee,
             "total": cart.total_amount,
+            "expires_at": cart.expires_at,
             "status": "ready_for_checkout"
         }
