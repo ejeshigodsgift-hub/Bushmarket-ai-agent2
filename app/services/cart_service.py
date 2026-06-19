@@ -402,6 +402,138 @@ class CartService:
                 status_code=500,
                 detail="Unable to remove item from cart"
             )
+
+
+    def update_cart_item_quantity(
+        self,
+        db: Session,
+        user_id: str,
+        cart_item_id: str,
+        new_quantity: int,
+        ip_address: str
+    ):
+
+        try:
+
+            if new_quantity <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Quantity must  be greater than zero"
+                )
+
+            item = db.query(CartItem).filter(
+                CartItem.id == cart_item_id
+            ).first()
+
+            if not item:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Cart item not found"
+                )
+
+    # =========================
+    # OWNERSHIP CHECK
+    # =========================
+            if str(item.cart.user_id) != str(user_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Unauthorized cart access"
+                )
+
+    # =========================
+    # INVENTORY LOCK
+    # =========================
+            inventory = db.query(Inventory).filter(
+                Inventory.listing_id ==  item.listing_id,
+                Inventory.is_active == True
+            ).with_for_update().first()
+
+            if not inventory:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Inventory not found"
+                )
+
+            diff = new_quantity - item.quantity
+
+    # =========================
+    # UPDATE RESERVATION
+    # =========================
+            if diff > 0:
+
+          self.inventory_service.reserve_inventory(
+                    db=db,
+                    inventory=inventory,
+                    quantity=diff
+                )
+
+            elif diff < 0:
+
+        self.inventory_service.release_reserved_stock(
+                    db=db,
+                    inventory=inventory,
+                    quantity=abs(diff),
+                    user_id=user_id,
+                    ip=ip_address
+                )
+
+    # =========================
+    # RECALCULATE ITEM PRICING
+    # =========================
+            item.quantity = new_quantity
+
+            item.total_price = (
+                Decimal(new_quantity) *  item.unit_price
+            ) + item.market_fee
+
+    # =========================
+    # RECOMPUTE CART TOTALS
+    # =========================
+            items = db.query(CartItem).filter(
+                CartItem.cart_id ==  item.cart_id
+            ).all()
+
+            subtotal = Decimal("0.00")
+            market_fee = Decimal("0.00")
+
+            for i in items:
+                subtotal += Decimal(i.quantity) * i.unit_price
+                market_fee += i.market_fee
+
+            cart = item.cart
+
+            cart.subtotal_amount = subtotal
+            cart.total_market_fee = market_fee
+            cart.total_amount = subtotal + market_fee
+
+    # =========================
+    # REFRESH CART EXPIRY
+    # =========================
+            cart.expires_at = datetime.now(timezone.utc) + timedelta(
+                minutes=self.CART_TTL_MINUTES
+            )
+
+            db.commit()
+
+            return item
+
+        except HTTPException:
+            db.rollback()
+            raise
+
+        except SQLAlchemyError:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail="Database transaction failed"
+            )
+
+        except Exception:
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to update cart item quantity"
+            )
     
     
 
