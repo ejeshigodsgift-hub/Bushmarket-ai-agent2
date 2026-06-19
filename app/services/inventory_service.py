@@ -35,7 +35,7 @@ class InventoryService:
         return inventory
 
     # =====================================
-    # RESERVE STOCK (WITH TTL)
+    # RESERVE STOCK
     # =====================================
     def reserve_stock(
         self,
@@ -49,20 +49,15 @@ class InventoryService:
         if not inventory:
             raise HTTPException(status_code=404, detail="Inventory not found")
 
-        self.validator.validate_stock(
-            inventory=inventory,
-            quantity=quantity
-        )
+        self.validator.validate_stock(inventory, quantity)
 
         now = datetime.utcnow()
 
-        # TTL reservation fields (NEW LOGIC)
         inventory.reserved_at = now
         inventory.expires_at = now + timedelta(minutes=5)
 
-        # lock-safe update
         inventory.available_stock -= quantity
-        inventory.reserved_stock += quantity
+        inventory.reserved_stock += quantity  # PRIMARY RESERVATION SOURCE
 
         tx = InventoryTransaction(
             inventory_id=inventory.id,
@@ -75,19 +70,83 @@ class InventoryService:
         db.flush()
 
         self._emit_inventory_event(
-            event="inventory_reserved",
-            inventory=inventory,
+            "inventory_reserved",
+            inventory,
+            quantity,
+            user_id
+        )
+
+        self._audit(db, user_id, "inventory_reserved", inventory, quantity, ip)
+
+        return inventory
+
+    # =====================================
+    # 🔥 NEW: CONVERT RESERVATION → CHECKOUT
+    # =====================================
+    def convert_reservation_to_checkout(
+        self,
+        db: Session,
+        listing_id: str,
+        quantity: int,
+        user_id: str,
+        ip: str = None
+    ):
+        """
+        Moves stock from reserved_stock → checkout_reserved_quantity.
+        No stock is added or removed from system totals.
+        """
+
+        inventory = (
+            db.query(Inventory)
+            .filter(
+                Inventory.listing_id == listing_id,
+                Inventory.is_active == True
+            )
+            .with_for_update()
+            .first()
+        )
+
+        if not inventory:
+            raise HTTPException(status_code=404, detail="Inventory not found")
+
+        # SAFETY CHECK
+        if inventory.reserved_stock < quantity:
+            raise HTTPException(
+                status_code=400,
+                detail="Reserved inventory mismatch"
+            )
+
+        # INITIALIZE FIELD IF NULL
+        if inventory.checkout_reserved_quantity is None:
+            inventory.checkout_reserved_quantity = 0
+
+        inventory.checkout_reserved_quantity += quantity
+        inventory.reserved_stock -= quantity
+
+        tx = InventoryTransaction(
+            inventory_id=inventory.id,
+            transaction_type="checkout_reserved",
             quantity=quantity,
-            user_id=user_id
+            created_by=user_id
+        )
+
+        db.add(tx)
+        db.flush()
+
+        self._emit_inventory_event(
+            "inventory_checkout_reserved",
+            inventory,
+            quantity,
+            user_id
         )
 
         self._audit(
-            db=db,
-            user_id=user_id,
-            action="inventory_reserved",
-            inventory=inventory,
-            quantity=quantity,
-            ip=ip
+            db,
+            user_id,
+            "inventory_checkout_reserved",
+            inventory,
+            quantity,
+            ip
         )
 
         return inventory
@@ -121,16 +180,13 @@ class InventoryService:
         db.flush()
 
         self._emit_inventory_event(
-            event="inventory_sold",
-            inventory=inventory,
-            quantity=quantity,
-            user_id=user_id
+            "inventory_sold",
+            inventory,
+            quantity,
+            user_id
         )
 
-        self._audit(
-            db, user_id, "inventory_sold",
-            inventory, quantity, ip
-        )
+        self._audit(db, user_id, "inventory_sold", inventory, quantity, ip)
 
         return inventory
 
@@ -163,16 +219,13 @@ class InventoryService:
         db.flush()
 
         self._emit_inventory_event(
-            event="inventory_released",
-            inventory=inventory,
-            quantity=quantity,
-            user_id=user_id
+            "inventory_released",
+            inventory,
+            quantity,
+            user_id
         )
 
-        self._audit(
-            db, user_id, "inventory_released",
-            inventory, quantity, ip
-        )
+        self._audit(db, user_id, "inventory_released", inventory, quantity, ip)
 
         return inventory
 
@@ -203,16 +256,13 @@ class InventoryService:
         db.flush()
 
         self._emit_inventory_event(
-            event="inventory_reduced",
-            inventory=inventory,
-            quantity=quantity,
-            user_id=user_id
+            "inventory_reduced",
+            inventory,
+            quantity,
+            user_id
         )
 
-        self._audit(
-            db, user_id, "inventory_reduced",
-            inventory, quantity, ip
-        )
+        self._audit(db, user_id, "inventory_reduced", inventory, quantity, ip)
 
         return inventory
 
@@ -249,15 +299,16 @@ class InventoryService:
         db.flush()
 
         self._emit_inventory_event(
-            event="checkout_completed",
-            inventory=inventory,
-            quantity=quantity,
-            user_id=user_id,
+            "checkout_completed",
+            inventory,
+            quantity,
+            user_id,
             extra={"order_id": order_id}
         )
 
         self._audit(
-            db, user_id,
+            db,
+            user_id,
             "checkout_completed",
             inventory,
             quantity,
@@ -278,6 +329,7 @@ class InventoryService:
             "user_id": user_id,
             "available_stock": inventory.available_stock,
             "reserved_stock": inventory.reserved_stock,
+            "checkout_reserved_quantity": getattr(inventory, "checkout_reserved_quantity", 0),
             "sold_stock": inventory.sold_stock,
             "extra": extra or {}
         }
@@ -300,6 +352,7 @@ class InventoryService:
                 "quantity": quantity,
                 "available_stock": inventory.available_stock,
                 "reserved_stock": inventory.reserved_stock,
+                "checkout_reserved_quantity": getattr(inventory, "checkout_reserved_quantity", 0),
                 "sold_stock": inventory.sold_stock
             },
             ip=ip
