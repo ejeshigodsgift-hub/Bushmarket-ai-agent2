@@ -76,6 +76,11 @@ class Inventory(Base):
         server_default="0"
     )
 
+    checkout_reserved_quantity: Mapped[int] = mapped_column(
+        default=0,
+        nullable=False
+    )
+
     # =====================================
     # 🆕 RESERVATION TTL FIELDS
     # =====================================
@@ -83,6 +88,7 @@ class Inventory(Base):
         DateTime(timezone=True),
         nullable=True
     )
+
 
     expires_at: Mapped[DateTime | None] = mapped_column(
         DateTime(timezone=True),
