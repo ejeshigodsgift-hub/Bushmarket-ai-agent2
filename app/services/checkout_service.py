@@ -120,6 +120,15 @@ class CheckoutService:
         db.commit()
         db.refresh(checkout)
 
+        await payment_service.create_payment_intent(
+            db=db,
+            user_id=user_id,
+            amount=checkout.total,
+            purpose="checkout_payment",
+            reference=checkout.id,
+            checkout_id=checkout.id
+        )
+
         # =====================================
         # REDIS TTL (SYNC WITH DB EXPIRY)
         # =====================================
