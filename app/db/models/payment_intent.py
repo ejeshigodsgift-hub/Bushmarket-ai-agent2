@@ -90,8 +90,9 @@ class PaymentIntent(Base):
         index=True
     )
 
-checkout = relationship(
+    checkout = relationship(
         "Checkout",
+        back_populates="payment_intents",
         lazy="joined"
     )
 
