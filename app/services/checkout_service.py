@@ -25,17 +25,17 @@ class CheckoutService:
 
         self.validator.validate_cart(cart)
 
-        subtotal = 0
-        fee_total = 0
-        delivery_fee = 0
+        subtotal = Decimal("0.00")
+        fee_total = Decimal("0.00")
+        delivery_fee = Decimal("0.00")
 
         checkout = Checkout(
             user_id=user_id,
             cart_id=cart.id,
-            subtotal=0,
-            market_fee_total=0,
-            delivery_fee=0,
-            total=0
+            subtotal=Decimal("0.00"),
+            market_fee_total=Decimal("0.00"),
+            delivery_fee=Decimal("0.00"),
+            total=Decimal("0.00")
         )
 
         db.add(checkout)
@@ -45,8 +45,13 @@ class CheckoutService:
 
             listing = item.listing
 
-            line_total = item.quantity * float(item.unit_price)
-            fee = item.quantity * float(item.market_fee)
+            line_total = (
+                Decimal(item.quantity) * item.unit_price
+            )
+
+            fee = (
+                Decimal(item.quantity) *   item.market_fee
+            )
 
             subtotal += line_total
             fee_total += fee
@@ -64,11 +69,11 @@ class CheckoutService:
 
             db.add(checkout_item)
 
-            # reserve stock (pre-order lock)
-            self.inventory.reserve_stock(
-                db,
-                listing.id,
-                item.quantity
+            # convert reservation
+            self.inventory.convert_reservation_to_checkout(
+                db=db,
+                listing_id=listing.id,
+                quantity=item.quantity
             )
 
         checkout.subtotal = subtotal
