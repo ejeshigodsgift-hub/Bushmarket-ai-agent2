@@ -57,7 +57,7 @@ class InventoryService:
         inventory.expires_at = now + timedelta(minutes=5)
 
         inventory.available_stock -= quantity
-        inventory.reserved_stock += quantity  # PRIMARY RESERVATION SOURCE
+        inventory.reserved_stock += quantity
 
         tx = InventoryTransaction(
             inventory_id=inventory.id,
@@ -81,7 +81,7 @@ class InventoryService:
         return inventory
 
     # =====================================
-    # 🔥 NEW: CONVERT RESERVATION → CHECKOUT
+    # CONVERT RESERVATION → CHECKOUT
     # =====================================
     def convert_reservation_to_checkout(
         self,
@@ -91,10 +91,6 @@ class InventoryService:
         user_id: str,
         ip: str = None
     ):
-        """
-        Moves stock from reserved_stock → checkout_reserved_quantity.
-        No stock is added or removed from system totals.
-        """
 
         inventory = (
             db.query(Inventory)
@@ -109,14 +105,12 @@ class InventoryService:
         if not inventory:
             raise HTTPException(status_code=404, detail="Inventory not found")
 
-        # SAFETY CHECK
         if inventory.reserved_stock < quantity:
             raise HTTPException(
                 status_code=400,
                 detail="Reserved inventory mismatch"
             )
 
-        # INITIALIZE FIELD IF NULL
         if inventory.checkout_reserved_quantity is None:
             inventory.checkout_reserved_quantity = 0
 
@@ -267,7 +261,7 @@ class InventoryService:
         return inventory
 
     # =====================================
-    # FINALIZE CHECKOUT
+    # FINALIZE CHECKOUT (FIXED)
     # =====================================
     def finalize_checkout(
         self,
@@ -279,13 +273,18 @@ class InventoryService:
         order_id: str
     ):
 
-        if inventory.reserved_stock < quantity:
+        # ✅ FIX: use checkout_reserved_quantity (NOT reserved_stock)
+        if inventory.checkout_reserved_quantity is None:
+            inventory.checkout_reserved_quantity = 0
+
+        if inventory.checkout_reserved_quantity < quantity:
             raise HTTPException(
                 status_code=400,
-                detail="Reserved stock insufficient for checkout"
+                detail="Checkout reserved stock insufficient for finalization"
             )
 
-        inventory.reserved_stock -= quantity
+        # FINAL SALE LOGIC
+        inventory.checkout_reserved_quantity -= quantity
         inventory.sold_stock += quantity
 
         tx = InventoryTransaction(
