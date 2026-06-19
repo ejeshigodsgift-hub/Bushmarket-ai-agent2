@@ -24,6 +24,17 @@ class Cart(Base):
         Index("idx_cart_user", "user_id"),
         Index("idx_cart_status", "status"),
         Index("idx_cart_created", "created_at"),
+
+        CheckConstraint(
+            "status IN ("
+            "'active',"
+            "'checkout_locked',"
+            "'checked_out',"
+            "'expired'"
+            ")",
+            name="ck_cart_status"
+        ),
+
         CheckConstraint(
             "subtotal_amount >= 0",
             name="ck_cart_subtotal_amount"
