@@ -171,3 +171,10 @@ class Checkout(Base):
         cascade="all, delete-orphan",
         lazy="selectin"
     )
+
+
+    payment_intents = relationship(
+        "PaymentIntent",
+        back_populates="checkout",
+        lazy="selectin"
+    )
