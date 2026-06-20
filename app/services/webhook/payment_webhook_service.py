@@ -75,18 +75,25 @@ class PaymentWebhookService:
         # =========================================
         intent.status = "successful"
 
-        if intent.purpose == "order":
-        await  self._handle_order_payment(...)
-
-        # record gateway transaction
-        await self.payment_service.record_transaction(
+        # record transaction FIRST
+        payment_tx = await  self.payment_service.record_transaction(
             db=db,
             intent_id=intent.id,
             gateway=gateway,
             amount=amount,
-            gateway_reference=payment_reference,
+             gateway_reference=payment_reference,
             status="success"
         )
+
+# route only once
+        if intent.purpose == "order":
+            await self._handle_order_payment(
+                db=db,
+                intent=intent,
+                reference=payment_reference,
+                amount=amount
+            )
+        
 
         # =========================================
         # 4. ROUTE BASED ON PURPOSE
