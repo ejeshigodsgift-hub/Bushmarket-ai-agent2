@@ -69,6 +69,16 @@ class Checkout(Base):
         nullable=True
     )
 
+    order_id = mapped_column(
+        String(36),
+        ForeignKey(
+            "orders.id",
+            ondelete="SET NULL"
+        ),
+        nullable=True,
+        index=True
+    )
+
     # =========================================
     # FINANCIALS
     # =========================================
