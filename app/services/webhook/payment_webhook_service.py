@@ -318,6 +318,15 @@ class PaymentWebhookService:
         order.payment_status = "paid"
         order.payment_reference = reference
 
+        checkout = await db.get(Checkout,  intent.checkout_id)
+
+        if not checkout:
+            raise HTTPException(404, "Checkout not found")
+
+        checkout.status = "completed"
+        checkout.is_locked = False
+
+
         for item in order.items:
             await  self.inventory_service.reduce_stock(
                 db=db,
