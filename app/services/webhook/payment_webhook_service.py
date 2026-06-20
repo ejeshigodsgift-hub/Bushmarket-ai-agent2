@@ -376,6 +376,6 @@ class PaymentWebhookService:
             }
         )
 
-        await db.flush()
+        
 
 payment_webhook_service = PaymentWebhookService()
