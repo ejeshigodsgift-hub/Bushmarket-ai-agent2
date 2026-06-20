@@ -375,6 +375,6 @@ class PaymentWebhookService:
             }
         )
 
-        await db.commit()
+        await db.flush()
 
 payment_webhook_service = PaymentWebhookService()
