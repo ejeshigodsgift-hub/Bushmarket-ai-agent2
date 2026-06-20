@@ -93,7 +93,7 @@ class PaymentService:
             }
         )
 
-        await db.commit()
+        
         await db.refresh(tx)
 
         return tx
@@ -133,7 +133,7 @@ class PaymentService:
             }
         )
 
-        await db.commit()
+        
 
         return True
 
@@ -173,6 +173,6 @@ class PaymentService:
             }
         )
 
-        await db.commit()
+        
 
         return True
