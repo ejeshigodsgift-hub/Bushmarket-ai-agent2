@@ -3,6 +3,7 @@
 # =========================================
 
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import (
     String,
@@ -101,7 +102,30 @@ class Order(Base):
         default="pending"
     )
 
-    total_amount: Mapped[float] = mapped_column(
+    total_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2),
+        nullable=False,
+        default=0
+    )
+
+    
+    # =========================================
+# AMOUNT BREAKDOWN (FIX FOR SERVICE MISMATCH)
+# =========================================
+
+    subtotal_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2),
+        nullable=False,
+        default=0
+    )
+
+    market_fee_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2),
+        nullable=False,
+        default=0
+    )
+
+    delivery_fee_amount: Mapped[Decimal] = mapped_column(
         Numeric(18, 2),
         nullable=False,
         default=0
