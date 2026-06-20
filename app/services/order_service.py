@@ -7,7 +7,7 @@ from app.db.models.order_item import OrderItem
 from app.db.models.cart import Cart
 from app.db.models.cart_item import CartItem
 
-from app.services.inventory_service import InventoryService
+
 from app.services.order_validation_service import (
     OrderValidationService
 )
