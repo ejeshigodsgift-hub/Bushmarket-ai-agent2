@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 
-from app.db.models.market_listing import MarketListing
+from app.db.models.market_product_listing import MarketProductListing
 
 
 class OrderValidationService:
@@ -11,7 +11,7 @@ class OrderValidationService:
 
     def validate_listing_for_checkout(
         self,
-        listing: MarketListing,
+        listing: MarketProductListing,
         quantity: int
     ):
 
