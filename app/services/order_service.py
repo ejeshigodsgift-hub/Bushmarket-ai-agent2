@@ -21,7 +21,7 @@ class OrderService:
 
     def __init__(self):
 
-        self.inventory_service = InventoryService()
+        
         self.validation_service = OrderValidationService()
         self.audit_service = AuditService()
 
@@ -87,11 +87,7 @@ class OrderService:
 
             db.add(order_item)
 
-            self.inventory_service.reduce_stock(
-                db=db,
-                listing_id=listing.id,
-                quantity=item.quantity
-            )
+            
 
         order.subtotal_amount = subtotal
         order.market_fee_amount = market_fee_total
