@@ -80,6 +80,17 @@ async def paystack_webhook(
         user_id=intent.user_id
     )
 
+    await idempotency_service.mark_processed(
+        db=db,
+        key=key,
+        reference=reference,
+        action="paystack_webhook"
+    )
+
+    await db.commit()
+
+    return {"status": "processed"}
+
     # =========================================
     # MARK IDEMPOTENCY
     # =========================================
