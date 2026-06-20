@@ -39,6 +39,8 @@ class PaymentWebhookService:
         """
         Triggered ONLY after gateway confirms payment success
         """
+            
+        
 
         # =========================================
         # 1. FETCH INTENT
@@ -103,6 +105,15 @@ class PaymentWebhookService:
         elif intent.purpose == "escrow_fund":
 
             await self._handle_escrow_fund(
+                db=db,
+                intent=intent,
+                reference=payment_reference,
+                amount=amount
+            )
+
+        elif intent.purpose == "order":
+
+            await self._handle_order_payment(
                 db=db,
                 intent=intent,
                 reference=payment_reference,
@@ -242,6 +253,52 @@ class PaymentWebhookService:
             escrow_id=escrow_account.id,
             amount=amount,
             reference=reference
+        )
+
+
+
+    # =====================================================
+# ORDER PAYMENT FLOW
+# =====================================================
+    async def _handle_order_payment(
+        self,
+        db: AsyncSession,
+        intent: PaymentIntent,
+        reference: str,
+        amount: float
+    ):
+    """
+        Gateway → Escrow hold for     marketplace order
+    """
+
+        escrow = await db.execute(
+            select(EscrowAccount).limit(1)
+        )
+
+        escrow_account =   escrow.scalar_one_or_none()
+
+        if not escrow_account:
+             raise HTTPException(
+                 status_code=400,
+                detail="Escrow account not found"
+            )
+
+        await   self.financial_core.escrow_deposit(
+            db=db,
+            escrow_id=escrow_account.id,
+            amount=amount,
+            reference=reference
+        )
+
+        await outbox_service.queue_event(
+            db=db,
+            topic="order.payment.completed",
+            payload={
+                "intent_id": intent.id,
+                "user_id": intent.user_id,
+                "reference": reference,
+                "amount": amount
+            }
         )
 
 
