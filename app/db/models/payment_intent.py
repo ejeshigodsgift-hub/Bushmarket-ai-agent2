@@ -74,7 +74,7 @@ class PaymentIntent(Base):
         nullable=False
     )
     """
-    pending | processing | successful | failed | cancelled
+    pending | processing | successful | failed | completed | cancelled
     """
 
     is_active: Mapped[bool] = mapped_column(
