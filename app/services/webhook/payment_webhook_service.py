@@ -75,6 +75,9 @@ class PaymentWebhookService:
         # =========================================
         intent.status = "successful"
 
+        if intent.purpose == "order":
+        await  self._handle_order_payment(...)
+
         # record gateway transaction
         await self.payment_service.record_transaction(
             db=db,
@@ -303,29 +306,29 @@ class PaymentWebhookService:
                 detail="Order not attached to payment intent"
             )
 
-        order = await db.get(
-            Order,
-            intent.order_id
-        )
+        order = await db.get(Order,   intent.order_id)
 
         if not order:
-            raise HTTPException(
-                status_code=404,
-                detail="Order not found"
-            )
+            raise HTTPException(404, "Order not found")
+
+      
+        if order.payment_status == "paid":
+            return
+
+        order.payment_status = "paid"
+        order.payment_reference = reference
 
         for item in order.items:
-
-            await self.inventory_service.reduce_stock(
+            await  self.inventory_service.reduce_stock(
                 db=db,
                 listing_id=item.listing_id,
                 quantity=item.quantity
             )
 
-        order.payment_status = "paid"
-
         if order.status == "pending":
             order.status = "processing"
+
+        await db.flush()
 
         await outbox_service.queue_event(
             db=db,
@@ -350,5 +353,6 @@ class PaymentWebhookService:
             }
         )
 
+        await db.commit()      
 
 payment_webhook_service = PaymentWebhookService()
