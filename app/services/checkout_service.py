@@ -71,6 +71,23 @@ class CheckoutService:
         db.add(checkout)
         db.flush()
 
+        order = await order_service.create_from_checkout(
+            db=db,
+            checkout=checkout,
+            user_id=user_id
+        )
+
+
+        await payment_service.create_payment_intent(
+            db=db,
+            user_id=user_id,
+            amount=checkout.total,
+            purpose="order",
+            reference=f"PAY-{checkout.id}",
+            checkout_id=checkout.id,
+            order_id=order.id
+        )
+
         # =====================================
         # PROCESS ITEMS
         # =====================================
