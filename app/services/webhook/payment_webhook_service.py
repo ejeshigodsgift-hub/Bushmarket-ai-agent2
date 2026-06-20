@@ -275,68 +275,74 @@ class PaymentWebhookService:
         amount: float
     ):
         """
-        Gateway → Escrow hold for     marketplace order
+        Gateway → Order fulfillment flow (Bushmarket standard)
         """
 
-        escrow = await db.execute(
-            select(EscrowAccount).limit(1)
-        )
-
-        escrow_account =   escrow.scalar_one_or_none()
-
-        if not escrow_account:
-             raise HTTPException(
-                 status_code=400,
-                detail="Escrow account not found"
-            )
-
-        await   self.financial_core.escrow_deposit(
-            db=db,
-            escrow_id=escrow_account.id,
-            amount=amount,
-            reference=reference
-        )
-
-
-        
-
+    # 1. LOAD ORDER
         if not intent.order_id:
             raise HTTPException(
                 status_code=400,
                 detail="Order not attached to payment intent"
             )
 
-        order = await db.get(Order,   intent.order_id)
+        order = await db.get(Order,  intent.order_id)
 
         if not order:
             raise HTTPException(404, "Order not found")
 
-      
-        if order.payment_status == "paid":
-            return
-
-        order.payment_status = "paid"
-        order.payment_reference = reference
-
+    # 2. VALIDATE ORDER + CHECKOUT
         checkout = await db.get(Checkout,  intent.checkout_id)
 
         if not checkout:
-            raise HTTPException(404, "Checkout not found")
+            raise HTTPException(404,  "Checkout not found")
 
-        checkout.status = "completed"
-        checkout.is_locked = False
+        if checkout.is_locked is False and checkout.status == "completed":
+            pass  # already processed
 
+    # 3. GUARD (IDEMPOTENCY)
+        if order.payment_status == "paid":
+            return
 
+    # 4. REDUCE STOCK
         for item in order.items:
-            await  self.inventory_service.reduce_stock(
+            await self.inventory_service.reduce_stock(
                 db=db,
                 listing_id=item.listing_id,
                 quantity=item.quantity
             )
 
+    # 5. MARK ORDER PAID
+        order.payment_status = "paid"
+        order.payment_reference = reference
+
         if order.status == "pending":
             order.status = "processing"
 
+    # 6. MARK CHECKOUT COMPLETED
+        checkout.status = "completed"
+        checkout.is_locked = False
+
+    # 7. ESCROW HOLD (FINAL SETTLEMENT STEP)
+        escrow = await db.execute(
+            select(EscrowAccount).limit(1)
+        )
+
+        escrow_account =  escrow.scalar_one_or_none()
+
+        if not escrow_account:
+            raise HTTPException(
+                status_code=400,
+                detail="Escrow account not found"
+            )
+
+        await self.financial_core.escrow_deposit(
+            db=db,
+            escrow_id=escrow_account.id,
+            amount=amount,
+            reference=reference
+        )
+
+    # 8. EMIT EVENTS
         await db.flush()
 
         await outbox_service.queue_event(
@@ -344,7 +350,7 @@ class PaymentWebhookService:
             topic="marketplace.order.paid",
             payload={
                 "order_id": order.id,
-                "order_number":   order.order_number,
+                "order_number": order.order_number,
                 "user_id": order.user_id,
                 "reference": reference,
                 "amount": amount
@@ -362,6 +368,6 @@ class PaymentWebhookService:
             }
         )
 
-        await db.commit()      
+        await db.commit()
 
 payment_webhook_service = PaymentWebhookService()
