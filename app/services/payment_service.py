@@ -22,7 +22,9 @@ class PaymentService:
         amount: float,
         purpose: str,
         reference: str,
-        currency: str = "NGN"
+        currency: str = "NGN",
+        checkout_id: str | None = None,
+        order_id: str | None = None
     ):
 
         intent = PaymentIntent(
@@ -31,7 +33,9 @@ class PaymentService:
             purpose=purpose,
             reference=reference,
             currency=currency,
-            status="pending"
+            status="pending",
+            checkout_id=checkout_id,
+            order_id=order_id
         )
 
         db.add(intent)
@@ -43,7 +47,9 @@ class PaymentService:
                 "intent_id": intent.id,
                 "user_id": user_id,
                 "amount": amount,
-                "purpose": purpose
+                "purpose": purpose,
+                "checkout_id":  checkout_id,
+                "order_id": order_id
             }
         )
 
