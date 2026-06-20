@@ -8,10 +8,9 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-
 from app.db.models.cart import Cart
 
-from app.services.order_service import OrderService
+from app.services.checkout_service import CheckoutService
 
 
 router = APIRouter(
@@ -19,11 +18,11 @@ router = APIRouter(
     tags=["Orders"]
 )
 
-order_service = OrderService()
+checkout_service = CheckoutService()
 
 
 @router.post("/checkout")
-def checkout(
+async def checkout(
     request: Request,
     db: Session = Depends(get_db)
 ):
@@ -51,7 +50,7 @@ def checkout(
             detail="Active cart not found"
         )
 
-    order = order_service.create_order(
+    checkout = await checkout_service.create_checkout(
         db=db,
         user_id=user["id"],
         cart=cart
@@ -59,6 +58,7 @@ def checkout(
 
     return {
         "status": "success",
-        "order_id": order.id,
-        "order_number": order.order_number
+        "checkout_id": checkout.id,
+        "total": str(checkout.total),
+        "expires_at": checkout.expires_at.isoformat()
     }
