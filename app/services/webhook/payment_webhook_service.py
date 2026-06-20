@@ -271,9 +271,9 @@ class PaymentWebhookService:
         reference: str,
         amount: float
     ):
-    """
+        """
         Gateway → Escrow hold for     marketplace order
-    """
+        """
 
         escrow = await db.execute(
             select(EscrowAccount).limit(1)
@@ -314,10 +314,30 @@ class PaymentWebhookService:
                 detail="Order not found"
             )
 
+        for item in order.items:
+
+            await self.inventory_service.reduce_stock(
+                db=db,
+                listing_id=item.listing_id,
+                quantity=item.quantity
+            )
+
         order.payment_status = "paid"
 
         if order.status == "pending":
             order.status = "processing"
+
+        await outbox_service.queue_event(
+            db=db,
+            topic="marketplace.order.paid",
+            payload={
+                "order_id": order.id,
+                "order_number":   order.order_number,
+                "user_id": order.user_id,
+                "reference": reference,
+                "amount": amount
+            }
+        )
 
         await outbox_service.queue_event(
             db=db,
