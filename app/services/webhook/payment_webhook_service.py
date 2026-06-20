@@ -166,7 +166,7 @@ class PaymentWebhookService:
             }
         )
 
-        await db.commit()
+        
 
         return {"status": "processed"}
 
