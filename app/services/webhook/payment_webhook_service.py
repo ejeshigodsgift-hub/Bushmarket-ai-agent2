@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from app.db.models.order import Order
 from app.services.inventory_service import InventoryService
+from app.db.models.checkout import Checkout
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
