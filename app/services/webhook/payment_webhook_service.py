@@ -1,5 +1,8 @@
 from datetime import datetime, timezone
 
+from app.db.models.order import Order
+from app.services.inventory_service import InventoryService
+
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -24,6 +27,7 @@ class PaymentWebhookService:
         self.payment_service = PaymentService()
         self.financial_core = FinancialCoreService()
         self.audit = AuditService()
+        self.inventory_service = InventoryService()
 
     # =====================================================
     # MAIN WEBHOOK ENTRY POINT
@@ -289,6 +293,31 @@ class PaymentWebhookService:
             amount=amount,
             reference=reference
         )
+
+
+        
+
+        if not intent.order_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Order not attached to payment intent"
+            )
+
+        order = await db.get(
+            Order,
+            intent.order_id
+        )
+
+        if not order:
+            raise HTTPException(
+                status_code=404,
+                detail="Order not found"
+            )
+
+        order.payment_status = "paid"
+
+        if order.status == "pending":
+            order.status = "processing"
 
         await outbox_service.queue_event(
             db=db,
