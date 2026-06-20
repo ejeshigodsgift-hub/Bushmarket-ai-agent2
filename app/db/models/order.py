@@ -77,6 +77,14 @@ class Order(Base):
         nullable=True
     )
 
+
+    assigned_agent_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("agents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
     # =========================================
     # PAYMENT
     # =========================================
