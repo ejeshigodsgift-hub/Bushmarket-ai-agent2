@@ -25,7 +25,7 @@ class CheckoutService:
     # =====================================
     # CREATE CHECKOUT
     # =====================================
-    def create_checkout(self, db: Session, user_id: str, cart):
+    async def create_checkout(self, db: Session, user_id: str, cart):
 
         self.validator.validate_cart(cart)
 
@@ -36,7 +36,7 @@ class CheckoutService:
         delivery_fee = Decimal("0.00")
 
         # =====================================
-        # CHECK FOR EXISTING EXPIRED CHECKOUT
+        # EXPIRE OLD CHECKOUT
         # =====================================
         if cart.checkout:
             if cart.checkout.expires_at and cart.checkout.expires_at < now:
@@ -56,13 +56,10 @@ class CheckoutService:
         checkout = Checkout(
             user_id=user_id,
             cart_id=cart.id,
-
             subtotal=Decimal("0.00"),
             market_fee_total=Decimal("0.00"),
             delivery_fee=Decimal("0.00"),
             total=Decimal("0.00"),
-
-            # FIX: enforce locking + expiry
             is_locked=True,
             expires_in_minutes=15,
             expires_at=expires_at
@@ -70,23 +67,6 @@ class CheckoutService:
 
         db.add(checkout)
         db.flush()
-
-        order = await order_service.create_from_checkout(
-            db=db,
-            checkout=checkout,
-            user_id=user_id
-        )
-
-
-        await payment_service.create_payment_intent(
-            db=db,
-            user_id=user_id,
-            amount=checkout.total,
-            purpose="order",
-            reference=f"PAY-{checkout.id}",
-            checkout_id=checkout.id,
-            order_id=order.id
-        )
 
         # =====================================
         # PROCESS ITEMS
@@ -114,7 +94,6 @@ class CheckoutService:
 
             db.add(checkout_item)
 
-            # convert reservation → checkout lock
             self.inventory.convert_reservation_to_checkout(
                 db=db,
                 listing_id=listing.id,
@@ -130,24 +109,40 @@ class CheckoutService:
         checkout.total = subtotal + fee_total
 
         # =====================================
-        # LOCK CART
+        # CREATE ORDER (AFTER TOTALS)
         # =====================================
-        cart.status = "checkout_locked"
+        order = await order_service.create_from_checkout(
+            db=db,
+            checkout=checkout,
+            user_id=user_id
+        )
 
-        db.commit()
-        db.refresh(checkout)
-
+        # =====================================
+        # CREATE SINGLE PAYMENT INTENT (ONLY ONCE)
+        # =====================================
         await payment_service.create_payment_intent(
             db=db,
             user_id=user_id,
             amount=checkout.total,
-            purpose="checkout_payment",
-            reference=checkout.id,
-            checkout_id=checkout.id
+            purpose="order",
+            reference=f"PAY-{checkout.id}",
+            checkout_id=checkout.id,
+            order_id=order.id
         )
 
         # =====================================
-        # REDIS TTL (SYNC WITH DB EXPIRY)
+        # LOCK CART
+        # =====================================
+        cart.status = "checkout_locked"
+
+        # =====================================
+        # COMMIT ONCE (AT END OF SETUP)
+        # =====================================
+        db.commit()
+        db.refresh(checkout)
+
+        # =====================================
+        # REDIS TTL
         # =====================================
         ttl_seconds = int((expires_at - now).total_seconds())
 
