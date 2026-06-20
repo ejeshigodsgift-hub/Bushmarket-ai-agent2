@@ -90,11 +90,28 @@ class PaymentIntent(Base):
         index=True
     )
 
+    
+
     checkout = relationship(
         "Checkout",
         back_populates="payment_intents",
         lazy="joined"
     )
+
+
+    order_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("orders.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
+
+    order = relationship(
+        "Order",
+        lazy="joined"
+    )
+    
 
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True),
