@@ -211,9 +211,16 @@ class CartService:
             await db.rollback()
             raise
 
+        except SQLAlchemyError:
+            db.rollback()
+            raise HTTPException(500, "Database transaction failed")
+
+
         except Exception:
             await db.rollback()
             raise HTTPException(500,   "Unable to add item to cart")
+
+
 
 
     async def remove_from_cart(
@@ -300,6 +307,9 @@ class CartService:
             db.rollback()
             raise HTTPException(500, "Unable to remove item")
 
+
+
+
     async def update_cart_item_quantity(
         self,
         db: Session,
@@ -312,54 +322,30 @@ class CartService:
         try:
 
             if new_quantity <= 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Quantity must  be greater than zero"
-                )
+                raise HTTPException(400, "Quantity must be greater than zero")
 
             item = db.query(CartItem).filter(
                 CartItem.id == cart_item_id
             ).first()
 
             if not item:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Cart item not found"
-                )
+                raise HTTPException(404, "Cart item not found")
 
-    # =========================
-    # OWNERSHIP CHECK
-    # =========================
             if str(item.cart.user_id) != str(user_id):
-                raise HTTPException(
-                    status_code=403,
-                    detail="Unauthorized cart access"
-                )
+                raise HTTPException(403, "Unauthorized cart access")
 
-    # =========================
-    # INVENTORY LOCK
-    # =========================
             inventory = db.query(Inventory).filter(
-                Inventory.listing_id ==  item.listing_id,
+                Inventory.listing_id == item.listing_id,
                 Inventory.is_active == True
             ).with_for_update().first()
 
             if not inventory:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Inventory not found"
-                )
+                raise HTTPException(404, "Inventory not found")
 
             diff = new_quantity - item.quantity
 
-    # =========================
-    # UPDATE RESERVATION
-    # =========================
-
-
-
+        # ✅ FIXED INDENTATION + ASYNC
             if diff > 0:
-
                 await self.inventory_service.reserve_inventory(
                     db=db,
                     inventory=inventory,
@@ -367,7 +353,6 @@ class CartService:
                 )
 
             elif diff < 0:
-
                 await self.inventory_service.release_reserved_stock(
                     db=db,
                     inventory=inventory,
@@ -375,21 +360,26 @@ class CartService:
                     user_id=user_id,
                     ip=ip_address
                 )
-    # =========================
-    # RECALCULATE ITEM PRICING
-    # =========================
+
+        # update quantity
             item.quantity = new_quantity
 
-            item.total_price = (
-                Decimal(new_quantity) *  item.unit_price
-            ) + item.market_fee
+        # ❗ FIXED: NO DRIFT PRICING   (your critical issue #2)
+            pricing = self.pricing_service.calculate_item_total(
+                quantity=new_quantity,
+                unit_price=item.unit_price,
+            market_fee=item.listing.market_fee
+            )
 
-    # =========================
-    # RECOMPUTE CART TOTALS
-    # =========================
+            item.market_fee = pricing["market_fee"]
+            item.total_price = pricing["total"]
+
+        # recompute cart totals
+            cart = item.cart
+
             items = db.query(CartItem).filter(
-                CartItem.cart_id ==  item.cart_id
-            ).all()
+                CartItem.cart_id == cart.id
+        ).all()
 
             subtotal = Decimal("0.00")
             market_fee = Decimal("0.00")
@@ -398,15 +388,10 @@ class CartService:
                 subtotal += Decimal(i.quantity) * i.unit_price
                 market_fee += i.market_fee
 
-            cart = item.cart
-
             cart.subtotal_amount = subtotal
             cart.total_market_fee = market_fee
             cart.total_amount = subtotal + market_fee
 
-    # =========================
-    # REFRESH CART EXPIRY
-    # =========================
             cart.expires_at = datetime.now(timezone.utc) + timedelta(
                 minutes=self.CART_TTL_MINUTES
             )
@@ -421,18 +406,11 @@ class CartService:
 
         except SQLAlchemyError:
             db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail="Database transaction failed"
-            )
+            raise HTTPException(500, "Database transaction failed")
 
         except Exception:
             db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail="Unable to update cart item quantity"
-            )
-    
+            raise HTTPException(500, "Unable to update cart item quantity")   
     
 
     # =========================================
