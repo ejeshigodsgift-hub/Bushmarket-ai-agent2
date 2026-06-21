@@ -404,7 +404,7 @@ class CartService:
             )
 
 
-    def update_cart_item_quantity(
+    async def update_cart_item_quantity(
         self,
         db: Session,
         user_id: str,
@@ -459,9 +459,12 @@ class CartService:
     # =========================
     # UPDATE RESERVATION
     # =========================
+
+
+
             if diff > 0:
 
-          self.inventory_service.reserve_inventory(
+                await self.inventory_service.reserve_inventory(
                     db=db,
                     inventory=inventory,
                     quantity=diff
@@ -469,14 +472,13 @@ class CartService:
 
             elif diff < 0:
 
-        self.inventory_service.release_reserved_stock(
+                await self.inventory_service.release_reserved_stock(
                     db=db,
                     inventory=inventory,
                     quantity=abs(diff),
                     user_id=user_id,
                     ip=ip_address
                 )
-
     # =========================
     # RECALCULATE ITEM PRICING
     # =========================
