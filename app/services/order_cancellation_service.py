@@ -59,7 +59,7 @@ class OrderCancellationService:
             inventory = await db.get(Inventory, item.inventory_id)
 
             if inventory:
-                self.inventory_service.cancel_reservation(
+                await self.inventory_service.cancel_reservation(
                     db=db,
                     inventory=inventory,
                     quantity=item.quantity,
