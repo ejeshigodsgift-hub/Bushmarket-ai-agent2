@@ -59,7 +59,7 @@ class OrderCancellationService:
             inventory = await db.get(Inventory, item.inventory_id)
 
             if inventory:
-                await self.inventory_service.cancel_reservation(
+                self.inventory_service.cancel_reservation(
                     db=db,
                     inventory=inventory,
                     quantity=item.quantity,
@@ -73,7 +73,9 @@ class OrderCancellationService:
         order.status = "cancelled"
         order.is_cancelled = True
 
-        # optional financial reversal trigger hook
+        # =====================================
+        # EVENTS
+        # =====================================
         if order.payment_status == "paid":
             await outbox_service.queue_event(
                 db=db,
