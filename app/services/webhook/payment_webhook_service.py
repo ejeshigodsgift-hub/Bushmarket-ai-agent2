@@ -64,7 +64,7 @@ class PaymentWebhookService:
         existing_tx = await db.execute(
             select(PaymentTransaction).where(
                 PaymentTransaction.gateway_reference == payment_reference,
-                PaymentTransaction.status == "success"
+                PaymentTransaction.status == "successful"
             )
         )
 
@@ -83,18 +83,10 @@ class PaymentWebhookService:
             gateway=gateway,
             amount=amount,
              gateway_reference=payment_reference,
-            status="success"
+            status="successful"
         )
 
-# route only once
-        if intent.purpose == "order":
-            await self._handle_order_payment(
-                db=db,
-                intent=intent,
-                reference=payment_reference,
-                amount=amount
-            )
-        
+
 
         # =========================================
         # 4. ROUTE BASED ON PURPOSE
@@ -158,7 +150,7 @@ class PaymentWebhookService:
         # =========================================
         await outbox_service.queue_event(
             db=db,
-            topic="payment.webhook.success",
+            topic="payment.webhook.successful",
             payload={
                 "intent_id": intent.id,
                 "reference": payment_reference,
