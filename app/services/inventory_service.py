@@ -1,6 +1,8 @@
-from sqlalchemy.orm import Session
-from fastapi import HTTPException
 from datetime import datetime, timedelta
+
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.db.models.inventory import Inventory
 from app.db.models.inventory_transaction import InventoryTransaction
@@ -21,13 +23,12 @@ class InventoryService:
     # =====================================
     # GET INVENTORY
     # =====================================
-    def get_inventory(self, db: Session, inventory_id: str):
+    async def get_inventory(self, db: AsyncSession, inventory_id: str):
 
-        inventory = (
-            db.query(Inventory)
-            .filter(Inventory.id == inventory_id)
-            .first()
+        result = await db.execute(
+            select(Inventory).where(Inventory.id == inventory_id)
         )
+        inventory = result.scalar_one_or_none()
 
         if not inventory:
             raise HTTPException(status_code=404, detail="Inventory not found")
@@ -37,9 +38,9 @@ class InventoryService:
     # =====================================
     # RESERVE STOCK
     # =====================================
-    def reserve_stock(
+    async def reserve_stock(
         self,
-        db: Session,
+        db: AsyncSession,
         inventory: Inventory,
         quantity: int,
         user_id: str,
@@ -67,7 +68,7 @@ class InventoryService:
         )
 
         db.add(tx)
-        db.flush()
+        await db.flush()
 
         self._emit_inventory_event(
             "inventory_reserved",
@@ -83,33 +84,28 @@ class InventoryService:
     # =====================================
     # CONVERT RESERVATION → CHECKOUT
     # =====================================
-    def convert_reservation_to_checkout(
+    async def convert_reservation_to_checkout(
         self,
-        db: Session,
+        db: AsyncSession,
         listing_id: str,
         quantity: int,
         user_id: str,
         ip: str = None
     ):
 
-        inventory = (
-            db.query(Inventory)
-            .filter(
+        result = await db.execute(
+            select(Inventory).where(
                 Inventory.listing_id == listing_id,
                 Inventory.is_active == True
-            )
-            .with_for_update()
-            .first()
+            ).with_for_update()
         )
+        inventory = result.scalar_one_or_none()
 
         if not inventory:
             raise HTTPException(status_code=404, detail="Inventory not found")
 
         if inventory.reserved_stock < quantity:
-            raise HTTPException(
-                status_code=400,
-                detail="Reserved inventory mismatch"
-            )
+            raise HTTPException(status_code=400, detail="Reserved inventory mismatch")
 
         if inventory.checkout_reserved_quantity is None:
             inventory.checkout_reserved_quantity = 0
@@ -125,7 +121,7 @@ class InventoryService:
         )
 
         db.add(tx)
-        db.flush()
+        await db.flush()
 
         self._emit_inventory_event(
             "inventory_checkout_reserved",
@@ -134,23 +130,16 @@ class InventoryService:
             user_id
         )
 
-        self._audit(
-            db,
-            user_id,
-            "inventory_checkout_reserved",
-            inventory,
-            quantity,
-            ip
-        )
+        self._audit(db, user_id, "inventory_checkout_reserved", inventory, quantity, ip)
 
         return inventory
 
     # =====================================
     # CONFIRM SALE
     # =====================================
-    def confirm_sale(
+    async def confirm_sale(
         self,
-        db: Session,
+        db: AsyncSession,
         inventory: Inventory,
         quantity: int,
         user_id: str,
@@ -171,7 +160,7 @@ class InventoryService:
         )
 
         db.add(tx)
-        db.flush()
+        await db.flush()
 
         self._emit_inventory_event(
             "inventory_sold",
@@ -187,9 +176,9 @@ class InventoryService:
     # =====================================
     # RELEASE RESERVED STOCK
     # =====================================
-    def release_reserved_stock(
+    async def release_reserved_stock(
         self,
-        db: Session,
+        db: AsyncSession,
         inventory: Inventory,
         quantity: int,
         user_id: str,
@@ -210,7 +199,7 @@ class InventoryService:
         )
 
         db.add(tx)
-        db.flush()
+        await db.flush()
 
         self._emit_inventory_event(
             "inventory_released",
@@ -223,45 +212,40 @@ class InventoryService:
 
         return inventory
 
-    
-
-    def cancel_reservation(
+    # =====================================
+    # CANCEL RESERVATION (ASYNC FIXED)
+    # =====================================
+    async def cancel_reservation(
         self,
-        db: Session,
+        db: AsyncSession,
         inventory: Inventory,
         quantity: int,
         user_id: str,
         reason: str = "expiry",
         ip: str = None
     ):
-        """
-        Releases reserved stock when:
-        - checkout expires
-        - order is cancelled
-        """
 
         if inventory.reserved_stock < quantity:
             raise HTTPException(
                 status_code=400,
-                detail="Reserved stock  insufficient for cancellation"
+                detail="Reserved stock insufficient for cancellation"
             )
 
-        # RETURN STOCK BACK
         inventory.reserved_stock -= quantity
         inventory.available_stock += quantity
 
         tx = InventoryTransaction(
             inventory_id=inventory.id,
-        transaction_type="cancelled_reservation",
+            transaction_type="cancelled_reservation",
             quantity=quantity,
             created_by=user_id
         )
 
         db.add(tx)
-        db.flush()
+        await db.flush()
 
         self._emit_inventory_event(
-        "inventory_reservation_cancelled",
+            "inventory_reservation_cancelled",
             inventory,
             quantity,
             user_id,
@@ -271,7 +255,7 @@ class InventoryService:
         self._audit(
             db,
             user_id,
-        "inventory_reservation_cancelled",
+            "inventory_reservation_cancelled",
             inventory,
             quantity,
             ip
@@ -282,9 +266,9 @@ class InventoryService:
     # =====================================
     # REDUCE STOCK
     # =====================================
-    def reduce_stock(
+    async def reduce_stock(
         self,
-        db: Session,
+        db: AsyncSession,
         inventory: Inventory,
         quantity: int,
         user_id: str,
@@ -303,7 +287,7 @@ class InventoryService:
         )
 
         db.add(tx)
-        db.flush()
+        await db.flush()
 
         self._emit_inventory_event(
             "inventory_reduced",
@@ -317,11 +301,11 @@ class InventoryService:
         return inventory
 
     # =====================================
-    # FINALIZE CHECKOUT (FIXED)
+    # FINALIZE CHECKOUT
     # =====================================
-    def finalize_checkout(
+    async def finalize_checkout(
         self,
-        db: Session,
+        db: AsyncSession,
         inventory: Inventory,
         quantity: int,
         user_id: str,
@@ -329,7 +313,6 @@ class InventoryService:
         order_id: str
     ):
 
-        # ✅ FIX: use checkout_reserved_quantity (NOT reserved_stock)
         if inventory.checkout_reserved_quantity is None:
             inventory.checkout_reserved_quantity = 0
 
@@ -339,7 +322,6 @@ class InventoryService:
                 detail="Checkout reserved stock insufficient for finalization"
             )
 
-        # FINAL SALE LOGIC
         inventory.checkout_reserved_quantity -= quantity
         inventory.sold_stock += quantity
 
@@ -351,7 +333,7 @@ class InventoryService:
         )
 
         db.add(tx)
-        db.flush()
+        await db.flush()
 
         self._emit_inventory_event(
             "checkout_completed",
@@ -361,19 +343,12 @@ class InventoryService:
             extra={"order_id": order_id}
         )
 
-        self._audit(
-            db,
-            user_id,
-            "checkout_completed",
-            inventory,
-            quantity,
-            ip
-        )
+        self._audit(db, user_id, "checkout_completed", inventory, quantity, ip)
 
         return inventory
 
     # =====================================
-    # EVENT EMITTER
+    # EVENT EMITTER (UNCHANGED)
     # =====================================
     def _emit_inventory_event(self, event, inventory, quantity, user_id, extra=None):
 
@@ -393,7 +368,7 @@ class InventoryService:
         event_bus.publish("inventory-events", payload)
 
     # =====================================
-    # AUDIT
+    # AUDIT (UNCHANGED SYNC CALL)
     # =====================================
     def _audit(self, db, user_id, action, inventory, quantity, ip):
 
