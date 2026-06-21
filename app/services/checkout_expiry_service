@@ -1,0 +1,79 @@
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+
+from app.db.models.checkout import Checkout
+from app.db.models.checkout_item import CheckoutItem
+from app.db.models.inventory import Inventory
+
+from app.services.inventory_service import InventoryService
+from app.services.outbox_service import outbox_service
+
+
+class CheckoutExpiryService:
+
+    def __init__(self):
+        self.inventory_service = InventoryService()
+
+    # =====================================
+    # EXPIRE CHECKOUT
+    # =====================================
+    async def expire_checkout(
+        self,
+        db: Session,
+        checkout_id: str,
+        user_id: str
+    ):
+        """
+        Called by scheduler/worker when checkout TTL expires
+        """
+
+        checkout = await db.get(Checkout, checkout_id)
+
+        if not checkout:
+            raise HTTPException(404, "Checkout not found")
+
+        if checkout.status in ["completed", "cancelled"]:
+            return {"message": "Checkout already finalized"}
+
+        # =====================================
+        # LOAD CHECKOUT ITEMS
+        # =====================================
+        stmt = select(CheckoutItem).where(
+            CheckoutItem.checkout_id == checkout.id
+        )
+
+        items = (await db.execute(stmt)).scalars().all()
+
+        # =====================================
+        # RELEASE RESERVED INVENTORY
+        # =====================================
+        for item in items:
+
+            inventory = await db.get(Inventory, item.inventory_id)
+
+            if inventory:
+                await self.inventory_service.cancel_reservation(
+                    db=db,
+                    inventory=inventory,
+                    quantity=item.quantity,
+                    user_id=user_id,
+                    reason="checkout_expired"
+                )
+
+        # =====================================
+        # UPDATE CHECKOUT STATUS
+        # =====================================
+        checkout.status = "expired"
+        checkout.is_locked = False
+
+        await outbox_service.queue_event(
+            db=db,
+            topic="checkout.expired",
+            payload={
+                "checkout_id": checkout.id,
+                "user_id": checkout.user_id
+            }
+        )
+
+        return {"status": "expired"}
