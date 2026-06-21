@@ -68,13 +68,15 @@ class OrderCancellationService:
                     reason="order_cancelled"
                 )
 
-        await   refund_service.refund_payment(
-            db=db,
-    payment_reference=order.payment_reference,
-            amount=order.total_amount,
-            reason=reason,
-            user_id=user_id
-        )
+        if order.payment_status == "paid"  and order.payment_reference:
+
+            await refund_service.refund_payment(
+                db=db,
+         payment_reference=order.payment_reference,
+                amount=order.total_amount,
+                reason=reason,
+                user_id=user_id
+            )
 
         # =====================================
         # UPDATE ORDER STATUS
