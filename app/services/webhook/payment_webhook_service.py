@@ -365,6 +365,7 @@ class PaymentWebhookService:
             db=db,
             topic="order.payment.completed",
             payload={
+                  "order_id": order.id,
                 "intent_id": intent.id,
                 "user_id": intent.user_id,
                 "reference": reference,
