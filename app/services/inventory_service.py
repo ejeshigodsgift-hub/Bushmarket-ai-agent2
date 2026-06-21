@@ -223,6 +223,62 @@ class InventoryService:
 
         return inventory
 
+    
+
+    def cancel_reservation(
+        self,
+        db: Session,
+        inventory: Inventory,
+        quantity: int,
+        user_id: str,
+        reason: str = "expiry",
+        ip: str = None
+    ):
+        """
+        Releases reserved stock when:
+        - checkout expires
+        - order is cancelled
+        """
+
+        if inventory.reserved_stock < quantity:
+            raise HTTPException(
+                status_code=400,
+                detail="Reserved stock  insufficient for cancellation"
+            )
+
+        # RETURN STOCK BACK
+        inventory.reserved_stock -= quantity
+        inventory.available_stock += quantity
+
+        tx = InventoryTransaction(
+            inventory_id=inventory.id,
+        transaction_type="cancelled_reservation",
+            quantity=quantity,
+            created_by=user_id
+        )
+
+        db.add(tx)
+        db.flush()
+
+        self._emit_inventory_event(
+        "inventory_reservation_cancelled",
+            inventory,
+            quantity,
+            user_id,
+            extra={"reason": reason}
+        )
+
+        self._audit(
+            db,
+            user_id,
+        "inventory_reservation_cancelled",
+            inventory,
+            quantity,
+            ip
+        )
+
+        return inventory
+
     # =====================================
     # REDUCE STOCK
     # =====================================
