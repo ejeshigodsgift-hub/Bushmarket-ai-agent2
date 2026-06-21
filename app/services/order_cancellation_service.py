@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from app.services.refund_service import refund_service
 
 from app.db.models.order import Order
 from app.db.models.order_item import OrderItem
@@ -66,6 +67,14 @@ class OrderCancellationService:
                     user_id=user_id,
                     reason="order_cancelled"
                 )
+
+        await   refund_service.refund_payment(
+            db=db,
+    payment_reference=order.payment_reference,
+            amount=order.total_amount,
+            reason=reason,
+            user_id=user_id
+        )
 
         # =====================================
         # UPDATE ORDER STATUS
