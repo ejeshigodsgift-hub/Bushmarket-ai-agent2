@@ -65,7 +65,7 @@ class PaymentTransaction(Base):
         nullable=False
     )
     """
-    pending | success | failed | reversed
+    pending | successful | failed | reversed
     """
 
     failure_reason: Mapped[str | None] = mapped_column(
