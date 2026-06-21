@@ -80,8 +80,10 @@ class PaymentService:
             status=status,
             failure_reason=failure_reason
         )
-
+        
+        
         db.add(tx)
+        await db.flush()
 
         await outbox_service.queue_event(
             db=db,
@@ -121,12 +123,12 @@ class PaymentService:
             gateway="system",
             amount=intent.amount,
             gateway_reference=gateway_reference,
-            status="success"
+            status="successful"
         )
 
         await outbox_service.queue_event(
             db=db,
-            topic="payment.success",
+            topic="payment.successful",
             payload={
                 "intent_id": intent_id,
                 "reference": gateway_reference
