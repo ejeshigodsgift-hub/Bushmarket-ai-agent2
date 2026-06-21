@@ -322,6 +322,10 @@ class PaymentWebhookService:
         checkout.status = "completed"
         checkout.is_locked = False
 
+        checkout.payment_status = "paid"
+        checkout.payment_reference = reference
+        checkout.completed_at = datetime.now(timezone.utc)
+
     # 7. ESCROW HOLD (FINAL SETTLEMENT STEP)
         escrow = await db.execute(
             select(EscrowAccount).limit(1)
