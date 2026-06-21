@@ -225,7 +225,7 @@ class CartService:
 
     async def remove_from_cart(
         self,
-        db: Session,
+        db: AsyncSession,
         user_id: str,
         cart_item_id: str,
         ip_address: str
@@ -312,7 +312,7 @@ class CartService:
 
     async def update_cart_item_quantity(
         self,
-        db: Session,
+        db: AsyncSession,
         user_id: str,
         cart_item_id: str,
         new_quantity: int,
@@ -416,9 +416,12 @@ class CartService:
     # =========================================
     # CHECKOUT PREPARATION (EXPIRY SAFE)
     # =========================================
-    def prepare_checkout(self, db: Session, user_id: str):
+    async def prepare_checkout(self, db:    AsyncSession, user_id: str):
 
-        cart = self.get_or_create_cart(db, user_id)
+        cart = db.query(Cart).filter(
+            Cart.user_id == user_id,
+            Cart.status == "active"
+        ).first()
 
         if not cart:
             raise HTTPException(404, "Cart not found")
@@ -426,8 +429,9 @@ class CartService:
         if cart.total_amount <= 0:
             raise HTTPException(400, "Cart is empty")
 
-        if cart.expires_at and cart.expires_at < datetime.now(timezone.utc):
-            raise HTTPException(400, "Cart expired")
+    # ❗ IMPORTANT: DO NOT refresh expiry here
+        if cart.expires_at and   cart.expires_at <   datetime.now(timezone.utc):
+            raise HTTPException(400,  "Cart expired")
 
         return {
             "cart_id": cart.id,
@@ -437,4 +441,4 @@ class CartService:
             "total": cart.total_amount,
             "expires_at": cart.expires_at,
             "status": "ready_for_checkout"
-        }
+    }
