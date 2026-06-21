@@ -2,6 +2,10 @@ from app.handlers.order_created_handler import (
     OrderCreatedHandler
 )
 
+from app.handlers.order_payment_completed_handler import (
+    OrderPaymentCompletedHandler
+)
+
 from app.handlers.inventory_reserved_handler import (
     InventoryReservedHandler
 )
@@ -41,6 +45,11 @@ TOPIC_HANDLERS = {
         LedgerPostingHandler,
         NotificationHandler,
         FraudDetectionHandler,
+    ],
+
+
+    "order.payment.completed": [
+        OrderPaymentCompletedHandler,
     ],
 
     # ==========================================
