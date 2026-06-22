@@ -159,9 +159,15 @@ class PaymentWebhookService:
             }
         )
 
-        
+        try:
+        ...
+            await db.commit()
+            return {"status": "processed"}
 
-        return {"status": "processed"}
+        except Exception:
+            await db.rollback()
+            raise
+        
 
     # =====================================================
     # WALLET TOPUP FLOW
