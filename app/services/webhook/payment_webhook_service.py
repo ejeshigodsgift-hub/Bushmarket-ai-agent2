@@ -212,23 +212,22 @@ class PaymentWebhookService:
                 )
             )
 
-            if existing.scalar_one_or_none():
+            if    existing.scalar_one_or_none():
                 return
 
-        # 2. ESCROW FETCH
+            # 2. ESCROW FETCH
             escrow = await db.execute(
-                select(EscrowAccount).where(
-                EscrowAccount.type == "wallet"
+                select(EscrowAccount)
+                .where(EscrowAccount.type == "wallet")
+                .limit(1)
             )
-        )
 
-            escrow_account = escrow.scalar_one_or_none()
+            escrow_account =    escrow.scalar_one_or_none()
 
             if not escrow_account:
-                raise HTTPException(400, "Escrow account missing")
+                raise HTTPException(400,  "Escrow account missing")
 
-        # 3. ESCROW DEPOSIT (idempotent inside service OR DB constraint required)
-          
+            # 3. ESCROW DEPOSIT
             await self.financial_core.escrow_deposit(
                 db=db,
                 escrow_id=escrow_account.id,
@@ -236,7 +235,7 @@ class PaymentWebhookService:
                 reference=reference
             )
 
-        # 4. WALLET CREDIT (MISSING IN YOUR VERSION)
+            # 4. WALLET CREDIT
             await self.financial_core.credit_wallet(
                 db=db,
                 user_id=intent.user_id,
