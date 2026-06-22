@@ -202,7 +202,7 @@ class PaymentWebhookService:
         amount: float
     ):
 
-        async with db.begin():  # atomic
+        
 
         # 1. IDEMPOTENCY GUARD
             existing = await db.execute(
