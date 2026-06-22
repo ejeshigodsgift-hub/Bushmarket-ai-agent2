@@ -382,11 +382,10 @@ class PaymentWebhookService:
         checkout.completed_at = datetime.now(timezone.utc)
 
     # 7. ESCROW HOLD (FINAL SETTLEMENT STEP)
-        escrow = await db.execute(
-            select(EscrowAccount).limit(1)
+        escrow_account = await self._get_escrow_account(
+            db=db,
+            escrow_type="marketplace"
         )
-
-        escrow_account =  escrow.scalar_one_or_none()
 
         if not escrow_account:
             raise HTTPException(
