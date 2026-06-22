@@ -34,6 +34,28 @@ class PaymentWebhookService:
         self.inventory_service = InventoryService()
         self.idempotency_service = IdempotencyService()
 
+
+    async def _get_escrow_account(
+        self,
+        db: AsyncSession,
+        escrow_type: str
+    ):
+        result = await db.execute(
+            select(EscrowAccount)
+            .where(EscrowAccount.type == escrow_type)
+            .limit(1)
+        )
+
+        escrow = result.scalar_one_or_none()
+
+        if not escrow:
+            raise HTTPException(
+                400,
+                f"{escrow_type} escrow account not found"
+            )
+
+        return escrow
+
     # =====================================================
     # MAIN WEBHOOK ENTRY POINT
     # =====================================================
