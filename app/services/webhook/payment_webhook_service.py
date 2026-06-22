@@ -273,13 +273,10 @@ class PaymentWebhookService:
         Activation happens AFTER validation
         """
 
-        escrow = await db.execute(
-            select(EscrowAccount).where(
-                EscrowAccount.type == "cooperative"
-            )
+        escrow_account = await self._get_escrow_account(
+            db=db,
+            escrow_type="cooperative"
         )
-
-        escrow_account = escrow.scalar_one_or_none()
 
         if not escrow_account:
             raise HTTPException(400, "Cooperative escrow missing")
@@ -305,11 +302,10 @@ class PaymentWebhookService:
         Direct escrow funding for orders or marketplace holds
         """
 
-        escrow = await db.execute(
-            select(EscrowAccount).limit(1)
+        escrow_account = await self._get_escrow_account(
+            db=db,
+            escrow_type="marketplace"
         )
-
-        escrow_account = escrow.scalar_one_or_none()
 
         if not escrow_account:
             raise HTTPException(400, "Escrow not found")
