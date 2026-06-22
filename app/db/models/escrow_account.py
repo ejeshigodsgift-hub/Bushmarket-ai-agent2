@@ -88,6 +88,8 @@ class EscrowAccount(Base):
         nullable=False
     )
 
+    type: Mapped[str] =    mapped_column(String(30), nullable=False)
+
     # =========================
     # STATUS
     # =========================
