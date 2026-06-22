@@ -234,14 +234,10 @@ class PaymentWebhookService:
     ):
 
 
-            # 2. ESCROW FETCH
-            escrow = await db.execute(
-                select(EscrowAccount)
-                .where(EscrowAccount.type == "wallet")
-                .limit(1)
+            escrow_account = await   self._get_escrow_account(
+                db=db,
+                escrow_type="wallet"
             )
-
-            escrow_account =    escrow.scalar_one_or_none()
 
             if not escrow_account:
                 raise HTTPException(400,  "Escrow account missing")
