@@ -14,15 +14,12 @@ async def seed_system_cooperatives(db):
         name="System Marketplace Cooperative"
     )
 
-    system_cooperative_coop = Cooperative(
-        id=COOPERATIVE_COOPERATIVE_ID,
-        name="System Cooperative Master"
-    )
+    
 
     db.add_all([
         system_wallet_coop,
         system_marketplace_coop,
-        system_cooperative_coop
+        
     ])
 
     await db.commit()
