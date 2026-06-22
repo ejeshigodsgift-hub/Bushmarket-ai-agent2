@@ -235,12 +235,15 @@ class CartService:
         cart_item_id: str,
         ip_address: str
     ):
- 
+
         try:
 
-            item = db.query(CartItem).filter(
-                CartItem.id == cart_item_id
-            ).first()
+            item_result = await db.execute(
+                select(CartItem).where(
+                    CartItem.id == cart_item_id
+                )
+            )
+            item = item_result.scalar_one_or_none()
 
             if not item:
                 raise HTTPException(404, "Cart item not found")
@@ -252,10 +255,13 @@ class CartService:
 
             listing = item.listing
 
-            inventory = db.query(Inventory).filter(
-                Inventory.listing_id == listing.id,
-                Inventory.is_active == True
-            ).with_for_update().first()
+            inventory_result = await db.execute(
+                select(Inventory).where(
+                    Inventory.listing_id == listing.id,
+                    Inventory.is_active == True
+                )
+            )
+            inventory = inventory_result.scalar_one_or_none()
 
             if not inventory:
                 raise HTTPException(404, "Inventory not found")
@@ -270,13 +276,16 @@ class CartService:
                 ip=ip_address
             )
 
-            db.delete(item)
-            db.flush()
+            await db.delete(item)
+            await db.flush()
 
-        # ✅ recompute totals (no drift)
-            items = db.query(CartItem).filter(
-                CartItem.cart_id == cart.id
-            ).all()
+        # recompute totals
+            items_result = await db.execute(
+                select(CartItem).where(
+                    CartItem.cart_id == cart.id
+                )
+            )
+            items = items_result.scalars().all()
 
             subtotal = Decimal("0.00")
             market_fee = Decimal("0.00")
@@ -293,7 +302,7 @@ class CartService:
                 minutes=self.CART_TTL_MINUTES
             )
 
-            db.commit()
+            await db.commit()
 
             return {
                 "message": "Item removed",
@@ -306,12 +315,11 @@ class CartService:
 
         except SQLAlchemyError:
             await db.rollback()
-            raise HTTPException(500, "Database transaction failed")
+            raise HTTPException(500,   "Database transaction failed")
 
         except Exception:
             await db.rollback()
             raise HTTPException(500, "Unable to remove item")
-
 
 
 
@@ -327,11 +335,17 @@ class CartService:
         try:
 
             if new_quantity <= 0:
-                raise HTTPException(400, "Quantity must be greater than zero")
+                raise HTTPException(
+                    400,
+                    "Quantity must be greater than zero"
+                )
 
-            item = db.query(CartItem).filter(
-                CartItem.id == cart_item_id
-            ).first()
+            item_result = await db.execute(
+                select(CartItem).where(
+                    CartItem.id == cart_item_id
+                )
+            )
+            item = item_result.scalar_one_or_none()
 
             if not item:
                 raise HTTPException(404, "Cart item not found")
@@ -339,17 +353,19 @@ class CartService:
             if str(item.cart.user_id) != str(user_id):
                 raise HTTPException(403, "Unauthorized cart access")
 
-            inventory = db.query(Inventory).filter(
-                Inventory.listing_id == item.listing_id,
-                Inventory.is_active == True
-            ).with_for_update().first()
+            inventory_result = await db.execute(
+                select(Inventory).where(
+                    Inventory.listing_id == item.listing_id,
+                    Inventory.is_active == True
+                )
+            )
+            inventory = inventory_result.scalar_one_or_none()
 
             if not inventory:
                 raise HTTPException(404, "Inventory not found")
 
             diff = new_quantity - item.quantity
 
-        # ✅ FIXED INDENTATION + ASYNC
             if diff > 0:
                 await self.inventory_service.reserve_inventory(
                     db=db,
@@ -369,22 +385,24 @@ class CartService:
         # update quantity
             item.quantity = new_quantity
 
-        # ❗ FIXED: NO DRIFT PRICING   (your critical issue #2)
+        # FIX: recalculate fee
             pricing = self.pricing_service.calculate_item_total(
                 quantity=new_quantity,
                 unit_price=item.unit_price,
-            market_fee=item.listing.market_fee
+             market_fee=item.listing.market_fee
             )
 
             item.market_fee = pricing["market_fee"]
             item.total_price = pricing["total"]
 
-        # recompute cart totals
             cart = item.cart
 
-            items = db.query(CartItem).filter(
-                CartItem.cart_id == cart.id
-        ).all()
+            items_result = await db.execute(
+                select(CartItem).where(
+                    CartItem.cart_id == cart.id
+                )
+            )
+            items = items_result.scalars().all()
 
             subtotal = Decimal("0.00")
             market_fee = Decimal("0.00")
@@ -401,7 +419,7 @@ class CartService:
                 minutes=self.CART_TTL_MINUTES
             )
 
-            db.commit()
+            await db.commit()
 
             return item
 
@@ -411,13 +429,14 @@ class CartService:
 
         except SQLAlchemyError:
             await db.rollback()
-            raise HTTPException(500, "Database transaction failed")
+            raise HTTPException(500,  "Database transaction failed")
 
         except Exception:
             await db.rollback()
-            raise HTTPException(500, "Unable to update cart item quantity")   
-    
-
+            raise HTTPException(
+                500,
+                "Unable to update cart item quantity"
+            )
     # =========================================
     # CHECKOUT PREPARATION (EXPIRY SAFE)
     # =========================================
