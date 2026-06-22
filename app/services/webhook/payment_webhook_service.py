@@ -41,6 +41,10 @@ class PaymentWebhookService:
         amount: float,
         user_id: str
     ):
+
+        
+        
+
         """
         Triggered ONLY after gateway confirms payment success
         """
@@ -168,6 +172,11 @@ class PaymentWebhookService:
                 "purpose": intent.purpose,
                 "amount": amount
             }
+        )
+
+        await    idempotency_service.mark_processed(
+            db=db,
+            key=payment_reference
         )
 
         
