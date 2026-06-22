@@ -4,7 +4,7 @@ from decimal import Decimal
 from app.db.seeds.system_cooperatives import (
     WALLET_COOPERATIVE_ID,
     MARKETPLACE_COOPERATIVE_ID,
-    COOPERATIVE_COOPERATIVE_ID
+    
 )
 
 from app.db.models.order import Order
@@ -44,12 +44,12 @@ class PaymentWebhookService:
     async def _get_escrow_account(
         self,
         db: AsyncSession,
-        escrow_type: str
+        cooperative_id: str
     ):
         result = await db.execute(
-            select(EscrowAccount)
-            .where(EscrowAccount.type == escrow_type)
-            .limit(1)
+            select(EscrowAccount).where(
+                EscrowAccount.cooperative_id == cooperative_id
+            )
         )
 
         escrow = result.scalar_one_or_none()
@@ -57,7 +57,7 @@ class PaymentWebhookService:
         if not escrow:
             raise HTTPException(
                 400,
-                f"{escrow_type} escrow account not found"
+                f"Escrow account not found for cooperative {cooperative_id}"
             )
 
         return escrow
@@ -240,11 +240,10 @@ class PaymentWebhookService:
     ):
 
 
-            escrow_account = await   self._get_escrow_account(
-                db=db,
-                escrow_type="wallet"
+            escrow_account = await self._get_escrow_account(
+                db,
+                WALLET_COOPERATIVE_ID
             )
-
             if not escrow_account:
                 raise HTTPException(400,  "Escrow account missing")
 
@@ -280,9 +279,9 @@ class PaymentWebhookService:
         """
 
         escrow_account = await self._get_escrow_account(
-            db=db,
-            escrow_type="cooperative"
-        )
+                db,
+                intent.cooperative_id
+            )
 
         if not escrow_account:
             raise HTTPException(400, "Cooperative escrow missing")
@@ -309,9 +308,9 @@ class PaymentWebhookService:
         """
 
         escrow_account = await self._get_escrow_account(
-            db=db,
-            escrow_type="marketplace"
-        )
+                db,
+                MARKETPLACE_COOPERATIVE_ID
+            )
 
         if not escrow_account:
             raise HTTPException(400, "Escrow not found")
