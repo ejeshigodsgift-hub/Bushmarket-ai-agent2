@@ -388,8 +388,8 @@ class PaymentWebhookService:
 
     # 7. ESCROW HOLD (FINAL SETTLEMENT STEP)
         escrow_account = await self._get_escrow_account(
-            db=db,
-            escrow_type="marketplace"
+            db,
+            MARKETPLACE_COOPERATIVE_ID
         )
 
         if not escrow_account:
