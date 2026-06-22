@@ -1,17 +1,16 @@
 from app.db.models.cooperative import Cooperative
 
-WALLET_COOPERATIVE_ID = "system-wallet-coop"
-MARKETPLACE_COOPERATIVE_ID = "system-marketplace-coop"
-COOPERATIVE_COOPERATIVE_ID = "system-cooperative-coop"
+
 
 async def seed_system_cooperatives(db):
     system_wallet_coop = Cooperative(
-        id=WALLET_COOPERATIVE_ID,
+        id="system-wallet-coop",
         name="System Wallet Cooperative"
     )
+    
 
     system_marketplace_coop = Cooperative(
-        id=MARKETPLACE_COOPERATIVE_ID,
+        id="system-marketplace-coop",
         name="System Marketplace Cooperative"
     )
 
