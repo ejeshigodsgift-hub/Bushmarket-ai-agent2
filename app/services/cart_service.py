@@ -136,12 +136,17 @@ class CartService:
             )
 
             if existing_item:
-                existing_item.quantity = final_quantity
+                existing_item.quantity =   final_quantity
                 existing_item.unit_price = listing.unit_price
 
-            # ❗ FIX: DO NOT ADD MARKET   FEE WRONG — recompute instead of drift
-                existing_item.market_fee += pricing["market_fee"]
-                existing_item.total_price += pricing["total"]
+                pricing = self.pricing_service.calculate_item_total(
+                    quantity=final_quantity,
+            unit_price=listing.unit_price,
+             market_fee=listing.market_fee
+                )
+
+                existing_item.market_fee = pricing["market_fee"]
+                existing_item.total_price = pricing["total"]
 
             else:
                 item = CartItem(
@@ -212,7 +217,7 @@ class CartService:
             raise
 
         except SQLAlchemyError:
-            db.rollback()
+            await db.rollback()
             raise HTTPException(500, "Database transaction failed")
 
 
@@ -296,15 +301,15 @@ class CartService:
             }
 
         except HTTPException:
-            db.rollback()
+            await db.rollback()
             raise
 
         except SQLAlchemyError:
-            db.rollback()
+            await db.rollback()
             raise HTTPException(500, "Database transaction failed")
 
         except Exception:
-            db.rollback()
+            await db.rollback()
             raise HTTPException(500, "Unable to remove item")
 
 
@@ -401,15 +406,15 @@ class CartService:
             return item
 
         except HTTPException:
-            db.rollback()
+            await db.rollback()
             raise
 
         except SQLAlchemyError:
-            db.rollback()
+            await db.rollback()
             raise HTTPException(500, "Database transaction failed")
 
         except Exception:
-            db.rollback()
+            await db.rollback()
             raise HTTPException(500, "Unable to update cart item quantity")   
     
 
