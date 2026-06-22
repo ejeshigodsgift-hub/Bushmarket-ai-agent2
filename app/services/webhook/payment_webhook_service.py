@@ -50,14 +50,25 @@ class PaymentWebhookService:
         # =========================================
         # 1. FETCH INTENT
         # =========================================
-        stmt = select(PaymentIntent).where(
-            PaymentIntent.reference == payment_reference
+        stmt = (
+            select(PaymentIntent)
+            .where(PaymentIntent.reference == payment_reference)
+            .with_for_update()
         )
-        intent = (await db.execute(stmt)).scalar_one_or_none()
+
+        result = await db.execute(stmt)
+        intent = result.scalar_one_or_none()
 
         if not intent:
             raise HTTPException(404, "Payment intent not found")
 
+        if Decimal(str(amount)) != intent.amount:  
+            raise HTTPException(  
+                400,  
+                "Payment amount mismatch"  
+           )  
+  
+  
         # =========================================
         # 2. IDEMPOTENCY GUARD
         # =========================================
@@ -159,14 +170,9 @@ class PaymentWebhookService:
             }
         )
 
-        try:
-        ...
-            await db.commit()
-            return {"status": "processed"}
+        
+        return {"status": "processed"}
 
-        except Exception:
-            await db.rollback()
-            raise
         
 
     # =====================================================
@@ -302,8 +308,8 @@ class PaymentWebhookService:
         if not checkout:
             raise HTTPException(404,  "Checkout not found")
 
-        if checkout.is_locked is False and checkout.status == "completed":
-            pass  # already processed
+        if checkout.status == "completed":
+            return # already processed
 
     # 3. GUARD (IDEMPOTENCY)
         if order.payment_status == "paid":
