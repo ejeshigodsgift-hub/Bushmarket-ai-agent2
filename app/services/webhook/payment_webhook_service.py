@@ -46,6 +46,15 @@ class PaymentWebhookService:
         user_id: str
     ):
 
+
+        already_processed = await self.idempotency_service.is_processed(
+            db=db,
+            key=payment_reference
+        )
+
+        if already_processed:
+            return {"status":    "already_processed"}
+
         
         
 
@@ -202,18 +211,6 @@ class PaymentWebhookService:
         amount: float
     ):
 
-        
-
-        # 1. IDEMPOTENCY GUARD
-            existing = await db.execute(
-             select(PaymentTransaction).where(
-                PaymentTransaction.gateway_reference == reference,
-                    PaymentTransaction.status == "successful"
-                )
-            )
-
-            if    existing.scalar_one_or_none():
-                return
 
             # 2. ESCROW FETCH
             escrow = await db.execute(
@@ -351,7 +348,7 @@ class PaymentWebhookService:
             await self.inventory_service.reduce_stock(
                 db=db,
                 listing_id=item.listing_id,
-                quantity=item.quantity
+                quantity=item.quantity,
                 order_id=order.id   
             )
 
