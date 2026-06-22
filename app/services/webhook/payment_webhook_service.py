@@ -201,31 +201,47 @@ class PaymentWebhookService:
         reference: str,
         amount: float
     ):
-        """
-        Gateway → Escrow → Wallet credit (via FinancialCore)
-        """
 
-        # NOTE: escrow step (temporary holding)
-        escrow = await db.execute(
-            select(EscrowAccount).where(
-                EscrowAccount.cooperative_id.is_(None)
+        async with db.begin():  # atomic
+
+        # 1. IDEMPOTENCY GUARD
+            existing = await db.execute(
+             select(PaymentTransaction).where(
+                PaymentTransaction.gateway_reference == reference,
+                    PaymentTransaction.status == "successful"
+                )
             )
-        )
 
-        escrow_account = escrow.scalar_one_or_none()
+            if existing.scalar_one_or_none():
+                return
 
-        if not escrow_account:
-            raise HTTPException(400, "Escrow account missing")
+        # 2. ESCROW FETCH
+            escrow = await db.execute(
+                select(EscrowAccount).where(
+                EscrowAccount.cooperative_id.is_(None)
+                )
+            )
 
-        await self.financial_core.escrow_deposit(
-            db=db,
-            escrow_id=escrow_account.id,
-            amount=amount,
-            reference=reference
-        )
+            escrow_account = escrow.scalar_one_or_none()
 
-        # wallet credit handled after escrow validation
-        # (in real system this is async or rule-based trigger)
+            if not escrow_account:
+                raise HTTPException(400, "Escrow account missing")
+
+        # 3. ESCROW DEPOSIT (idempotent inside service OR DB constraint required)
+            await self.financial_core.escrow_deposit(
+                db=db,
+                escrow_id=escrow_account.id,
+                amount=amount,
+                reference=reference
+            )
+
+        # 4. WALLET CREDIT (MISSING IN YOUR VERSION)
+            await self.financial_core.credit_wallet(
+                db=db,
+                user_id=intent.user_id,
+                amount=amount,
+                reference=reference
+            )
 
     # =====================================================
     # COOPERATIVE MEMBERSHIP FLOW
@@ -324,8 +340,7 @@ class PaymentWebhookService:
         if not checkout:
             raise HTTPException(404,  "Checkout not found")
 
-        if checkout.status == "completed":
-            return # already processed
+         
 
     # 3. GUARD (IDEMPOTENCY)
         if order.payment_status == "paid":
@@ -337,6 +352,7 @@ class PaymentWebhookService:
                 db=db,
                 listing_id=item.listing_id,
                 quantity=item.quantity
+                order_id=order.id   
             )
 
     # 5. MARK ORDER PAID
