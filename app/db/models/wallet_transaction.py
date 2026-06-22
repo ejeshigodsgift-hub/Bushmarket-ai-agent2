@@ -6,7 +6,8 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     func,
-    Index
+    Index,
+    UniqueConstraint
 )
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -25,6 +26,13 @@ class WalletTransaction(Base):
         Index("idx_wallet_tx_wallet", "wallet_id"),
         Index("idx_wallet_tx_reference", "reference"),
         Index("idx_wallet_tx_type", "tx_type"),
+
+        # 🔒 CRITICAL FIX: prevents duplicate credits/debits per reference
+        UniqueConstraint(
+            "reference",
+            "tx_type",
+            name="uq_wallet_tx_reference_type"
+        ),
     )
 
     id: Mapped[str] = mapped_column(
