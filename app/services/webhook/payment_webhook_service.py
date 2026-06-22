@@ -260,7 +260,7 @@ class PaymentWebhookService:
 
         escrow = await db.execute(
             select(EscrowAccount).where(
-                EscrowAccount.cooperative_id.isnot(None)
+                EscrowAccount.type == "cooperative"
             )
         )
 
