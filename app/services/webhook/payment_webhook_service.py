@@ -218,9 +218,9 @@ class PaymentWebhookService:
         # 2. ESCROW FETCH
             escrow = await db.execute(
                 select(EscrowAccount).where(
-                EscrowAccount.cooperative_id.is_(None)
-                )
+                EscrowAccount.type == "wallet"
             )
+        )
 
             escrow_account = escrow.scalar_one_or_none()
 
@@ -228,6 +228,7 @@ class PaymentWebhookService:
                 raise HTTPException(400, "Escrow account missing")
 
         # 3. ESCROW DEPOSIT (idempotent inside service OR DB constraint required)
+          
             await self.financial_core.escrow_deposit(
                 db=db,
                 escrow_id=escrow_account.id,
