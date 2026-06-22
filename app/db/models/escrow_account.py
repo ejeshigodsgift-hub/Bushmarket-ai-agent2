@@ -30,6 +30,11 @@ class EscrowAccount(Base):
         UniqueConstraint("cooperative_id", name="uq_escrow_cooperative"),
         Index("idx_escrow_status", "status"),
         Index("idx_escrow_cooperative", "cooperative_id"),
+
+        CheckConstraint(
+            "type IN ('wallet', 'marketplace', 'cooperative')",
+            name="ck_escrow_type_valid"
+        ),
     )
 
     # =========================
