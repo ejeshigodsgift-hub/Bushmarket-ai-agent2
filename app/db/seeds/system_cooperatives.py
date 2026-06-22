@@ -1,25 +1,29 @@
+from sqlalchemy import select
+
 from app.db.models.cooperative import Cooperative
 
 
-
 async def seed_system_cooperatives(db):
-    system_wallet_coop = Cooperative(
-        id="system-wallet-coop",
-        name="System Wallet Cooperative"
-    )
-    
 
-    system_marketplace_coop = Cooperative(
-        id="system-marketplace-coop",
-        name="System Marketplace Cooperative"
-    )
+    for coop_id, name in [
+        ("system-wallet-coop", "System Wallet Cooperative"),
+        ("system-marketplace-coop", "System Marketplace Cooperative"),
+    ]:
 
-    
+        existing = await db.execute(
+            select(Cooperative).where(
+                Cooperative.id == coop_id
+            )
+        )
 
-    db.add_all([
-        system_wallet_coop,
-        system_marketplace_coop,
-        
-    ])
+        if existing.scalar_one_or_none():
+            continue
+
+        db.add(
+            Cooperative(
+                id=coop_id,
+                name=name
+            )
+        )
 
     await db.commit()
