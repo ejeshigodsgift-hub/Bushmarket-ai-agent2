@@ -3,6 +3,10 @@ from sqlalchemy import select
 from app.db.models.cooperative import Cooperative
 
 
+WALLET_COOPERATIVE_ID = "system-wallet-coop"
+MARKETPLACE_COOPERATIVE_ID = "system-marketplace-coop"
+
+
 async def seed_system_cooperatives(db):
 
     for coop_id, name in [
