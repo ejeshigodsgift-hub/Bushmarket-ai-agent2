@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from app.db.models.order import Order
 from app.services.inventory_service import InventoryService
@@ -17,6 +18,8 @@ from app.services.financial_core_service import FinancialCoreService
 from app.services.audit_service import AuditService
 from app.services.outbox_service import outbox_service
 
+from app.services.idempotency_service import IdempotencyService
+
 
 class PaymentWebhookService:
     """
@@ -29,6 +32,7 @@ class PaymentWebhookService:
         self.financial_core = FinancialCoreService()
         self.audit = AuditService()
         self.inventory_service = InventoryService()
+        self.idempotency_service = IdempotencyService()
 
     # =====================================================
     # MAIN WEBHOOK ENTRY POINT
@@ -174,10 +178,13 @@ class PaymentWebhookService:
             }
         )
 
-        await    idempotency_service.mark_processed(
+        
+        await  self.idempotency_service.mark_processed(
             db=db,
             key=payment_reference
         )
+
+
 
         
         return {"status": "processed"}
