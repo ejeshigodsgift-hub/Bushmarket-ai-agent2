@@ -1,6 +1,12 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from app.db.seeds.system_cooperatives import (
+    WALLET_COOPERATIVE_ID,
+    MARKETPLACE_COOPERATIVE_ID,
+    COOPERATIVE_COOPERATIVE_ID
+)
+
 from app.db.models.order import Order
 from app.services.inventory_service import InventoryService
 from app.db.models.checkout import Checkout
