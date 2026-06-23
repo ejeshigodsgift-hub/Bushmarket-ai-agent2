@@ -25,7 +25,7 @@ class MarketService:
         stmt = (
             select(MarketLocation)
             .where(MarketLocation.is_active.is_(True))
-            .order_by(MarketLocation.market_name.asc())
+            .order_by(MarketLocation.name.asc())
         )
 
         result = await db.execute(stmt)
@@ -72,10 +72,12 @@ class MarketService:
     ) -> MarketLocation:
 
         market = MarketLocation(
-            market_name=payload["market_name"].strip(),
-            market_code=payload["market_code"].upper().strip(),
+            name=payload["name"].strip(),
+            code=payload["code"].upper().strip(),
             region_id=payload["region_id"],
             address=payload.get("address"),
+            city=payload.get("city"),
+            state=payload.get("state"),
             latitude=payload.get("latitude"),
             longitude=payload.get("longitude"),
             is_active=True
