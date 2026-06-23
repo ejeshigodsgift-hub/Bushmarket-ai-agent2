@@ -5,6 +5,7 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 from app.db.models.listing_agent_activity import ListingAgentActivity
+from app.services.market_admin_service import market_admin_service
 
 from app.db.session import get_db
 from app.services.market_listing_service import market_listing_service
@@ -115,12 +116,11 @@ async def approve_listing(
         "approve_listing"
     )
 
-    return await admin_service.approve_listing(
+    return await  market_admin_service.approve_listing(
         db=db,
         listing_id=listing_id,
         admin_id=user["id"]
     )
-
 
 # =========================
 # REJECT LISTING
