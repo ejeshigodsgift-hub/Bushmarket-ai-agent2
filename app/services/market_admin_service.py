@@ -40,7 +40,7 @@ class MarketAdminService:
         agent.status = "approved"
         agent.is_verified_agent = True
 
-        self.audit.log(
+        await self.audit.log(
             db=db,
             user_id=admin_id,
             action="agent_approved",
@@ -49,7 +49,7 @@ class MarketAdminService:
             metadata={"user_id": user_id}
         )
 
-        OutboxPublisher.publish(
+        await OutboxPublisher.publish(
             db=db,
             event_type="agent.approved",
             payload={
@@ -91,7 +91,7 @@ class MarketAdminService:
         agent.status = "suspended"
         agent.is_verified_agent = False
 
-        self.audit.log(
+        await self.audit.log(
             db=db,
             user_id=admin_id,
             action="agent_suspended",
@@ -103,7 +103,7 @@ class MarketAdminService:
             }
         )
 
-        OutboxPublisher.publish(
+        await OutboxPublisher.publish(
             db=db,
             event_type="agent.suspended",
             payload={
@@ -143,7 +143,13 @@ class MarketAdminService:
 
         listing.status = "active"
 
-        self.audit.log(
+        await listing_admin_activity_service.log_listing_approved(
+            db=db,
+            listing_id=listing.id,
+            admin_id=admin_id
+        )
+
+        await self.audit.log(
             db=db,
             user_id=admin_id,
             action="listing_approved",
@@ -152,7 +158,7 @@ class MarketAdminService:
             metadata={"listing_id": listing_id}
         )
 
-        OutboxPublisher.publish(
+        await OutboxPublisher.publish(
             db=db,
             event_type="listing.approved",
             payload={
@@ -192,7 +198,14 @@ class MarketAdminService:
 
         listing.status = "disabled"
 
-        self.audit.log(
+        await listing_admin_activity_service.log_listing_rejected(
+            db=db,
+            listing_id=listing.id,
+            admin_id=admin_id,
+            reason=reason
+        )
+
+        await self.audit.log(
             db=db,
             user_id=admin_id,
             action="listing_rejected",
@@ -204,7 +217,7 @@ class MarketAdminService:
             }
         )
 
-        OutboxPublisher.publish(
+        await OutboxPublisher.publish(
             db=db,
             event_type="listing.rejected",
             payload={
