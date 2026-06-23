@@ -71,6 +71,7 @@ class WithdrawalRequest(Base):
     )
     """
     pending
+    fraud_review
     approved
     processing
     paid
