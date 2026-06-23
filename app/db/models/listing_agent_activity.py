@@ -30,9 +30,8 @@ class ListingAgentActivity(Base):
 
     ALLOWED_ACTIONS = (
         "draft_created",
-        "submitted_for_review",
-        "admin_approved",
-        "admin_rejected"
+        "submitted_for_review"
+        
     )
 
     # =====================================================
