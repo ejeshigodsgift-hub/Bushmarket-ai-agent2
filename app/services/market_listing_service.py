@@ -98,14 +98,22 @@ class MarketListingService:
         # ====================================================
         # INVENTORY HISTORY
         # ====================================================
+
         history = InventoryHistory(
             inventory_id=inventory.id,
-            action="inventory_created",
-            quantity=data["available_stock"],
-            performed_by=agent.id,
-            metadata={
-                "listing_id": str(listing.id)
-            }
+
+     previous_available_stock=inventory.available_stock,
+            new_available_stock=new_stock,
+
+    previous_reserved_stock=inventory.reserved_stock,
+    new_reserved_stock=inventory.reserved_stock,
+
+    previous_sold_stock=inventory.sold_stock,
+        new_sold_stock=inventory.sold_stock,
+
+       change_reason=f"inventory_adjustment:{quantity}",
+
+            changed_by=actor.id
         )
 
         db.add(history)
