@@ -2,6 +2,10 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
+from app.db.models.financial_reconciliation import FinancialReconciliation  
+
+from datetime import datetime
+
 from app.db.models.ledger_account import LedgerAccount
 from app.db.models.ledger_entry import LedgerEntry
 
@@ -226,6 +230,21 @@ class LedgerReconciliationService:
 
         ledger_total = Decimal(ledger_total_result.scalar() or 0)
 
+
+        await self.persist_reconciliation_result(
+            db=db,
+            reference="SYS-AUDIT-" +   datetime.utcnow().isoformat(),
+            cooperative_id=None,
+    reconciliation_type="full_system_audit",
+            expected=ledger_total,
+            actual=ledger_total,  # or external system snapshot if available
+            metadata={
+                "wallets": wallets,
+                "escrows": escrows,
+                "integrity": integrity
+            }
+        )
+
         return {
             "ledger_total": str(ledger_total),
             "wallets": wallets,
@@ -233,3 +252,33 @@ class LedgerReconciliationService:
             "double_entry_integrity": integrity,
             "status": "completed"
         }
+
+
+    async def   persist_reconciliation_result(
+        self,
+        db: AsyncSession,
+        reference: str,
+        cooperative_id: str | None,
+        reconciliation_type: str,
+        expected: Decimal,
+        actual: Decimal,
+        metadata: dict
+    ):
+
+        difference = expected - actual
+
+        record = FinancialReconciliation(
+            reference=reference,
+            cooperative_id=cooperative_id,
+        reconciliation_type=reconciliation_type,
+            expected_balance=expected,
+            actual_balance=actual,
+            difference=difference,
+            status="matched" if difference == 0 else "mismatch",
+            is_resolved=(difference == 0),
+            metadata=metadata
+        )
+
+        db.add(record)
+
+        return record
