@@ -196,3 +196,6 @@ class MarketProductListing(Base):
         lazy="selectin",
         cascade="all, delete-orphan"
     )
+
+
+    admin_activities =    relationship("ListingAdminActivity",   back_populates="listing")
