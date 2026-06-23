@@ -394,4 +394,24 @@ class MarketListingService:
         return result
 
 
+
+    # ====================================================
+# GET SINGLE LISTING
+# ====================================================
+    async def get_listing(
+        self,
+        db: AsyncSession,
+        listing_id: str
+    ):
+        result = await db.execute(
+        select(MarketProductListing).where(
+                MarketProductListing.id == listing_id
+            )
+        )
+
+        return result.scalar_one_or_none()
+
+
 market_listing_service = MarketListingService()
+
+
