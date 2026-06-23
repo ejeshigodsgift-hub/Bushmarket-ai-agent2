@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from sqlalchemy import JSON
 
 from sqlalchemy import (
     String,
@@ -156,11 +157,7 @@ class FinancialReconciliation(Base):
         nullable=True
     )
 
-    metadata: Mapped[dict | None] = mapped_column(
-        Text,
-        nullable=True
-    )
-
+    metadata: Mapped[dict | None] =  mapped_column(JSON, nullable=True)
     # =========================================
     # TIMESTAMPS
     # =========================================
