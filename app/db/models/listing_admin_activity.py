@@ -29,6 +29,13 @@ class ListingAdminActivity(Base):
         Index("idx_admin_activity_action", "action_type"),
     )
 
+    ALLOWED_ACTIONS = (
+        "listing_published",
+        "inventory_updated",
+        "admin_approved",
+        "admin_rejected",
+    )
+
     # =========================================
     # PRIMARY KEY
     # =========================================
@@ -50,7 +57,7 @@ class ListingAdminActivity(Base):
     admin_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
+        nullable=False,
         index=True
     )
 
