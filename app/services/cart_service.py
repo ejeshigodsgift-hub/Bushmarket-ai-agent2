@@ -188,10 +188,12 @@ class CartService:
             )
 
         # inventory reservation MUST be  awaited
-            await self.inventory_service.reserve_inventory(
+            await   self.inventory_service.reserve_stock(
                 db=db,
                 inventory=inventory,
-                quantity=quantity
+                quantity=quantity,
+                user_id=user_id,
+                ip=ip_address
             )
 
             await db.commit()
@@ -367,10 +369,12 @@ class CartService:
             diff = new_quantity - item.quantity
 
             if diff > 0:
-                await self.inventory_service.reserve_inventory(
+                await self.inventory_service.reserve_stock(
                     db=db,
                     inventory=inventory,
-                    quantity=diff
+                    quantity=diff,
+                    user_id=user_id,
+                    ip=ip_address
                 )
 
             elif diff < 0:
@@ -442,10 +446,13 @@ class CartService:
     # =========================================
     async def prepare_checkout(self, db:    AsyncSession, user_id: str):
 
-        cart = db.query(Cart).filter(
-            Cart.user_id == user_id,
-            Cart.status == "active"
-        ).first()
+        result = await db.execute(
+            select(Cart).where(
+                Cart.user_id == user_id,
+                Cart.status == "active"
+            )
+        )
+        cart = result.scalar_one_or_none()
 
         if not cart:
             raise HTTPException(404, "Cart not found")
@@ -453,9 +460,9 @@ class CartService:
         if cart.total_amount <= 0:
             raise HTTPException(400, "Cart is empty")
 
-    # ❗ IMPORTANT: DO NOT refresh expiry here
-        if cart.expires_at and   cart.expires_at <   datetime.now(timezone.utc):
-            raise HTTPException(400,  "Cart expired")
+    # ❗ IMPORTANT: DO NOT refresh expiry  here
+        if cart.expires_at and    cart.expires_at <    datetime.now(timezone.utc):
+            raise HTTPException(400, "Cart expired")
 
         return {
             "cart_id": cart.id,
@@ -465,4 +472,4 @@ class CartService:
             "total": cart.total_amount,
             "expires_at": cart.expires_at,
             "status": "ready_for_checkout"
-    }
+        }
