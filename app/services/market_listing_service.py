@@ -250,7 +250,10 @@ class MarketListingService:
         if not inventory:
             raise HTTPException(404, "Inventory not found")
 
-        new_stock = inventory.available_stock + quantity
+        old_stock =   inventory.available_stock
+
+        new_stock = old_stock + quantity
+
 
         if new_stock < 0:
             raise HTTPException(400, "Insufficient stock")
