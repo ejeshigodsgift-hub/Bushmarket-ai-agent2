@@ -131,6 +131,30 @@ class FinancialTransactionService:
             credit_ledger_account_id=credit_ledger_account_id
         )
 
+
+    async def withdrawal(
+        self,
+        db: AsyncSession,
+        wallet_id: str,
+        amount: Decimal,
+        reference: str,
+        debit_ledger_account_id: str,
+        credit_ledger_account_id: str,
+        created_by: str | None = None
+    ):
+        return await self.create_transaction(
+            db=db,
+            reference=reference,
+            transaction_type="withdrawal",
+            amount=amount,
+            wallet_id=wallet_id,
+        debit_ledger_account_id=debit_ledger_account_id,
+        credit_ledger_account_id=credit_ledger_account_id,
+            created_by=created_by
+        )
+
+
+
     async def escrow_deposit(
         self,
         db: AsyncSession,
@@ -168,6 +192,10 @@ class FinancialTransactionService:
             debit_ledger_account_id=debit_ledger_account_id,
             credit_ledger_account_id=credit_ledger_account_id
         )
+
+
+    
+
 
     async def escrow_release(
         self,
