@@ -99,7 +99,7 @@ class ListingAdminActivity(Base):
     # =========================================
     listing = relationship(
         "MarketProductListing",
-        backref="admin_activities",
+        backref="ListingAdminActivity",
         lazy="selectin"
     )
 
