@@ -7,7 +7,9 @@ from sqlalchemy import or_
 from app.db.models.market_product_listing import MarketProductListing
 from app.db.models.inventory import Inventory
 from app.db.models.inventory_history import InventoryHistory
-from app.db.models.listing_agent_activity import ListingAgentActivity
+from app.services.listing_admin_activity_service import (
+    listing_admin_activity_service
+)
 
 from app.services.listing_validation_service import ListingValidationService
 from app.services.audit_service import AuditService
@@ -15,6 +17,8 @@ from app.services.agent_permission_service import agent_permission_service
 
 from app.events.outbox_publisher import OutboxPublisher
 
+
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.db.models.product import Product
@@ -33,7 +37,7 @@ class MarketListingService:
 
     async def create_listing(
         self,
-        db: Session,
+        db: AsyncSession,
         agent,
         data: dict,
         ip: str
@@ -168,17 +172,22 @@ class MarketListingService:
     # PUBLISH LISTING
     # ====================================================
 
-    def publish_listing(
+    
+    async def publish_listing(
         self,
-        db: Session,
+        db: AsyncSession,
         listing_id,
         admin_user,
         ip: str
     ):
 
-        listing = db.query(MarketProductListing).filter(
-            MarketProductListing.id == listing_id
-        ).first()
+        result = await db.execute(
+            select(MarketProductListing).where(
+                MarketProductListing.id == listing_id
+            )
+        )
+
+        listing = result.scalar_one_or_none()
 
         if not listing:
             raise HTTPException(404, "Listing not found")
@@ -188,17 +197,14 @@ class MarketListingService:
 
         listing.status = "active"
 
-        activity = ListingAgentActivity(
+        await listing_admin_activity_service.log_listing_published(
+            db=db,
             listing_id=listing.id,
-            agent_id=admin_user.id,
-            action_type="listing_published",
-            activity_note="Listing published",
-            ip_address=ip
+            admin_id=admin_user.id,
+            ip=ip
         )
 
-        db.add(activity)
-
-        self.audit.log(
+        await self.audit.log(
             db=db,
             user_id=admin_user.id,
             action="listing_published",
@@ -207,7 +213,7 @@ class MarketListingService:
             ip=ip
         )
 
-        OutboxPublisher.publish(
+        await OutboxPublisher.publish(
             db=db,
             event_type="listing.published",
             payload={
@@ -218,42 +224,46 @@ class MarketListingService:
             aggregate_type="market_listing"
         )
 
-        db.commit()
-        db.refresh(listing)
+        await db.commit()
+        await db.refresh(listing)
 
         return listing
-
     # ====================================================
     # UPDATE INVENTORY
     # ====================================================
+      
 
-    def update_inventory(
+    async def update_inventory(
         self,
-        db: Session,
+        db: AsyncSession,
         listing_id,
         quantity: int,
         actor,
         ip: str
     ):
 
-        listing = db.query(MarketProductListing).filter(
-            MarketProductListing.id == listing_id
-        ).first()
+        result = await db.execute(
+            select(MarketProductListing).where(
+                MarketProductListing.id == listing_id
+            )
+        )
+        listing = result.scalar_one_or_none()
 
         if not listing:
             raise HTTPException(404, "Listing not found")
 
-        inventory = db.query(Inventory).filter(
-            Inventory.listing_id == listing.id
-        ).first()
+        result = await db.execute(
+            select(Inventory).where(
+                Inventory.listing_id == listing.id
+            )
+        )
+        inventory = result.scalar_one_or_none()
 
         if not inventory:
             raise HTTPException(404, "Inventory not found")
 
-        old_stock =   inventory.available_stock
-
+        old_stock = inventory.available_stock
         new_stock = old_stock + quantity
-
 
         if new_stock < 0:
             raise HTTPException(400, "Insufficient stock")
@@ -267,34 +277,27 @@ class MarketListingService:
 
         history = InventoryHistory(
             inventory_id=inventory.id,
-
-    previous_available_stock=inventory.available_stock,
+            previous_available_stock=old_stock,
             new_available_stock=new_stock,
-
-    previous_reserved_stock=inventory.reserved_stock,
-    new_reserved_stock=inventory.reserved_stock,
-
-    previous_sold_stock=inventory.sold_stock,
+            previous_reserved_stock=inventory.reserved_stock,
+            new_reserved_stock=inventory.reserved_stock,
+            previous_sold_stock=inventory.sold_stock,
             new_sold_stock=inventory.sold_stock,
-
-       change_reason=f"inventory_adjustment:{quantity}",
-
+            change_reason=f"inventory_adjustment:{quantity}",
             changed_by=actor.id
         )
 
         db.add(history)
 
-        activity = ListingAgentActivity(
+        await listing_admin_activity_service.log_inventory_updated(
+            db=db,
             listing_id=listing.id,
-            agent_id=actor.id,
-            action_type="inventory_updated",
-            activity_note=f"Inventory adjusted by {quantity}",
-            ip_address=ip
+            admin_id=actor.id,
+            quantity=quantity,
+            ip=ip
         )
 
-        db.add(activity)
-
-        self.audit.log(
+        await self.audit.log(
             db=db,
             user_id=actor.id,
             action="inventory_updated",
@@ -304,7 +307,7 @@ class MarketListingService:
             ip=ip
         )
 
-        OutboxPublisher.publish(
+        await OutboxPublisher.publish(
             db=db,
             event_type="inventory.updated",
             payload={
@@ -316,8 +319,8 @@ class MarketListingService:
             aggregate_type="inventory"
         )
 
-        db.commit()
-        db.refresh(inventory)
+        await db.commit()
+        await db.refresh(inventory)
 
         return inventory
 
