@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     String,
@@ -75,17 +76,17 @@ class FinancialReconciliation(Base):
     # =========================================
     # FINANCIAL VALUES SNAPSHOT
     # =========================================
-    expected_balance: Mapped[float] = mapped_column(
+    expected_balance: Mapped[Decimal] = mapped_column(
         Numeric(18, 2),
         nullable=False
     )
 
-    actual_balance: Mapped[float] = mapped_column(
+    actual_balance: Mapped[Decimal] = mapped_column(
         Numeric(18, 2),
         nullable=False
     )
 
-    difference: Mapped[float] = mapped_column(
+    difference: Mapped[Decimal] = mapped_column(
         Numeric(18, 2),
         nullable=False
     )
