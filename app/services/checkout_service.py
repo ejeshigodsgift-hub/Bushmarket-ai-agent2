@@ -25,9 +25,8 @@ class CheckoutService:
     # =====================================
     # CREATE CHECKOUT
     # =====================================
-    async def create_checkout(self, db: Session, user_id: str, cart):
-
-        self.validator.validate_cart(cart)
+    async def create_checkout(self, db:  AsyncSession, user_id: str, cart):
+          self.validator.validate_cart(cart)
 
         now = datetime.now(timezone.utc)
 
@@ -84,22 +83,23 @@ class CheckoutService:
             checkout_item = CheckoutItem(
                 checkout_id=checkout.id,
                 listing_id=listing.id,
-                product_id=listing.product_id,
+               product_id=listing.product_id,
                 market_id=listing.market_id,
                 quantity=item.quantity,
                 unit_price=item.unit_price,
                 market_fee=fee,
                 total_price=line_total + fee
-            )
+    )
 
             db.add(checkout_item)
 
-            self.inventory.convert_reservation_to_checkout(
+            await self.inventory.convert_reservation_to_checkout(
                 db=db,
                 listing_id=listing.id,
-                quantity=item.quantity
+                quantity=item.quantity,
+                user_id=user_id,
+                ip=None
             )
-
         # =====================================
         # FINAL TOTALS
         # =====================================
