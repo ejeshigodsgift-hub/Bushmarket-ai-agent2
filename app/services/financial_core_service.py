@@ -1,5 +1,8 @@
 from decimal import Decimal
 from datetime import datetime, timezone
+from app.services.financial_transaction_service import (
+    financial_transaction_service
+)
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -128,6 +131,17 @@ class FinancialCoreService:
             description="Escrow Hold"
         )
 
+        await financial_transaction_service.escrow_hold(
+            db=db,
+            escrow_account_id=escrow.id,
+            amount=amount,
+            reference=reference,
+    debit_ledger_account_id=reserved_ledger_account,
+    credit_ledger_account_id=available_ledger_account
+        ) 
+
+
+
         await outbox_service.queue_event(
             db=db,    
             topic="financial.escrow.hold",
@@ -179,6 +193,16 @@ class FinancialCoreService:
             amount=amount,
             reference=reference,
             description="Escrow Release"
+        )
+
+
+        await financial_transaction_service.escrow_release(
+            db=db,
+            escrow_account_id=escrow.id,
+            amount=amount,
+            reference=reference,
+    debit_ledger_account_id=settlement_ledger_account,
+    credit_ledger_account_id=reserved_ledger_account
         )
 
         await self.audit.log(
@@ -413,6 +437,16 @@ class FinancialCoreService:
             description="Wallet Transfer"
         )
 
+
+        await financial_transaction_service.wallet_transfer(
+            db=db,
+            wallet_id=sender.id,
+            amount=amount,
+            reference=reference,
+    debit_ledger_account_id=receiver_ledger_account,
+    credit_ledger_account_id=sender_ledger_account
+        )
+
     # =====================================================
     # AUDIT LOG
     # =====================================================
@@ -589,6 +623,19 @@ class FinancialCoreService:
             description="Wallet Credit"
         )
 
+        
+        await financial_transaction_service.wallet_credit(
+            db=db,
+            wallet_id=wallet.id,
+            amount=amount,
+            reference=reference,
+    debit_ledger_account_id=debit_ledger_account,
+    credit_ledger_account_id=credit_ledger_account,
+            created_by=wallet.user_id
+        )
+        
+
+
         await self.audit.log(
             db=db,
             user_id=wallet.user_id,
@@ -649,6 +696,18 @@ class FinancialCoreService:
         reference=reference,
         description="Wallet Debit"
     )
+
+
+        await financial_transaction_service.wallet_debit(
+            db=db,
+            wallet_id=wallet.id,
+            amount=amount,
+            reference=reference,
+    debit_ledger_account_id=debit_ledger_account,
+    credit_ledger_account_id=credit_ledger_account,
+            created_by=wallet.user_id
+        )
+    
 
         await outbox_service.queue_event(
             db=db,
@@ -713,6 +772,19 @@ class FinancialCoreService:
             reference=reference,
             description="Escrow Deposit"
         )
+
+
+        
+        await financial_transaction_service.escrow_deposit(
+            db=db,
+            escrow_account_id=escrow.id,
+            amount=amount,
+            reference=reference,
+    debit_ledger_account_id=debit_ledger_account,
+    credit_ledger_account_id=credit_ledger_account
+        )
+
+
 
         await self.audit.log(
             db=db,
