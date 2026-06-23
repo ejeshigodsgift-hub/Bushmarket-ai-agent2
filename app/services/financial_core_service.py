@@ -623,6 +623,18 @@ class FinancialCoreService:
             description="Wallet Credit"
         )
 
+
+        await outbox_service.queue_event(
+            db=db,
+    topic="financial.transaction.created",
+            payload={
+                "reference": reference,
+                "wallet_id": wallet.id,
+                "amount": str(amount),
+                "type": "wallet_credit"
+            }
+        )
+
         
         await financial_transaction_service.wallet_credit(
             db=db,
