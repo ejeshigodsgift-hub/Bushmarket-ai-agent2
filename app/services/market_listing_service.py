@@ -138,7 +138,7 @@ class MarketListingService:
         # ====================================================
         # AUDIT LOG
         # ====================================================
-        self.audit.log(
+        await self.audit.log(
             db=db,
             user_id=agent.id,
             action="listing_created",
@@ -151,7 +151,7 @@ class MarketListingService:
         # ====================================================
         # OUTBOX EVENT
         # ====================================================
-        OutboxPublisher.publish(
+        await OutboxPublisher.publish(
             db=db,
             event_type="listing.created",
             payload={
@@ -163,8 +163,8 @@ class MarketListingService:
             aggregate_type="market_listing"
         )
 
-        db.commit()
-        db.refresh(listing)
+        await db.commit()
+        await db.refresh(listing)
 
         return listing
 
