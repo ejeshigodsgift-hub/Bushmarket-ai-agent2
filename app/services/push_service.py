@@ -31,6 +31,8 @@ class PushService:
 
         db.add(notification)
 
+        await db.flush()
+
         await outbox_service.queue_event(
             db=db,
             topic="notification.push.send",
