@@ -156,6 +156,22 @@ class AgentListingService:
             new_price=new_price
         )
 
+
+        if volatility_result["status"] == "critical":
+
+    # Send listing back for admin review
+            listing.status =     "pending_admin_review"
+
+            await db.commit()
+
+            raise HTTPException(
+                400,
+                "Price change exceeds allowed volatility threshold"
+            )
+
+        
+
+
         listing.unit_price = new_price
 
         db.add(
