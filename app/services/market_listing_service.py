@@ -328,28 +328,43 @@ class MarketListingService:
     # GET ACTIVE LISTINGS
     # ====================================================
 
-    def get_market_listings(self, db: Session, market_id):
-        return db.query(MarketProductListing).filter(
+    async def get_market_listings(
+        self,
+        db: AsyncSession,
+        market_id
+    ):
+        stmt = select(MarketProductListing).where(
             MarketProductListing.market_id == market_id,
             MarketProductListing.status == "active",
-            MarketProductListing.available_stock > 0,
-            MarketProductListing.is_active.is_(True)
-        ).all()
+        MarketProductListing.available_stock > 0,
+        MarketProductListing.is_active.is_(True)
+        )
+
+        result = await db.execute(stmt)
+
+        return result.scalars().all()
 
     # ====================================================
     # SEARCH LISTINGS
     # ====================================================
 
-    def search_market_listings(self, db: Session, keyword: str):
-        return db.query(MarketProductListing).filter(
+    async def search_market_listings(
+        self,
+        db: AsyncSession,
+        keyword: str
+    ):
+        stmt = select(MarketProductListing).where(
             MarketProductListing.status == "active",
-            MarketProductListing.is_active.is_(True),
+        MarketProductListing.is_active.is_(True),
             or_(
-                MarketProductListing.title.ilike(f"%{keyword}%"),
-                MarketProductListing.description.ilike(f"%{keyword}%")
+            MarketProductListing.title.ilike(f"%{keyword}%"),
+            MarketProductListing.description.ilike(f"%{keyword}%")
             )
-        ).all()
+        )
 
+        result = await db.execute(stmt)
+
+        return result.scalars().all()
     # ====================================================
     # MARKET FEED
     # ====================================================
