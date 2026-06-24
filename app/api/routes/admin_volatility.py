@@ -3,11 +3,11 @@
 # =========================================
 
 from fastapi import APIRouter, Depends, Request, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.db.models.market_volatility_rule import MarketVolatilityRule
-
 from app.services.permission_service import PermissionService
 
 router = APIRouter(prefix="/admin/volatility")
@@ -19,15 +19,12 @@ permission_service = PermissionService()
 # CREATE / UPDATE RULE (UPSERT)
 # =========================
 @router.post("/rule")
-def create_or_update_rule(
+async def create_or_update_rule(
     payload: dict,
     request: Request,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
 
-    # =========================================
-    # ADMIN AUTH CHECK
-    # =========================================
     user = request.state.user
 
     if not user:
@@ -38,9 +35,6 @@ def create_or_update_rule(
 
     roles = user.get("roles", [])
 
-    # =========================================
-    # PERMISSION CHECK
-    # =========================================
     permission_service.validate_permission(
         roles,
         "manage_volatility_rules"
@@ -49,16 +43,15 @@ def create_or_update_rule(
     product_id = payload.get("product_id")
     market_id = payload.get("market_id")
 
-    # =========================================
-    # UPSERT LOGIC (NO DUPLICATES)
-    # =========================================
-    rule = db.query(MarketVolatilityRule).filter(
+    stmt = select(MarketVolatilityRule).where(
         MarketVolatilityRule.product_id == product_id,
         MarketVolatilityRule.market_id == market_id
-    ).first()
+    )
+
+    result = await db.execute(stmt)
+    rule = result.scalar_one_or_none()
 
     if rule:
-        # UPDATE EXISTING RULE
         rule.normal_threshold = payload.get(
             "normal_threshold",
             rule.normal_threshold
@@ -81,8 +74,9 @@ def create_or_update_rule(
 
         rule.is_active = True
 
+        mode = "updated"
+
     else:
-        # CREATE NEW RULE
         rule = MarketVolatilityRule(
             product_id=product_id,
             market_id=market_id,
@@ -95,13 +89,15 @@ def create_or_update_rule(
 
         db.add(rule)
 
-    db.commit()
-    db.refresh(rule)
+        mode = "created"
+
+    await db.commit()
+    await db.refresh(rule)
 
     return {
         "rule_id": str(rule.id),
         "status": "saved",
-        "mode": "updated" if rule else "created"
+        "mode": mode
     }
 
 
@@ -109,14 +105,11 @@ def create_or_update_rule(
 # VIEW RULES
 # =========================
 @router.get("/rules")
-def get_rules(
+async def get_rules(
     request: Request,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
 
-    # =========================================
-    # ADMIN AUTH CHECK
-    # =========================================
     user = request.state.user
 
     if not user:
@@ -132,4 +125,8 @@ def get_rules(
         "manage_volatility_rules"
     )
 
-    return db.query(MarketVolatilityRule).all()
+    stmt = select(MarketVolatilityRule)
+
+    result = await db.execute(stmt)
+
+    return result.scalars().all()
