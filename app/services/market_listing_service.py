@@ -1,7 +1,6 @@
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from app.db.models.market_product_listing import MarketProductListing
@@ -10,6 +9,8 @@ from app.db.models.inventory_history import InventoryHistory
 from app.services.listing_admin_activity_service import (
     listing_admin_activity_service
 )
+
+from app.db.models.listing_agent_activity import ListingAgentActivity
 
 from decimal import Decimal
 from sqlalchemy import select
@@ -21,10 +22,6 @@ from app.services.audit_service import AuditService
 from app.services.agent_permission_service import agent_permission_service
 
 from app.events.outbox_publisher import OutboxPublisher
-
-
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 from app.db.models.product import Product
 from app.services.product_visibility_service import product_visibility_service
