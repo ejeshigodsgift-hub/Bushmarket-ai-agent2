@@ -1,6 +1,19 @@
-from fastapi import APIRouter
-from fastapi import Depends
-from sqlalchemy import select
+# =========================================
+# FILE: app/api/notification.py
+# =========================================
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    Request,
+    HTTPException
+)
+
+from sqlalchemy import (
+    select,
+    update
+)
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -12,11 +25,24 @@ router = APIRouter(
 )
 
 
+# =========================================
+# GET MY NOTIFICATIONS
+# =========================================
 @router.get("/")
 async def get_notifications(
-    user_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
+
+    user = request.state.user
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized"
+        )
+
+    user_id = user["id"]
 
     stmt = (
         select(Notification)
@@ -35,17 +61,31 @@ async def get_notifications(
     return notifications
 
 
-
+# =========================================
+# GET SINGLE NOTIFICATION
+# =========================================
 @router.get("/{notification_id}")
 async def get_notification(
     notification_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
+
+    user = request.state.user
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized"
+        )
+
+    user_id = user["id"]
 
     stmt = (
         select(Notification)
         .where(
-            Notification.id == notification_id
+            Notification.id == notification_id,
+            Notification.user_id == user_id
         )
         .limit(1)
     )
@@ -55,24 +95,39 @@ async def get_notification(
     notification = result.scalar_one_or_none()
 
     if not notification:
-        return {
-            "detail": "Notification not found"
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Notification not found"
+        )
 
     return notification
 
 
-
+# =========================================
+# MARK SINGLE NOTIFICATION AS READ
+# =========================================
 @router.post("/{notification_id}/read")
 async def mark_read(
     notification_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
+
+    user = request.state.user
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized"
+        )
+
+    user_id = user["id"]
 
     stmt = (
         select(Notification)
         .where(
-            Notification.id == notification_id
+            Notification.id == notification_id,
+            Notification.user_id == user_id
         )
         .limit(1)
     )
@@ -82,27 +137,39 @@ async def mark_read(
     notification = result.scalar_one_or_none()
 
     if not notification:
-        return {
-            "detail": "Notification not found"
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Notification not found"
+        )
 
     notification.is_read = True
 
     await db.commit()
 
     return {
-        "status": "success"
+        "status": "success",
+        "message": "Notification marked as read"
     }
 
 
-from sqlalchemy import update
-
-
+# =========================================
+# MARK ALL NOTIFICATIONS AS READ
+# =========================================
 @router.post("/read-all")
 async def mark_all_read(
-    user_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
+
+    user = request.state.user
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized"
+        )
+
+    user_id = user["id"]
 
     await db.execute(
         update(Notification)
@@ -118,5 +185,6 @@ async def mark_all_read(
     await db.commit()
 
     return {
-        "status": "success"
+        "status": "success",
+        "message": "All notifications marked as read"
     }
