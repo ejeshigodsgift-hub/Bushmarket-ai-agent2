@@ -11,6 +11,11 @@ from app.services.listing_admin_activity_service import (
     listing_admin_activity_service
 )
 
+from decimal import Decimal
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.services.listing_validation_service import ListingValidationService
 from app.services.audit_service import AuditService
 from app.services.agent_permission_service import agent_permission_service
@@ -369,45 +374,60 @@ class MarketListingService:
     # MARKET FEED
     # ====================================================
 
-    def get_market_feed(self, db: Session, market_id):
-
-        listings = db.query(MarketProductListing) \
-            .options(selectinload(MarketProductListing.product)) \
-            .filter(
-                MarketProductListing.market_id == market_id,
+    
+    async def get_market_feed(
+        self,
+        db: AsyncSession,
+        market_id
+    ):
+        stmt = (
+            select(MarketProductListing)
+            .options(
+            selectinload(MarketProductListing.product)
+            )
+            .where(
+            MarketProductListing.market_id == market_id,
                 MarketProductListing.status == "active",
-                MarketProductListing.available_stock > 0,
-                MarketProductListing.is_active.is_(True)
-            ) \
-            .all()
+            MarketProductListing.available_stock > 0,
+            MarketProductListing.is_active.is_(True)
+            )
+        )
 
-        result = []
+        result = await db.execute(stmt)
+
+        listings = result.scalars().all()
+
+        response = []
 
         for x in listings:
 
             product = None
 
             if x.product:
-                product = product_visibility_service.apply_visibility(x.product)
+                product = product_visibility_service.apply_visibility(
+                    x.product
+                )
 
-            result.append({
+            response.append({
                 "listing_id": str(x.id),
                 "title": x.title,
                 "product_id": str(x.product_id),
-
                 "product": {
                     "image_url": product.image_url if product else None,
                     "image_status": product.image_status if product else None
                 },
-
                 "market_id": str(x.market_id),
-                "unit_price": float(x.unit_price),
+
+                # Decimal value preserved
+                "unit_price": x.unit_price
+                if isinstance(x.unit_price, Decimal)
+                else Decimal(str(x.unit_price)),
+
                 "available_stock": x.available_stock,
                 "status": x.status
             })
 
-        return result
-
+        return response
 
 
     # ====================================================
