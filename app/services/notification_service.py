@@ -33,6 +33,7 @@ class NotificationService:
         )
 
         db.add(notification)
+        await db.flush()
 
         return notification
 
@@ -155,12 +156,12 @@ class NotificationService:
 
     async def mark_read(
         self,
+        db: AsyncSession,
         notification: Notification
     ):
-
         notification.is_read = True
+        await db.flush()
 
         return notification
-
 
 notification_service = NotificationService()
