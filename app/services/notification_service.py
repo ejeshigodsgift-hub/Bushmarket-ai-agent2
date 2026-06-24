@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.notification import Notification
@@ -15,6 +17,9 @@ class NotificationService:
     def __init__(self):
         self.audit = AuditService()
 
+    # =========================================
+    # CREATE NOTIFICATION
+    # =========================================
     async def create_notification(
         self,
         db: AsyncSession,
@@ -22,7 +27,7 @@ class NotificationService:
         channel: str,
         title: str,
         message: str
-    ):
+    ) -> Notification:
 
         notification = Notification(
             user_id=user_id,
@@ -33,10 +38,14 @@ class NotificationService:
         )
 
         db.add(notification)
+
         await db.flush()
 
         return notification
 
+    # =========================================
+    # SEND EMAIL
+    # =========================================
     async def send_email(
         self,
         db: AsyncSession,
@@ -44,14 +53,20 @@ class NotificationService:
         email: str,
         subject: str,
         message: str
-    ):
+    ) -> Notification:
 
-        notification = await email_service.send_email(
+        notification = await self.create_notification(
             db=db,
             user_id=user_id,
-            email=email,
-            subject=subject,
+            channel="email",
+            title=subject,
             message=message
+        )
+
+        await email_service.send_email(
+            db=db,
+            notification=notification,
+            email=email
         )
 
         await self.audit.log(
@@ -64,19 +79,29 @@ class NotificationService:
 
         return notification
 
+    # =========================================
+    # SEND SMS
+    # =========================================
     async def send_sms(
         self,
         db: AsyncSession,
         user_id: str,
         phone_number: str,
         message: str
-    ):
+    ) -> Notification:
 
-        notification = await sms_service.send_sms(
+        notification = await self.create_notification(
             db=db,
             user_id=user_id,
-            phone_number=phone_number,
+            channel="sms",
+            title="SMS Notification",
             message=message
+        )
+
+        await sms_service.send_sms(
+            db=db,
+            notification=notification,
+            phone_number=phone_number
         )
 
         await self.audit.log(
@@ -89,6 +114,9 @@ class NotificationService:
 
         return notification
 
+    # =========================================
+    # SEND PUSH
+    # =========================================
     async def send_push(
         self,
         db: AsyncSession,
@@ -96,14 +124,20 @@ class NotificationService:
         device_token: str,
         title: str,
         message: str
-    ):
+    ) -> Notification:
 
-        notification = await push_service.send_push(
+        notification = await self.create_notification(
             db=db,
             user_id=user_id,
-            device_token=device_token,
+            channel="push",
             title=title,
             message=message
+        )
+
+        await push_service.send_push(
+            db=db,
+            notification=notification,
+            device_token=device_token
         )
 
         await self.audit.log(
@@ -116,13 +150,22 @@ class NotificationService:
 
         return notification
 
+    # =========================================
+    # MARK DELIVERED
+    # =========================================
     async def mark_delivered(
         self,
         db: AsyncSession,
         notification: Notification
-    ):
+    ) -> Notification:
 
         notification.status = "delivered"
+
+        notification.sent_at = datetime.now(
+            timezone.utc
+        )
+
+        await db.flush()
 
         await outbox_service.queue_event(
             db=db,
@@ -134,14 +177,19 @@ class NotificationService:
 
         return notification
 
+    # =========================================
+    # MARK FAILED
+    # =========================================
     async def mark_failed(
         self,
         db: AsyncSession,
         notification: Notification,
         reason: str
-    ):
+    ) -> Notification:
 
         notification.status = "failed"
+
+        await db.flush()
 
         await outbox_service.queue_event(
             db=db,
@@ -154,14 +202,20 @@ class NotificationService:
 
         return notification
 
+    # =========================================
+    # MARK READ
+    # =========================================
     async def mark_read(
         self,
         db: AsyncSession,
         notification: Notification
-    ):
+    ) -> Notification:
+
         notification.is_read = True
+
         await db.flush()
 
         return notification
+
 
 notification_service = NotificationService()
