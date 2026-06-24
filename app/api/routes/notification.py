@@ -14,6 +14,8 @@ from sqlalchemy import (
     update
 )
 
+from sqlalchemy import func
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -224,10 +226,18 @@ async def unread_count(
         )
     )
 
+    stmt = (
+        select(func.count())
+        .select_from(Notification)
+        .where(
+            Notification.user_id == user_id,
+            Notification.is_read.is_(False)
+        )
+    )
+
     result = await db.execute(stmt)
 
-    count = len(result.scalars().all())
-
+    count = result.scalar_one()
     return {
         "unread_count": count
     }
