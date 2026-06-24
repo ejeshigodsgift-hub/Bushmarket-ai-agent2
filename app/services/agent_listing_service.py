@@ -163,6 +163,7 @@ class AgentListingService:
             listing.status =     "pending_admin_review"
 
             await db.commit()
+            await db.refresh(listing)
 
             raise HTTPException(
                 400,
