@@ -52,37 +52,39 @@ class MarketListingService:
         # ====================================================
         await agent_permission_service.require_agent(db, agent.user_id)
 
+        async with db.begin():
+
         # ====================================================
         # VALIDATION
         # ====================================================
         self.validator.validate_listing_dependencies(
-            db=db,
-            agent_id=agent.id,
-            market_id=data["market_id"],
+                db=db,
+                agent_id=agent.id,
+                market_id=data["market_id"],
             product_id=data["product_id"],
             unit_id=data["measurement_unit_id"],
-            price=data["unit_price"],
-            stock=data["available_stock"]
-        )
+                price=data["unit_price"],
+                stock=data["available_stock"]
+            )
 
         # ====================================================
         # LISTING CREATION
         # ====================================================
-        listing = MarketProductListing(
-            market_id=data["market_id"],
+            listing = MarketProductListing(
+                market_id=data["market_id"],
             product_id=data["product_id"],
             variant_id=data.get("variant_id"),
             measurement_unit_id=data["measurement_unit_id"],
-            assigned_agent_id=agent.id,
-            title=data["title"],
+                assigned_agent_id=agent.id,
+                title=data["title"],
             description=data.get("description"),
             unit_price=data["unit_price"],
             market_fee=data.get("market_fee", 0),
             available_stock=data["available_stock"],
-            reserved_stock=0,
-            sold_stock=0,
-            status="draft"
-        )
+                reserved_stock=0,
+                sold_stock=0,
+                status="draft"
+            )
 
         await db.add(listing)
         await db.flush()
@@ -90,13 +92,13 @@ class MarketListingService:
         # ====================================================
         # INVENTORY INIT
         # ====================================================
-        inventory = Inventory(
-            listing_id=listing.id,
+            inventory = Inventory(
+                listing_id=listing.id,
             available_stock=data["available_stock"],
-            reserved_stock=0,
-            sold_stock=0,
+                reserved_stock=0,
+                sold_stock=0,
             last_restocked_at=datetime.utcnow()
-        )
+            )
 
         await db.add(inventory)
         await db.flush()
@@ -105,65 +107,65 @@ class MarketListingService:
         # INVENTORY HISTORY
         # ====================================================
 
-        history = InventoryHistory(
-            inventory_id=inventory.id,
+            history = InventoryHistory(
+                inventory_id=inventory.id,
 
-            previous_available_stock=0,
+                previous_available_stock=0,
     new_available_stock=data["available_stock"],
 
-            previous_reserved_stock=0,
-            new_reserved_stock=0,
+                previous_reserved_stock=0,
+                new_reserved_stock=0,
 
-            previous_sold_stock=0,
-            new_sold_stock=0,
+                previous_sold_stock=0,
+                new_sold_stock=0,
 
            change_reason="inventory_created",
 
-            changed_by=agent.user_id
-        )
+                changed_by=agent.user_id
+            )
 
         db.add(history)
 
         # ====================================================
         # ACTIVITY LOG
         # ====================================================
-        activity = ListingAgentActivity(
-            listing_id=listing.id,
-            agent_id=agent.id,
+            activity = ListingAgentActivity(
+                listing_id=listing.id,
+                agent_id=agent.id,
             action_type="listing_created",
-            activity_note="Listing created",
-            ip_address=ip
-        )
+                activity_note="Listing created",
+                ip_address=ip
+            )
 
         db.add(activity)
 
         # ====================================================
         # AUDIT LOG
         # ====================================================
-        await self.audit.log(
-            db=db,
-            user_id=agent.id,
-            action="listing_created",
-            entity_type="market_listing",
-            entity_id=listing.id,
-            metadata={"listing_id": str(listing.id)},
-            ip=ip
-        )
+            await self.audit.log(
+                db=db,
+                user_id=agent.id,
+                action="listing_created",
+                entity_type="market_listing",
+                entity_id=listing.id,
+                metadata={"listing_id": str(listing.id)},
+                ip=ip
+            )
 
         # ====================================================
         # OUTBOX EVENT
         # ====================================================
-        await OutboxPublisher.publish(
-            db=db,
-            event_type="listing.created",
-            payload={
-                "listing_id": str(listing.id),
-                "market_id": str(listing.market_id),
-                "agent_id": str(agent.id)
-            },
-            aggregate_id=listing.id,
+            await OutboxPublisher.publish(
+                db=db,
+                event_type="listing.created",
+                payload={
+                    "listing_id": str(listing.id),
+                    "market_id": str(listing.market_id),
+                    "agent_id": str(agent.id)
+                },
+                aggregate_id=listing.id,
             aggregate_type="market_listing"
-        )
+            )
 
         await db.commit()
         await db.refresh(listing)
