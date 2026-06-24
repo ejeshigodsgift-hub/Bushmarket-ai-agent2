@@ -19,6 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.db.models.notification import Notification
 
+from app.services.notification_service import (
+    notification_service
+)
+
 router = APIRouter(
     prefix="/notifications",
     tags=["Notifications"]
@@ -142,7 +146,10 @@ async def mark_read(
             detail="Notification not found"
         )
 
-    notification.is_read = True
+    await notification_service.mark_read(
+        db=db,
+        notification=notification
+    )
 
     await db.commit()
 
@@ -187,4 +194,40 @@ async def mark_all_read(
     return {
         "status": "success",
         "message": "All notifications marked as read"
+    }
+
+
+# =========================================
+# GET UNREAD COUNT
+# =========================================
+@router.get("/unread/count")
+async def unread_count(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+
+    user = request.state.user
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized"
+        )
+
+    user_id = user["id"]
+
+    stmt = (
+        select(Notification)
+        .where(
+            Notification.user_id == user_id,
+            Notification.is_read.is_(False)
+        )
+    )
+
+    result = await db.execute(stmt)
+
+    count = len(result.scalars().all())
+
+    return {
+        "unread_count": count
     }
