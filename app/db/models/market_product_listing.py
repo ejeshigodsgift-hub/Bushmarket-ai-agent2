@@ -43,7 +43,7 @@ class MarketProductListing(Base):
         CheckConstraint("reserved_stock >= 0", name="ck_listing_non_negative_reserved_stock"),
         CheckConstraint("sold_stock >= 0", name="ck_listing_non_negative_sold_stock"),
         CheckConstraint(
-            "status IN ('draft','active','disabled','sold_out')",
+            "status IN ('draft','active','disabled','sold_out', 'rejected', 'archived', 'approved', 'pending_admin_review')",
             name="ck_listing_status"
         ),
     )
