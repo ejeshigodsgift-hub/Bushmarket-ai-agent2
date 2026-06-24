@@ -44,7 +44,7 @@ class EmailService:
             }
         )
 
-        notification.status = "sent"
+        notification.status = "pending"
         notification.sent_at = datetime.now(timezone.utc)
 
         return notification
