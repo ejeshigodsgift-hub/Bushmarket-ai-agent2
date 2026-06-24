@@ -20,7 +20,10 @@ async def get_listings(
     max_price: float | None = None,
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(MarketProductListing)
+    stmt = select(MarketProductListing).where(
+        MarketProductListing.status == "active",
+    MarketProductListing.is_active.is_(True)
+    )
 
     if market_id:
         stmt = stmt.where(MarketProductListing.market_id == market_id)
@@ -44,7 +47,9 @@ async def get_listings(
 async def get_listing(listing_id: str, db: AsyncSession = Depends(get_db)):
 
     stmt = select(MarketProductListing).where(
-        MarketProductListing.id == listing_id
+        MarketProductListing.id == listing_id,
+        MarketProductListing.status == "active",
+    MarketProductListing.is_active.is_(True)
     )
 
     result = await db.execute(stmt)
