@@ -120,8 +120,8 @@ class AgentListingService:
         async with db.begin():
 
             result = await db.execute(
-        select(MarketProductListing).where(
-                MarketProductListing.id == listing_id,
+            select(MarketProductListing).where(
+                    MarketProductListing.id == listing_id,
                 MarketProductListing.agent_id == agent_id
                 )
             )
@@ -140,14 +140,14 @@ class AgentListingService:
             ]:
                 raise HTTPException(
                     400,
-                    "Price cannot be changed   after approval"
+                    "Price cannot be changed after approval"
                 )
 
             old_price = listing.unit_price
 
             if new_price <= 0:
                 raise HTTPException(
-                400,
+                    400,
                     "Invalid price"
                 )
 
@@ -156,28 +156,21 @@ class AgentListingService:
 
             volatility_result = await market_pricing_service.evaluate_price_change(
                 db=db,
-            product_id=listing.product_id,
+             product_id=listing.product_id,
                 market_id=listing.market_id,
                 old_price=old_price,
                 new_price=new_price
             )
 
-
             if volatility_result["status"] == "critical":
 
-    # Send listing back for admin review
-                listing.status =     "pending_admin_review"
+            # Send listing back for admin  review
+                listing.status = "pending_admin_review"
 
-            
-                await db.refresh(listing)
-
-                    raise HTTPException(
-                        400,
-                    "Price change exceeds    allowed volatility threshold"
+                raise HTTPException(
+                    400,
+                    "Price change exceeds allowed volatility threshold"
                 )
-
-        
-
 
             listing.unit_price = new_price
 
@@ -186,14 +179,14 @@ class AgentListingService:
                     listing_id=listing.id,
                     old_price=old_price,
                     new_price=new_price,
-                  updated_by_agent_id=agent_id
+                updated_by_agent_id=agent_id
                 )
             )
-  
+
             db.add(
                 ListingVolatilityLog(
                     listing_id=listing.id,
-            volatility_score=volatility_result["percentage_change"],
+                volatility_score=volatility_result["percentage_change"],
                     recorded_price=new_price
                 )
             )
@@ -202,11 +195,10 @@ class AgentListingService:
                 ListingAgentActivity(
                     listing_id=listing.id,
                     agent_id=agent_id,
-                   action_type="price_updated"
+                action_type="price_updated"
                 )
             )
 
-        
         await db.refresh(listing)
 
         return listing
