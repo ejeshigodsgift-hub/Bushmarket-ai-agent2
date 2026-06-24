@@ -84,8 +84,8 @@ class MarketListingService:
             status="draft"
         )
 
-        db.add(listing)
-        db.flush()
+        await db.add(listing)
+        await db.flush()
 
         # ====================================================
         # INVENTORY INIT
@@ -98,8 +98,8 @@ class MarketListingService:
             last_restocked_at=datetime.utcnow()
         )
 
-        db.add(inventory)
-        db.flush()
+        await db.add(inventory)
+        await db.flush()
 
         # ====================================================
         # INVENTORY HISTORY
