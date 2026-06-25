@@ -108,9 +108,9 @@ async def handle(
 
             if email_sent:
 
-                await notification_service.mark_delivered(
+                await  notification_service.mark_sent(
                     db=db,
-                    notification=notification
+                 notification=notification
                 )
 
             else:
