@@ -8,6 +8,10 @@ from app.db.models.market_live_session import (
     MarketLiveSession
 )
 
+from app.services.streaming_service import (
+    streaming_service
+)
+
 from app.db.models.market_location import (
     MarketLocation
 )
@@ -58,6 +62,10 @@ class MarketLiveSessionService:
                 "Stream channel already exists"
             )
 
+        await   streaming_service.create_channel(
+            stream_channel
+        )
+
         session = MarketLiveSession(
             market_id=market_id,
             agent_user_id=agent_user_id,
@@ -101,6 +109,10 @@ class MarketLiveSessionService:
         session.stream_status = "live"
         session.started_at = datetime.now(
             timezone.utc
+        )
+
+        await streaming_service.start_broadcast(
+            session.stream_channel
         )
 
         await self.audit.log(
@@ -155,6 +167,10 @@ class MarketLiveSessionService:
         session.stream_status = "ended"
         session.ended_at = datetime.now(
             timezone.utc
+        )
+
+        await streaming_service.end_broadcast(
+            session.stream_channel
         )
 
         await self.audit.log(
