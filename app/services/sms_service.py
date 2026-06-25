@@ -31,9 +31,7 @@ class SMSService:
             }
         )
 
-        notification.status = "pending"
-        notification.sent_at = datetime.now(timezone.utc)
-
+        
         return notification
 
 
