@@ -13,6 +13,10 @@ TOPICS = [
     "inventory_reserved",
     "escrow.deposit",
     "escrow.release",
+
+    "notification.sms.send",
+    "notification.email.send",
+    "notification.push.send",
 ]
 
 GROUP_ID = "financial-core"
