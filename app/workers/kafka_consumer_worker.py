@@ -9,14 +9,16 @@ from app.integrations.kafka_client import (event_bus)
 class KafkaConsumerWorker:
 
 TOPICS = [
-    "marketplace.order.created",
-    "inventory_reserved",
-    "escrow.deposit",
-    "escrow.release",
-
-    "notification.sms.send",
-    "notification.email.send",
-    "notification.push.send",
+    MARKETPLACE_ORDER_CREATED,
+    PAYMENT_RECEIVED,
+    PAYMENT_FAILED,
+    ESCROW_DEPOSIT,
+    ESCROW_RELEASE,
+    ESCROW_REFUND,
+    INVENTORY_RESERVED,
+    NOTIFICATION_SMS_SEND,
+    NOTIFICATION_EMAIL_SEND,
+    NOTIFICATION_PUSH_SEND,
 ]
 
 GROUP_ID = "financial-core"
