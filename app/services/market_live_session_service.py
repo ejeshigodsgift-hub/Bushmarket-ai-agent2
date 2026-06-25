@@ -105,6 +105,11 @@ class MarketLiveSessionService:
                 "Live session not found"
             )
 
+        if session.agent_user_id != user_id:
+            raise HTTPException(
+                403,
+                "Not your live session"
+            )
         session.is_live = True
         session.stream_status = "live"
         session.started_at = datetime.now(
@@ -161,6 +166,12 @@ class MarketLiveSessionService:
             raise HTTPException(
                 404,
                 "Live session not found"
+            )
+
+        if session.agent_user_id !=  user_id:
+            raise HTTPException(
+                403,
+                "Not your live session"
             )
 
         session.is_live = False
