@@ -2,13 +2,11 @@ import asyncio
 
 from app.db.session import SessionLocal
 
-from app.events.event_router import (event_router)
+from app.events.event_router import event_router
 
-from app.integrations.kafka_client import (event_bus)
+from app.integrations.kafka_client import event_bus
 
-class KafkaConsumerWorker:
-
-TOPICS = [
+from app.events.event_topics import (
     MARKETPLACE_ORDER_CREATED,
     PAYMENT_RECEIVED,
     PAYMENT_FAILED,
@@ -19,41 +17,56 @@ TOPICS = [
     NOTIFICATION_SMS_SEND,
     NOTIFICATION_EMAIL_SEND,
     NOTIFICATION_PUSH_SEND,
-]
+)
 
-GROUP_ID = "financial-core"
 
-async def start(self):
+class KafkaConsumerWorker:
 
-    consumers = []
+    TOPICS = [
+        MARKETPLACE_ORDER_CREATED,
+        PAYMENT_RECEIVED,
+        PAYMENT_FAILED,
+        ESCROW_DEPOSIT,
+        ESCROW_RELEASE,
+        ESCROW_REFUND,
+        INVENTORY_RESERVED,
+        NOTIFICATION_SMS_SEND,
+        NOTIFICATION_EMAIL_SEND,
+        NOTIFICATION_PUSH_SEND,
+    ]
 
-    for topic in self.TOPICS:
+    GROUP_ID = "financial-core"
 
-        consumer = await (
-            event_bus.create_consumer(
+    async def start(self):
+
+        consumers = []
+
+        for topic in self.TOPICS:
+
+            consumer = await event_bus.create_consumer(
                 topic=topic,
                 group_id=self.GROUP_ID
             )
-        )
 
-        consumers.append(
-            (topic, consumer)
-        )
+            consumers.append(
+                (topic, consumer)
+            )
 
-    while True:
+        while True:
 
-        for topic, consumer in consumers:
+            for topic, consumer in consumers:
 
-            async for message in consumer:
+                async for message in consumer:
 
-                async with SessionLocal() as db:
+                    async with SessionLocal() as db:
 
-                    await event_router.route(
-                        db=db,
-                        topic=topic,
-                        payload=message.value
-                    )
+                        await event_router.route(
+                            db=db,
+                            topic=topic,
+                            payload=message.value
+                        )
 
-                    await db.commit()
+                        await db.commit()
+
 
 worker = KafkaConsumerWorker()
