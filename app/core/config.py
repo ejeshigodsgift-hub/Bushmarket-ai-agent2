@@ -37,6 +37,20 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT: int = 5
     LOGIN_RATE_LIMIT_WINDOW: int = 60
 
+    # =====================================
+    # STREAMING
+    # =====================================
+    STREAM_PROVIDER: str = "agora"
+
+    # AGORA
+    AGORA_APP_ID: str = ""
+    AGORA_APP_CERTIFICATE: str = ""
+
+    # LIVEKIT
+    LIVEKIT_URL: str = ""
+    LIVEKIT_API_KEY: str = ""
+    LIVEKIT_API_SECRET: str = ""
+
     class Config:
         env_file = ".env"
 
