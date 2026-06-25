@@ -79,6 +79,15 @@ async def shutdown():
     await event_bus.stop()
 
 
+
+# Market Live Session 
+
+from app.api.routes.market_live_sessions import (
+    router as market_live_router
+)
+
+app.include_router(market_live_router)
+
 # =====================================================
 # ROUTE REGISTRATION
 # =====================================================
