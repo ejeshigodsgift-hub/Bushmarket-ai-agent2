@@ -150,6 +150,26 @@ class NotificationService:
 
         return notification
 
+
+    # =========================================
+# MARK SENT
+# =========================================
+    async def mark_sent(
+        self,
+        db: AsyncSession,
+        notification: Notification
+    ) -> Notification:
+
+        notification.status = "sent"
+
+        notification.sent_at = datetime.now(
+            timezone.utc
+        )
+
+        await db.flush()
+
+        return notification
+
     # =========================================
     # MARK DELIVERED
     # =========================================
