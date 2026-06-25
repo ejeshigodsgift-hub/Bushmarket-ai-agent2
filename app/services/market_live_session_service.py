@@ -202,6 +202,9 @@ class MarketLiveSessionService:
     # =========================================
     # INCREMENT VIEWERS
     # =========================================
+    # =========================================
+# INCREMENT VIEWERS
+# =========================================
     async def increment_viewers(
         self,
         db: AsyncSession,
@@ -221,13 +224,28 @@ class MarketLiveSessionService:
 
         session.viewer_count += 1
 
+    # =========================================
+    # VIEWER JOINED EVENT
+    # =========================================
+        await outbox_service.queue_event(
+            db=db,
+            topic="market.live.viewer.joined",
+            payload={
+                "session_id": session.id,
+                "market_id": session.market_id,
+                "viewer_count": session.viewer_count
+            }
+        )
+
         await db.flush()
 
         return session
-
     # =========================================
     # DECREMENT VIEWERS
     # =========================================
+    # =========================================
+# DECREMENT VIEWERS
+# =========================================
     async def decrement_viewers(
         self,
         db: AsyncSession,
@@ -247,6 +265,19 @@ class MarketLiveSessionService:
 
         if session.viewer_count > 0:
             session.viewer_count -= 1
+
+    # =========================================
+    # VIEWER LEFT EVENT
+    # =========================================
+        await outbox_service.queue_event(
+            db=db,
+            topic="market.live.viewer.left",
+            payload={
+                "session_id": session.id,
+                "market_id": session.market_id,
+                "viewer_count": session.viewer_count
+            }
+        )
 
         await db.flush()
 
