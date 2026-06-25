@@ -87,6 +87,12 @@ TOPIC_HANDLERS = {
         
     ],
 
+    "escrow.refund": [
+        EscrowRefundHandler,
+        LedgerPostingHandler,
+        NotificationHandler,
+    ]
+
     # ==========================================
     # COOPERATIVE PARTIAL PROCUREMENT
     # ==========================================
