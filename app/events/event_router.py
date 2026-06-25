@@ -3,6 +3,9 @@ from app.handlers.order_created_handler import (
 )
 
 
+from app.services.event_log_service import (
+    event_log_service
+)
 
 from app.events.event_topics import *
 
@@ -115,6 +118,14 @@ class EventRouter:
         handlers = TOPIC_HANDLERS.get(
             topic,
             []
+        )
+
+        await    event_log_service.log_event(
+            db=db,
+            event_name=topic,
+            event_category="event_bus",
+            topic=topic,
+            payload=payload
         )
 
         for handler_cls in handlers:
