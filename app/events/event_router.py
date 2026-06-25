@@ -2,9 +2,7 @@ from app.handlers.order_created_handler import (
     OrderCreatedHandler
 )
 
-from app.handlers.escrow_refund_handler import (
-    EscrowRefundHandler
-)
+
 
 from app.events.event_topics import *
 
@@ -93,11 +91,7 @@ TOPIC_HANDLERS = {
         
     ],
 
-    "escrow.refund": [
-        EscrowRefundHandler,
-        LedgerPostingHandler,
-        NotificationHandler,
-    ],
+    
 
     # ==========================================
     # COOPERATIVE PARTIAL PROCUREMENT
