@@ -2,10 +2,18 @@
 # FILE: app/api/routes/market_live_sessions.py
 # =========================================
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+
+from app.db.models.market_live_session import (
+    MarketLiveSession
+)
+
+from app.services.streaming_service import (
+    streaming_service
+)
 
 from app.services.market_live_session_service import (
     market_live_session_service
@@ -116,6 +124,35 @@ async def get_market_sessions(
     )
 
     return sessions
+
+
+# =========================================
+# STREAM TOKEN
+# =========================================
+@router.get("/{session_id}/token")
+async def get_stream_token(
+    session_id: str,
+    user_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+
+    session = await db.get(
+        MarketLiveSession,
+        session_id
+    )
+
+    if not session:
+        raise HTTPException(
+            404,
+            "Live session not found"
+        )
+
+    token = await streaming_service.generate_token(
+        session.stream_channel,
+        user_id
+    )
+
+    return token
 
 
 # =========================================
