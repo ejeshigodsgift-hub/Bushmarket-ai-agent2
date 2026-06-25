@@ -285,9 +285,17 @@ class MarketLiveSessionService:
                 "Live session not found"
             )
 
-        if session.viewer_count > 0:
-            session.viewer_count -= 1
-
+        await db.execute(
+            update(MarketLiveSession)
+            .where(
+                MarketLiveSession.id == session_id,
+             MarketLiveSession.viewer_count > 0
+            )
+            .values(
+                viewer_count=
+                MarketLiveSession.viewer_count - 1
+            )
+        )
     # =========================================
     # VIEWER LEFT EVENT
     # =========================================
