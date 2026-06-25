@@ -103,6 +103,18 @@ TOPIC_HANDLERS = {
         CooperativePartialVoteApprovedConsumer,
     ],
 
+
+    # ==========================================
+# LIVE MARKET SESSIONS
+# ==========================================
+    "market.live.started": [],
+
+    "market.live.ended": [],
+
+    "market.live.viewer.joined": [],
+
+    "market.live.viewer.left": [],
+
 }
 
 
