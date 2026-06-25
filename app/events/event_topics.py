@@ -78,3 +78,14 @@ WALLET_DEBITED = "wallet.debited"
 # LEDGER
 # ==========================================
 LEDGER_ENTRY_POSTED = "ledger.entry.posted"
+
+
+# ==========================================
+# LIVE MARKET SESSIONS
+# ==========================================
+MARKET_LIVE_STARTED = "market.live.started"
+MARKET_LIVE_ENDED = "market.live.ended"
+
+
+MARKET_LIVE_VIEWER_JOINED = "market.live.viewer.joined"
+MARKET_LIVE_VIEWER_LEFT = "market.live.viewer.left"
