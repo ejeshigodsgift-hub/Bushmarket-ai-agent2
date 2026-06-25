@@ -78,13 +78,13 @@ TOPIC_HANDLERS = {
     "escrow.deposit": [
         EscrowDepositHandler,
         LedgerPostingHandler,
-        NotificationHandler,
+        
     ],
 
     "escrow.release": [
         EscrowReleaseHandler,
         LedgerPostingHandler,
-        NotificationHandler,
+        
     ],
 
     # ==========================================
