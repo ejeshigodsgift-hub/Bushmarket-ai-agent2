@@ -1,3 +1,7 @@
+# =========================================
+# FILE: app/integrations/kafka_client.py
+# =========================================
+
 import json
 
 from aiokafka import (
@@ -18,12 +22,21 @@ class KafkaEventBus:
             value_serializer=lambda v: json.dumps(v).encode("utf-8")
         )
 
+    # =========================================
+    # START PRODUCER
+    # =========================================
     async def start(self):
         await self.producer.start()
 
+    # =========================================
+    # STOP PRODUCER
+    # =========================================
     async def stop(self):
         await self.producer.stop()
 
+    # =========================================
+    # PUBLISH EVENT
+    # =========================================
     async def publish(
         self,
         topic: str,
@@ -34,6 +47,9 @@ class KafkaEventBus:
             event
         )
 
+    # =========================================
+    # CREATE CONSUMER (PRIMARY METHOD)
+    # =========================================
     async def create_consumer(
         self,
         topic: str,
@@ -52,6 +68,19 @@ class KafkaEventBus:
         await consumer.start()
 
         return consumer
+
+    # =========================================
+    # BACKWARD COMPATIBILITY
+    # =========================================
+    async def consumer(
+        self,
+        topic: str,
+        group_id: str
+    ):
+        return await self.create_consumer(
+            topic=topic,
+            group_id=group_id
+        )
 
 
 event_bus = KafkaEventBus()
