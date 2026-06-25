@@ -15,12 +15,9 @@ class PushService:
     async def send_push(
         self,
         db: AsyncSession,
-        user_id: str,
-        device_token: str,
-        title: str,
-        message: str
+        notification: Notification,
+        device_token: str
     ):
-
         
 
         await outbox_service.queue_event(
