@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from sqlalchemy import update
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -233,7 +234,17 @@ class MarketLiveSessionService:
                 "Live session not found"
             )
 
-        session.viewer_count += 1
+        await db.execute(
+            update(MarketLiveSession)
+            .where(
+                MarketLiveSession.id == session_id
+            )
+            .values(
+                viewer_count=
+                MarketLiveSession.viewer_count + 1
+            )
+        )
+        await db.refresh(session)
 
     # =========================================
     # VIEWER JOINED EVENT
