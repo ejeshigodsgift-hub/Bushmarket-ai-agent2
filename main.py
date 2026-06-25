@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.core.config import settings
+from app.integrations.kafka_client import event_bus
 
 # =========================
 # AUTH ROUTES
@@ -60,6 +61,22 @@ app = FastAPI(
 # =====================================================
 
 app.add_middleware(SessionAuthMiddleware)
+
+
+# =====================================================
+# KAFKA LIFECYCLE
+# =====================================================
+
+@app.on_event("startup")
+async def startup():
+
+    await event_bus.start()
+
+
+@app.on_event("shutdown")
+async def shutdown():
+
+    await event_bus.stop()
 
 
 # =====================================================
