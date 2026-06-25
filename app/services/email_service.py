@@ -15,23 +15,11 @@ class EmailService:
     async def send_email(
         self,
         db: AsyncSession,
-        user_id: str,
-        email: str,
-        subject: str,
-        message: str
+        notification: Notification,
+        email: str
     ):
 
-        notification = Notification(
-            user_id=user_id,
-            channel="email",
-            title=subject,
-            message=message,
-            status="pending"
-        )
-
-        db.add(notification)
-       
-        await db.flush()
+        
 
         await outbox_service.queue_event(
             db=db,
@@ -40,12 +28,11 @@ class EmailService:
                 "notification_id": notification.id,
                 "email": email,
                 "subject": subject,
-                "message": message
+                "message": notification.message
             }
         )
 
-        notification.status = "pending"
-        notification.sent_at = datetime.now(timezone.utc)
+        
 
         return notification
 
