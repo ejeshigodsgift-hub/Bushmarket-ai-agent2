@@ -52,6 +52,18 @@ TOPIC_HANDLERS = {
         OrderPaymentCompletedHandler,
     ],
 
+
+    "notification.sms.send": [
+        NotificationHandler,
+    ],
+
+    "notification.email.send": [
+        NotificationHandler,
+    ],
+
+    "notification.push.send": [
+        NotificationHandler,
+    ],
     # ==========================================
     # INVENTORY
     # ==========================================
