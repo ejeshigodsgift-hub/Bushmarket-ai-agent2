@@ -2,6 +2,8 @@ from app.handlers.order_created_handler import (
     OrderCreatedHandler
 )
 
+from app.events.event_topics import *
+
 from app.handlers.order_payment_completed_handler import (
     OrderPaymentCompletedHandler
 )
