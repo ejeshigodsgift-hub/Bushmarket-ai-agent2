@@ -105,7 +105,7 @@ class RefundService:
         # =========================================
         await outbox_service.queue_event(
             db=db,
-            topic="refund.processed",
+            topic="payment.refunded",
             payload={
                 "payment_reference": payment_reference,
                 "amount": str(amount),
