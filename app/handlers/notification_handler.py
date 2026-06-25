@@ -53,7 +53,7 @@ async def handle(
 
             if sms_sent:
 
-                await notification_service.mark_delivered(
+                await notification_service.mark_sent(
                     db=db,
                     notification=notification
                 )
@@ -163,7 +163,7 @@ async def handle(
 
             if push_sent:
 
-                await notification_service.mark_delivered(
+                await notification_service.mark_sent(
                     db=db,
                     notification=notification
                 )
