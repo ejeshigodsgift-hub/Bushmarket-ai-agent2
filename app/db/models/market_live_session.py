@@ -1,4 +1,5 @@
 import uuid
+from sqlalchemy import Integer
 
 from sqlalchemy import (
     String,
@@ -61,5 +62,25 @@ class MarketLiveSession(Base):
 
     ended_at: Mapped[DateTime | None] = mapped_column(
         DateTime,
+        nullable=True
+    )
+
+    
+
+    viewer_count: Mapped[int] =  mapped_column(
+        Integer,
+        nullable=False,
+        default=0
+    )
+
+    stream_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="live"
+    )
+    # scheduled | live | ended
+
+    thumbnail_url: Mapped[str | None] = mapped_column(
+        String(500),
         nullable=True
     )
