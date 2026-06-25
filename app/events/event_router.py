@@ -105,7 +105,10 @@ class EventRouter:
 
             await handler.handle(
                 db,
-                payload
+                {
+                    "topic": topic,
+                    "payload": payload
+                }
             )
 
 
