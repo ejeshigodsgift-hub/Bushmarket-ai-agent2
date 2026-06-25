@@ -21,17 +21,7 @@ class PushService:
         message: str
     ):
 
-        notification = Notification(
-            user_id=user_id,
-            channel="push",
-            title=title,
-            message=message,
-            status="pending"
-        )
-
-        db.add(notification)
-
-        await db.flush()
+        
 
         await outbox_service.queue_event(
             db=db,
@@ -40,12 +30,11 @@ class PushService:
                 "notification_id": notification.id,
                 "device_token": device_token,
                 "title": title,
-                "message": message
+                "message": notification.message
             }
         )
 
-        notification.status = "pending"
-        notification.sent_at = datetime.now(timezone.utc)
+        
 
         return notification
 
