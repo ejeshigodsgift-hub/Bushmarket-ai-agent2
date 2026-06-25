@@ -171,6 +171,12 @@ async def get_stream_token(
     db: AsyncSession = Depends(get_db)
 ):
 
+    if not request.state.user:
+        raise HTTPException(
+            401,
+            "Unauthorized"
+        )
+
     session = await db.get(
         MarketLiveSession,
         session_id
@@ -182,12 +188,10 @@ async def get_stream_token(
             "Live session not found"
         )
 
-    token = await streaming_service.generate_token(
+    return await streaming_service.generate_token(
         session.stream_channel,
-        user_id
+        request.state.user["id"]
     )
-
-    return token
 
 
 # =========================================
