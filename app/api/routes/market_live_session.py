@@ -167,7 +167,7 @@ async def get_market_sessions(
 @router.get("/{session_id}/token")
 async def get_stream_token(
     session_id: str,
-    user_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
 
