@@ -2,7 +2,13 @@
 # FILE: app/api/routes/market_live_sessions.py
 # =========================================
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request
+)
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -19,6 +25,10 @@ from app.services.market_live_session_service import (
     market_live_session_service
 )
 
+from app.services.agent_permission_service import (
+    agent_permission_service
+)
+
 router = APIRouter(
     prefix="/market-live",
     tags=["Market Live Sessions"]
@@ -31,13 +41,22 @@ router = APIRouter(
 @router.post("/create")
 async def create_session(
     payload: dict,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
+
+    if not request.state.user:
+        raise HTTPException(401, "Unauthorized")
+
+    await agent_permission_service.require_agent(
+        db,
+        request.state.user["id"]
+    )
 
     session = await market_live_session_service.create_session(
         db=db,
         market_id=payload["market_id"],
-        agent_user_id=payload["agent_user_id"],
+        agent_user_id=request.state.user["id"],
         title=payload["title"],
         stream_channel=payload["stream_channel"],
         thumbnail_url=payload.get("thumbnail_url")
@@ -54,14 +73,22 @@ async def create_session(
 @router.post("/start/{session_id}")
 async def start_session(
     session_id: str,
-    payload: dict,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
+
+    if not request.state.user:
+        raise HTTPException(401, "Unauthorized")
+
+    await agent_permission_service.require_agent(
+        db,
+        request.state.user["id"]
+    )
 
     session = await market_live_session_service.start_session(
         db=db,
         session_id=session_id,
-        user_id=payload["user_id"]
+        user_id=request.state.user["id"]
     )
 
     await db.commit()
@@ -75,14 +102,22 @@ async def start_session(
 @router.post("/end/{session_id}")
 async def end_session(
     session_id: str,
-    payload: dict,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
+
+    if not request.state.user:
+        raise HTTPException(401, "Unauthorized")
+
+    await agent_permission_service.require_agent(
+        db,
+        request.state.user["id"]
+    )
 
     session = await market_live_session_service.end_session(
         db=db,
         session_id=session_id,
-        user_id=payload["user_id"]
+        user_id=request.state.user["id"]
     )
 
     await db.commit()
