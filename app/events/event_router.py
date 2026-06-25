@@ -120,12 +120,13 @@ class EventRouter:
             []
         )
 
-        await    event_log_service.log_event(
+        await  event_log_service.log_event(
             db=db,
             event_name=topic,
             event_category="event_bus",
             topic=topic,
-            payload=payload
+            payload=payload,
+            source_service="event_router"
         )
 
         for handler_cls in handlers:
