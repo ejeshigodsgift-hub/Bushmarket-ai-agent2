@@ -15,30 +15,19 @@ class SMSService:
     async def send_sms(
         self,
         db: AsyncSession,
-        user_id: str,
-        phone_number: str,
-        message: str
+        notification: Notification,
+        phone_number: str
     ):
 
-        notification = Notification(
-            user_id=user_id,
-            channel="sms",
-            title="SMS Notification",
-            message=message,
-            status="pending"
-        )
-
-        db.add(notification)
-
-        await db.flush()
-
+        
+        
         await outbox_service.queue_event(
             db=db,
             topic="notification.sms.send",
             payload={
                 "notification_id": notification.id,
                 "phone_number": phone_number,
-                "message": message
+                "message": notification.message
             }
         )
 
