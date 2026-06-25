@@ -8,10 +8,15 @@ async def process_outbox_events():
 
     async with SessionLocal() as db:
 
+        MAX_RETRIES = 10
+
         result = await db.execute(
-            select(OutboxEvent).where(
-                OutboxEvent.processed.is_(False)
+            select(OutboxEvent)
+            .where(
+                OutboxEvent.processed.is_(False),
+                OutboxEvent.retry_count < MAX_RETRIES
             )
+            .limit(500)
         )
 
         events = result.scalars().all()
