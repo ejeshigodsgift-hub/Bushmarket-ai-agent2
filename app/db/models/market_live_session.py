@@ -1,5 +1,7 @@
 import uuid
 from sqlalchemy import Integer
+from sqlalchemy.dialects.postgresql import UUID
+
 
 from sqlalchemy import (
     String,
@@ -27,8 +29,9 @@ class MarketLiveSession(Base):
         default=lambda: str(uuid.uuid4())
     )
 
-    market_id: Mapped[str] = mapped_column(
-        String,
+    
+    market_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("market_locations.id"),
         nullable=False
     )
