@@ -5,6 +5,7 @@ from app.services.search_service import search_service
 from app.services.pricing_service import pricing_service
 from app.services.cart_service import cart_service
 
+from datetime import datetime, timezone, timedelta
 from app.services.ai_memory_service import ai_memory_service
 from app.services.ai_logger import ai_logger
 
@@ -41,6 +42,14 @@ class AIService:
             user_id=user_id,
             conversation_id=conversation_id
         )
+
+        if (
+            session and
+            datetime.now(timezone.utc)
+            - session.created_at
+            > timedelta(minutes=30)
+        ):
+            session = None
 
         state = session.status if session else None
 
