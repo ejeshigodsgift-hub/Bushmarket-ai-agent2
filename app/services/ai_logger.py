@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import select, desc
+from sqlalchemy import delete
 
 from app.db.models.ai_conversation import AIConversation
 from app.db.models.ai_message import AIMessage
@@ -62,6 +63,90 @@ class AILogger:
         result = await db.execute(stmt)
 
         return result.scalars().all()
+
+
+
+    async def get_conversation(
+        self,
+        db,
+        conversation_id: str
+    ):
+
+        stmt = (
+            select(AIConversation)
+            .where(
+                AIConversation.id == conversation_id
+            )
+        )
+
+        result = await db.execute(stmt)
+
+        return result.scalar_one_or_none()
+
+
+
+    async def get_user_conversations(
+        self,
+        db,
+        user_id: str,
+        limit: int = 20
+    ):
+
+        stmt = (
+            select(AIConversation)
+            .where(
+                AIConversation.user_id == user_id
+            )
+            .order_by(
+            desc(AIConversation.created_at)
+            )
+            .limit(limit)
+        )
+
+        result = await db.execute(stmt)
+
+        return result.scalars().all()
+
+
+
+    async def delete_conversation(
+        self,
+        db,
+        conversation_id: str
+    ):
+
+        stmt = (
+            delete(AIConversation)
+            .where(
+                AIConversation.id == conversation_id
+            )
+        )
+
+        await db.execute(stmt)
+
+        await db.flush()
+
+        return True
+
+
+    async def clear_user_history(
+        self,
+        db,
+        user_id: str
+    ):
+
+        stmt = (
+            delete(AIConversation)
+            .where(
+                AIConversation.user_id == user_id
+            )
+        )
+
+        await db.execute(stmt)
+
+        await db.flush()
+
+        return True
 
     # =====================================================
     # MESSAGE LOGGING
