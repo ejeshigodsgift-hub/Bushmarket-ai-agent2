@@ -4,9 +4,33 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
+from sqlalchemy import (
+    Index,
+    CheckConstraint
+)
 
 class AIShoppingSession(Base):
     __tablename__ = "ai_shopping_sessions"
+
+
+    __table_args__ = (
+
+        Index(
+            "idx_ai_session_user_conversation",
+            "user_id",
+            "conversation_id"
+        ),
+
+        Index(
+            "idx_ai_session_status",
+            "status"
+        ),
+
+        CheckConstraint(
+            "quantity IS NULL OR quantity >= 0",
+            name="ck_ai_session_quantity"
+        ),
+    )
 
     # =========================
     # PRIMARY KEY
