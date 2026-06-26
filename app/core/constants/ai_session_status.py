@@ -1,0 +1,6 @@
+AWAITING_MARKET_SELECTION = "awaiting_market_selection"
+AWAITING_QUANTITY = "awaiting_quantity"
+AWAITING_CHECKOUT_CONFIRMATION = "awaiting_checkout_confirmation"
+COMPLETED = "completed"
+CANCELLED = "cancelled"
+ADD_TO_CART = "add_to_cart"
