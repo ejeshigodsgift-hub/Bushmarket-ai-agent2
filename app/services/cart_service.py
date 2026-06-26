@@ -78,6 +78,7 @@ class CartService:
         listing_id: str,
         quantity: int,
         ip_address: str
+        search_query_id: str | None = None
     ):
 
         try:
@@ -165,6 +166,16 @@ class CartService:
 
                 db.add(item)
                 await db.flush()
+
+                search_query = await db.get(
+                    SearchQuery,
+                    search_query_id
+                )
+
+                if search_query:
+                   search_query.converted_to_cart = True
+
+                
 
         # recompute totals (NO DRIFT)
             items_result = await db.execute(
