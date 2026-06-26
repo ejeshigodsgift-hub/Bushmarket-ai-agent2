@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Request
 
 from app.db.session import get_db
 
@@ -40,15 +41,15 @@ AI CHAT
 
 @router.post("/chat")
 async def chat(
-payload: AIChatRequest,
-db: AsyncSession = Depends(get_db)
+    payload: AIChatRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
 ):
-return await ai_service.process_message(
-db=db,
-user_id=payload.user_id,
-message=payload.message
-)
-
+    return await ai_service.process_message(
+        db=db,
+        user_id=request.state.user["id"],
+        message=payload.message
+    )
 =====================================================
 
 GET USER CONVERSATIONS
