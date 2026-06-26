@@ -4,6 +4,11 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.db.models.search_query import SearchQuery
+from app.db.models.cooperative_demand_signal import (
+    CooperativeDemandSignal
+)
+
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 
