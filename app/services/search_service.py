@@ -125,13 +125,25 @@ class SearchService:
         # SEARCH ANALYTICS
         # =====================================================
         if user_id:
+
+            first_product = (
+                listings[0].product
+                if listings else None
+            )
+
             db.add(
                 SearchQuery(
                     user_id=user_id,
                     query_text=query,
-                    normalized_query=normalized_query,
-                    total_results=len(listings),
-                    search_source="manual"
+               normalized_query=normalized_query,
+                 total_results=len(listings),
+                    search_source="manual",
+
+                    product_id=(
+                        first_product.id
+                        if first_product
+                        else None
+                    )
                 )
             )
 
