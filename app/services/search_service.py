@@ -126,19 +126,20 @@ class SearchService:
         # =====================================================
         if user_id:
 
+            first_listing = listings[0]  if listings else None
             first_product = (
-                listings[0].product
-                if listings else None
+                first_listing.product
+                if first_listing
+                else None
             )
 
             db.add(
                 SearchQuery(
                     user_id=user_id,
                     query_text=query,
-               normalized_query=normalized_query,
-                 total_results=len(listings),
+              normalized_query=normalized_query,
+                    total_results=len(listings),
                     search_source="manual",
-
                     product_id=(
                         first_product.id
                         if first_product
@@ -146,6 +147,16 @@ class SearchService:
                     )
                 )
             )
+
+            if first_listing and first_product:
+                db.add(
+                    CooperativeDemandSignal(
+                 product_id=first_product.id,
+                market_id=first_listing.market_id,
+                        user_id=user_id,
+                        signal_type="search"
+                    )
+                )
 
         # =====================================================
         # CACHE SERIALIZED VERSION
