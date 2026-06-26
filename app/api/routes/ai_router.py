@@ -236,6 +236,9 @@ rec = await db.get(
 
 if rec:
     rec.clicked = True
+await  recommendation_learning_service.process_c      lick(
+    rec
+)
 
 await db.commit()
 
@@ -261,6 +264,10 @@ rec = await db.get(
 if rec:
     rec.added_to_cart = True
 
+await recommendation_learning_service.process_add_to_cart(
+    rec
+)
+
 await db.commit()
 
 return {"status": "ok"}
@@ -284,6 +291,11 @@ rec = await db.get(
 
 if rec:
     rec.purchased = True
+
+await recommendation_learning_service.process_purchase(
+    rec
+)
+
 
 await db.commit()
 
