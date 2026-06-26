@@ -3,7 +3,6 @@ from typing import Optional
 
 
 class AIChatRequest(BaseModel):
-    user_id: str
     message: str
 
 
