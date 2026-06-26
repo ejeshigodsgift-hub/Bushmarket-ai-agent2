@@ -113,13 +113,16 @@ class AIService:
 
     # CREATE SESSION IF NOT EXISTS (FIXED IMPORT USAGE)
             if not session:
-                session = AIShoppingSession(
-                    user_id=user_id,
-               conversation_id=conversation_id,
-               status="awaiting_market_selection"
-                )
-                db.add(session)
 
+                session = await  ai_logger.create_shopping_session(
+                    db=db,
+                    user_id=user_id,
+           conversation_id=conversation_id,
+        status="awaiting_market_selection",
+                    metadata={
+                        "query": query
+                    }
+                )
             session.status =    "awaiting_market_selection"
             db.add(session)
 
@@ -152,9 +155,12 @@ class AIService:
             if not session:
                 return {"error": "Session  expired"}
 
-            session.selected_listing_id =   listing.id
-            session.status = "awaiting_quantity"
-            db.add(session)
+            await ai_logger.update_shopping_session(
+                db=db,
+                session=session,
+                status="awaiting_quantity",
+                listing_id=listing.id
+            )
 
             await ai_logger.log_system_action(
                 db=db,
@@ -190,10 +196,12 @@ class AIService:
             if quantity >  listing.available_stock:
                 return {"error": "Insufficient stock"}
 
-            session.quantity = quantity
-            session.status =    "awaiting_checkout_confirmation"
-            db.add(session)
-
+            await ai_logger.update_shopping_session(
+                db=db,
+                session=session,
+                quantity=quantity,
+     status="awaiting_checkout_confirmation"
+            )
             await ai_logger.log_system_action(
                 db=db,
                 user_id=user_id,
@@ -229,8 +237,11 @@ class AIService:
                 quantity=session.quantity
             )
 
-            session.status = "completed"
-            db.add(session)
+            await ai_logger.update_shopping_session(
+                db=db,
+                session=session,
+                status="completed"
+            )
 
             await ai_logger.log_system_action(
                 db=db,
