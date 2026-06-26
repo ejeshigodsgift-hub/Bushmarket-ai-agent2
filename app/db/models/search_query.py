@@ -9,6 +9,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
+from sqlalchemy import ForeignKey
 
 
 class SearchQuery(Base):
@@ -67,6 +68,13 @@ class SearchQuery(Base):
     clicked_listing_id: Mapped[str | None] = mapped_column(
         String(36),
         nullable=True
+    )
+
+    product_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("market_products.id"),
+        nullable=True,
+        index=True
     )
 
     # =========================
