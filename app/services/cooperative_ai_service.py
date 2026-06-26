@@ -28,6 +28,12 @@ class CooperativeAIService:
                 detail="Cooperative not found"
             )
 
+        await cooperative_service.require_member(
+            db=db,
+            cooperative_id=cooperative_id,
+            user_id=user_id
+        )
+
         member_count = len(cooperative.members)
 
         now = datetime.now(timezone.utc)
@@ -71,6 +77,12 @@ class CooperativeAIService:
                 status_code=404,
                 detail="Cooperative not found"
             )
+
+        await cooperative_service.require_member(
+            db=db,
+            cooperative_id=cooperative_id,
+            user_id=user_id
+        )
 
         sent = await cooperative_message_service.send_to_members(
             db=db,
