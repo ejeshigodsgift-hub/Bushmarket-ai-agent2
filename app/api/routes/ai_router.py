@@ -3,6 +3,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.recommendation_learning_service import (
+    recommendation_learning_service
+)
+
 from app.db.session import get_db
 
 from app.services.ai_service import ai_service
