@@ -167,6 +167,8 @@ class CartService:
                 db.add(item)
                 await db.flush()
 
+
+
                 search_query = await db.get(
                     SearchQuery,
                     search_query_id
@@ -174,6 +176,16 @@ class CartService:
 
                 if search_query:
                    search_query.converted_to_cart = True
+
+
+                db.add(
+                    CooperativeDemandSignal(
+                  product_id=listing.product_id,
+               market_id=listing.market_id,
+                        user_id=user_id,
+                        signal_type="cart"
+                    )
+                )
 
                 
 
