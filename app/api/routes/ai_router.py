@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.recommendation_learning_service import (
-    recommendation_learning_service
+recommendation_learning_service
 )
 
 from app.db.session import get_db
@@ -240,9 +240,10 @@ rec = await db.get(
 
 if rec:
     rec.clicked = True
-await  recommendation_learning_service.process_c      lick(
-    rec
-)
+
+    await recommendation_learning_service.process_click(
+        rec
+    )
 
 await db.commit()
 
@@ -268,9 +269,9 @@ rec = await db.get(
 if rec:
     rec.added_to_cart = True
 
-await recommendation_learning_service.process_add_to_cart(
-    rec
-)
+    await recommendation_learning_service.process_add_to_cart(
+        rec
+    )
 
 await db.commit()
 
@@ -296,10 +297,9 @@ rec = await db.get(
 if rec:
     rec.purchased = True
 
-await recommendation_learning_service.process_purchase(
-    rec
-)
-
+    await recommendation_learning_service.process_purchase(
+        rec
+    )
 
 await db.commit()
 
