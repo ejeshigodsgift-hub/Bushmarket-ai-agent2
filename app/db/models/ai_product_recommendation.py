@@ -90,6 +90,27 @@ class AIProductRecommendation(Base):
         nullable=False
     )
 
+
+    impression_count: Mapped[int] = mapped_column(
+        default=0,
+        nullable=False
+    )
+
+    click_count: Mapped[int] = mapped_column(
+        default=0,
+        nullable=False
+    )
+
+    cart_count: Mapped[int] = mapped_column(
+        default=0,
+        nullable=False
+    )
+
+    purchase_count: Mapped[int] = mapped_column(
+        default=0,
+        nullable=False
+    )
+
     # =========================
     # TIMESTAMP
     # =========================
