@@ -9,7 +9,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
-from sqlalchemy import ForeignKey
+from datetime import datetime
+
 
 
 class SearchQuery(Base):
@@ -86,7 +87,7 @@ class SearchQuery(Base):
     # =========================
     # TIMESTAMP
     # =========================
-    created_at: Mapped[str] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now()
     )
