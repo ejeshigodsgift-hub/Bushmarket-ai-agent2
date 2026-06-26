@@ -371,6 +371,18 @@ class PaymentWebhookService:
                 order_id=order.id   
             )
 
+        # COOPERATIVE DEMAND SIGNALS
+        for item in order.items:
+
+            db.add(
+                CooperativeDemandSignal(
+                    product_id=item.product_id,
+                    market_id=item.market_id,
+                    user_id=order.user_id,
+                    signal_type="purchase"
+                )
+            )
+
     # 5. MARK ORDER PAID
         order.payment_status = "paid"
         order.payment_reference = reference
