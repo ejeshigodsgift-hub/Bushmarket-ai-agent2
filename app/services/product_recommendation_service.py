@@ -207,11 +207,8 @@ class ProductRecommendationService:
 
             return feature
 
-        except Exception:
-
-            logger.exception(
-                f"Recommendation rebuild failed: {listing_id}"
-            )
+        except Exception as e:
+           
 
             await ai_observability_service.log_request(
                 db=db,
@@ -221,6 +218,10 @@ class ProductRecommendationService:
                 metadata={
                     "listing_id": listing_id
                 }
+            )
+
+            logger.exception(
+                f"Recommendation rebuild failed: {listing_id}"
             )
 
             raise
