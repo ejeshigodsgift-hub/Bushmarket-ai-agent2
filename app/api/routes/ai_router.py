@@ -2,6 +2,9 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.rate_limit_service import (
+    rate_limit_service
+)
 
 from app.services.recommendation_learning_service import (
 recommendation_learning_service
@@ -43,15 +46,21 @@ AI CHAT
 
 @router.post("/chat")
 async def chat(
-payload: AIChatRequest,
-request: Request,
-db: AsyncSession = Depends(get_db),
+    payload: AIChatRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
-return await ai_service.process_message(
-db=db,
-user_id=request.state.user["id"],
-message=payload.message,
-)
+
+    await rate_limit_service.check_limit(
+        key=f"ai_chat:.     {request.state.user['id']}",
+        limit=30,
+        ttl=60
+    )
+    return await ai_service.process_message(
+        db=db,
+        user_id=request.state.user["id"],
+        message=payload.message,
+    )
 
 =====================================================
 
