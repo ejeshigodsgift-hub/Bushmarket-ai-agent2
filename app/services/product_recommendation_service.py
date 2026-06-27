@@ -104,116 +104,116 @@ class ProductRecommendationService:
         listing_id: str
     ):
 
-    try:
+        try:
 
-        recommendation_stats = await db.execute(
-            select(
-                func.sum(
+            recommendation_stats = await db.execute(
+                select(
+                    func.sum(
                     AIProductRecommendation.click_count
-                ),
-                func.sum(
+                    ),
+                    func.sum(
                     AIProductRecommendation.cart_count
-                ),
-                func.sum(
+                    ),
+                    func.sum(
                     AIProductRecommendation.purchase_count
-                )
-            )
-            .where(
-                AIProductRecommendation.listing_id
-                == listing_id
-            )
-        )
-
-        clicks, carts, purchases = (
-            recommendation_stats.one()
-        )
-
-        clicks = clicks or 0
-        carts = carts or 0
-        purchases = purchases or 0
-
-        demand_count = await db.scalar(
-            select(
-         func.count(CooperativeDemandSignal.id)
-            ).where(
-        CooperativeDemandSignal.product_id
-                == (
-            select(MarketProductListing.product_id)
-                    .where(
-                        MarketProductListing.id == listing_id
                     )
-                    .scalar_subquery()
+                )
+                .where(
+                AIProductRecommendation.listing_id
+                    == listing_id
                 )
             )
-        )
 
-        demand_count = demand_count or 0
+            clicks, carts, purchases = (
+                recommendation_stats.one()
+            )
 
-        feature = await db.scalar(
+            clicks = clicks or 0
+            carts = carts or 0
+            purchases = purchases or 0
+
+            demand_count = await db.scalar(
+                select(
+         func.count(CooperativeDemandSignal.id)
+                ).where(
+        CooperativeDemandSignal.product_id
+                    == (
+            select(MarketProductListing.product_id)
+                        .where(
+                        MarketProductListing.id == listing_id
+                        )
+                        .scalar_subquery()
+                    )
+                )
+            )
+
+            demand_count = demand_count or 0
+
+            feature = await db.scalar(
             select(ProductRecommendationFeature)
-            .where(
+                .where(
                 ProductRecommendationFeature.listing_id
-                == listing_id
-            )
-        )
-
-        if not feature:
-
-            feature = ProductRecommendationFeature(
-                listing_id=listing_id
+                    == listing_id
+                )
             )
 
-            db.add(feature)
+            if not feature:
 
-        feature.click_score = clicks
-        feature.cart_score = carts
-        feature.purchase_score = purchases
-        feature.demand_score = demand_count
+                feature = ProductRecommendationFeature(
+                    listing_id=listing_id
+                )
 
-        feature.popularity_score = (
-            clicks
-            + carts * 2
-            + purchases * 5
-        )
+                db.add(feature)
 
-        feature.final_score = (
-            feature.popularity_score
-            + demand_count
-        )
+            feature.click_score = clicks
+            feature.cart_score = carts
+            feature.purchase_score = purchases
+            feature.demand_score = demand_count
 
-        intelligence = await db.scalar(
+            feature.popularity_score = (
+                clicks
+                + carts * 2
+                + purchases * 5
+            )
+
+            feature.final_score = (
+                feature.popularity_score
+                + demand_count
+            )
+
+            intelligence = await db.scalar(
             select(ListingIntelligenceScore)
-            .where(
+                .where(
                 ListingIntelligenceScore.listing_id
-                == listing_id
-            )
-        )
-
-        if intelligence:
-
-            intelligence.demand_score = (
-                feature.demand_score
+                    == listing_id
+                )
             )
 
-            intelligence.sales_score = (
-                feature.purchase_score
-            )
+            if intelligence:
+   
+                intelligence.demand_score = (
+                    feature.demand_score
+                )
+
+                intelligence.sales_score = (
+                    feature.purchase_score
+                )
 
             intelligence.recommendation_score = (
-                feature.final_score
+                    feature.final_score
+                )
+
+            await db.flush()
+
+            return feature
+
+        except Exception:
+
+            logger.exception(
+                f"Recommendation rebuild failed: {listing_id}"
             )
 
-        await db.flush()
-
-        return feature
-
-    except Exception:
-
-        logger.exception(
-            f"Recommendation rebuild failed: {listing_id}"
-        )
-
-        raise
+            raise
 
 
 product_recommendation_service = (
