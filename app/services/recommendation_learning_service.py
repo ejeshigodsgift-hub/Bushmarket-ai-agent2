@@ -13,6 +13,8 @@ async def process_click(
     # Track behavior
     recommendation.clicked = True
     recommendation.click_count += 1
+    recommendation.cart_count += 1
+    recommendation.purchase_count += 1
 
     # Increase confidence
     recommendation.confidence_score = min(
