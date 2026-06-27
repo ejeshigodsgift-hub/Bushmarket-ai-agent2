@@ -202,7 +202,7 @@ class AIService:
             if not listing:
                 return {"error": "Invalid session state"}
 
-            if quantity >  listing.available_stock:
+            if quantity >  listing.inventory.available_stock:
                 return {"error": "Insufficient stock"}
 
             await ai_logger.update_shopping_session(
