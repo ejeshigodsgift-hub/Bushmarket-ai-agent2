@@ -213,6 +213,16 @@ class ProductRecommendationService:
                 f"Recommendation rebuild failed: {listing_id}"
             )
 
+            await ai_observability_service.log_request(
+                db=db,
+                operation="recommendation_rebuild",
+                status="failed",
+                error_message=str(e),
+                metadata={
+                    "listing_id": listing_id
+                }
+            )
+
             raise
 
 
