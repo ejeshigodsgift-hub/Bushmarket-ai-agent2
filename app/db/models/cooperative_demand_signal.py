@@ -40,10 +40,7 @@ class CooperativeDemandSignal(Base):
         nullable=False,
         index=True
     )
-        ForeignKey("market_locations.id"),
-        nullable=True,
-        index=True
-    )
+        
 
     user_id: Mapped[str] = mapped_column(
         String(36),
