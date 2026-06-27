@@ -2,6 +2,9 @@ from sqlalchemy import select, desc
 
 from app.db.models.ai_message import AIMessage
 from app.db.models.ai_conversation import AIConversation
+from app.db.models.ai_conversation_summary import (
+    AIConversationSummary
+)
 
 
 class AIMemoryService:
@@ -13,6 +16,35 @@ class AIMemoryService:
         query: str
     ):
 
+        # =====================================
+        # LOAD LATEST SUMMARY
+        # =====================================
+        summary = await db.scalar(
+            select(AIConversationSummary)
+            .join(AIConversation)
+            .where(
+                AIConversation.user_id == user_id
+            )
+            .order_by(
+                AIConversationSummary.updated_at.desc()
+            )
+            .limit(1)
+        )
+
+        memory = []
+
+        if summary and summary.summary_text:
+
+            memory.append(
+                {
+                    "role": "system",
+                    "content": summary.summary_text
+                }
+            )
+
+        # =====================================
+        # LOAD RECENT MESSAGES
+        # =====================================
         stmt = (
             select(AIMessage)
             .join(AIConversation)
@@ -22,16 +54,25 @@ class AIMemoryService:
             .order_by(
                 desc(AIMessage.created_at)
             )
-            .limit(20)
+            .limit(30)
         )
 
         result = await db.execute(stmt)
+
         messages = result.scalars().all()
 
+        # oldest -> newest
+        messages.reverse()
+
+        # =====================================
+        # TOKEN / SIZE PROTECTION
+        # =====================================
         MAX_CHARS = 15000
 
-        memory = []
-        current_size = 0
+        current_size = sum(
+            len(item["content"])
+            for item in memory
+        )
 
         for msg in messages:
 
