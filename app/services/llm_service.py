@@ -22,8 +22,14 @@ USER MESSAGE:
 
 INTENTS:
 - search_product
+- select_market
+- select_quantity
+- confirm_checkout
 - add_to_cart
 - price_check
+- cooperative_status
+- cooperative_reminder
+- cooperative_message
 - cooperative_create
 - agent_request
 - checkout
