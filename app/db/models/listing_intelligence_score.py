@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     String,
@@ -31,32 +32,32 @@ class ListingIntelligenceScore(Base):
         index=True
     )
 
-    market_score: Mapped[float] = mapped_column(
+    market_score: Mapped[Decimal] = mapped_column(
         Numeric(10,4),
         default=0
     )
 
-    demand_score: Mapped[float] = mapped_column(
+    demand_score: Mapped[Decimal] = mapped_column(
         Numeric(10,4),
         default=0
     )
 
-    inventory_score: Mapped[float] = mapped_column(
+    inventory_score: Mapped[Decimal] = mapped_column(
         Numeric(10,4),
         default=0
     )
 
-    distance_score: Mapped[float] = mapped_column(
+    distance_score: Mapped[Decimal] = mapped_column(
         Numeric(10,4),
         default=0
     )
 
-    sales_score: Mapped[float] = mapped_column(
+    sales_score: Mapped[Decimal] = mapped_column(
         Numeric(10,4),
         default=0
     )
 
-    recommendation_score: Mapped[float] = mapped_column(
+    recommendation_score: Mapped[Decimal] = mapped_column(
         Numeric(10,4),
         default=0
     )
