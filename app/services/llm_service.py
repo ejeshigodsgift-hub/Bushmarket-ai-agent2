@@ -3,6 +3,10 @@ import json
 
 from app.core.config import settings
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class LLMService:
 
