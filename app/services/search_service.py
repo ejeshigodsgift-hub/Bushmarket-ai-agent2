@@ -22,6 +22,9 @@ from app.db.models.market_location import MarketLocation
 from app.services.product_recommendation_service import (
     product_recommendation_service
 )
+from app.services.ai_observability_service import (
+    ai_observability_service
+)
 
 class SearchService:
 
@@ -235,7 +238,7 @@ class SearchService:
         await    ai_observability_service.log_request(
             db=db,
             operation="search",
-            user_id=user_id,
+            user_id=user_id if user_id else None,
             latency_ms=search_latency_ms,
             metadata={
                 "query": query
