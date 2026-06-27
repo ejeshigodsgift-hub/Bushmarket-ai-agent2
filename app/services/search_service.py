@@ -15,7 +15,9 @@ from app.db.models.product import Product
 from app.db.models.search_query import SearchQuery
 from app.db.models.search_result_cache import SearchResultCache
 from app.db.models.market_location import MarketLocation
-
+from app.services.product_recommendation_service import (
+    product_recommendation_service
+)
 
 class SearchService:
 
@@ -157,6 +159,11 @@ class SearchService:
                         user_id=user_id,
                         signal_type="search"
                     )
+                )
+
+                await product_recommendation_service.rebuild_features(
+                    db,
+                    listing.id
                 )
 
         # =====================================================
