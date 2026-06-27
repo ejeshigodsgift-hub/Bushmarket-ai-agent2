@@ -127,7 +127,10 @@ class AIService:
                 query=query
             )
 
-            recommendations = listings
+            recommendations = await product_recommendation_service.recommend_ products(
+                db=db,
+                limit=20
+            )
 
     # CREATE SESSION IF NOT EXISTS (FIXED IMPORT USAGE)
             if not session:
