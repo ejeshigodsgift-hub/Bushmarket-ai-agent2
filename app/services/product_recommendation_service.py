@@ -102,6 +102,8 @@ class ProductRecommendationService:
         listing_id: str
     ):
 
+        try:
+
         recommendation_stats = await db.execute(
             select(
                 func.sum(
@@ -202,6 +204,14 @@ class ProductRecommendationService:
         await db.flush()
 
         return feature
+
+    except Exception:
+
+        logger.exception(
+            f"Recommendation rebuild failed: {listing_id}"
+        )
+
+        raise
 
 
 product_recommendation_service = (
