@@ -1,5 +1,6 @@
 from openai import OpenAI
 import json
+from app.core.config import settings
 
 
 class LLMService:
@@ -66,4 +67,6 @@ RETURN ONLY VALID JSON:
             }
 
 
-llm_service = LLMService(api_key="YOUR_API_KEY")
+llm_service = LLMService(
+    api_key=settings.OPENAI_API_KEY
+)
