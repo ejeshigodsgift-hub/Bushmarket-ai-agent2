@@ -190,7 +190,7 @@ class ProductRecommendationService:
             )
 
             if intelligence:
-   
+
                 intelligence.demand_score = (
                     feature.demand_score
                 )
@@ -199,7 +199,7 @@ class ProductRecommendationService:
                     feature.purchase_score
                 )
 
-                    intelligence.recommendation_score = (
+                intelligence.recommendation_score = (
                     feature.final_score
                 )
 
