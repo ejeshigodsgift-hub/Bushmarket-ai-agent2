@@ -11,6 +11,10 @@ from app.db.models.ai_conversation_summary import (
 
 from app.services.llm_service import llm_service
 
+from app.services.ai_observability_service import (
+    ai_observability_service
+)
+
 
 import logging
 
