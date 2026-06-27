@@ -161,6 +161,11 @@ class AILogger:
         metadata: dict | None = None
     ):
 
+        MAX_MESSAGE_SIZE = 5000
+
+        if len(content) > MAX_MESSAGE_SIZE:
+            content = content[:MAX_MESSAGE_SIZE]
+
         message = AIMessage(
             conversation_id=conversation_id,
             role=role,
