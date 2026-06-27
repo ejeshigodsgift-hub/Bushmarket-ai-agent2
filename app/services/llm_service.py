@@ -57,33 +57,47 @@ RETURN ONLY VALID JSON:
 }}
 """
 
-        response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a strict JSON router."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-        )
-
         try:
-            return json.loads(
-                response.choices[0].message.content
+
+             response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a strict JSON router."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
             )
 
-        except Exception:
+        except Exception as e:
+
+            logger.exception(
+                "OpenAI Failure"
+            )
+
+            raise
+
+        try:
+
+            return json.loads(
+            response.choices[0].message.content
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"Intent Parse Failure: {str(e)}"
+            )
 
             return {
                 "intent": "general_chat",
                 "query": "",
                 "quantity": 1
             }
-
     # =====================================================
     # CONVERSATION SUMMARIZER
     # =====================================================
