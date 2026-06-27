@@ -12,6 +12,13 @@ from app.db.models.ai_conversation_summary import (
 from app.services.llm_service import llm_service
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+
+
 class AISummaryService:
 
     async def summarize_conversation(
