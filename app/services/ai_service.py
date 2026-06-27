@@ -10,6 +10,10 @@ from datetime import datetime, timezone, timedelta
 from app.services.ai_memory_service import ai_memory_service
 from app.services.ai_logger import ai_logger
 
+from app.services.ai_summary_service import (
+    ai_summary_service
+)
+
 from app.services.cooperative_ai_service import cooperative_ai_service
 from app.services.cooperative_message_service import cooperative_message_service
 
@@ -90,6 +94,13 @@ class AIService:
             user_id=user_id,
             query=message
         )
+
+        if len(memory_context) > 100:
+            await    ai_summary_service.summarize_conversation(
+                db,
+                conversation_id
+            )
+        
 
         # =====================================================
         # INTENT PARSING
