@@ -4,6 +4,7 @@
 
 import hashlib
 import json
+from app.db.models.cooperative_demand_signal import CooperativeDemandSignal
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, or_, func, cast, Float
 from sqlalchemy.ext.asyncio import AsyncSession
