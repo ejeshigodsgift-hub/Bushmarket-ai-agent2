@@ -199,7 +199,7 @@ class ProductRecommendationService:
                     feature.purchase_score
                 )
 
-            intelligence.recommendation_score = (
+                    intelligence.recommendation_score = (
                     feature.final_score
                 )
 
