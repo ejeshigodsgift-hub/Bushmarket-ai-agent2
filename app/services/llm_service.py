@@ -1,5 +1,6 @@
 from openai import OpenAI
 import json
+
 from app.core.config import settings
 
 
@@ -8,7 +9,14 @@ class LLMService:
     def __init__(self, api_key: str):
         self.client = OpenAI(api_key=api_key)
 
-    def parse_intent(self, message: str, context: list = None):
+    # =====================================================
+    # INTENT ROUTER
+    # =====================================================
+    def parse_intent(
+        self,
+        message: str,
+        context: list | None = None
+    ):
 
         prompt = f"""
 You are Bushmarket AI Router.
@@ -52,19 +60,70 @@ RETURN ONLY VALID JSON:
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a strict JSON router."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You are a strict JSON router."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
             ]
         )
 
         try:
-            return json.loads(response.choices[0].message.content)
+            return json.loads(
+                response.choices[0].message.content
+            )
+
         except Exception:
+
             return {
                 "intent": "general_chat",
                 "query": "",
                 "quantity": 1
             }
+
+    # =====================================================
+    # CONVERSATION SUMMARIZER
+    # =====================================================
+    def summarize_conversation(
+        self,
+        existing_summary: str,
+        messages: list[dict]
+    ):
+
+        response = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You summarize conversations. "
+                        "Keep important user preferences, "
+                        "shopping interests, products discussed, "
+                        "cooperative activities, decisions made, "
+                        "agent requests, checkout actions, and "
+                        "important context needed for future chats. "
+                        "Return only the updated summary."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": f"""
+EXISTING SUMMARY:
+{existing_summary}
+
+NEW MESSAGES:
+{json.dumps(messages, ensure_ascii=False)}
+
+Create an updated conversation summary.
+"""
+                }
+            ]
+        )
+
+        return response.choices[0].message.content.strip()
 
 
 llm_service = LLMService(
