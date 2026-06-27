@@ -127,7 +127,7 @@ class AIService:
                 query=query
             )
 
-            recommendations = await product_recommendation_service.recommend_ products(
+            recommendations = await product_recommendation_service.recommend_products(
                 db=db,
                 limit=20
             )
@@ -156,7 +156,7 @@ class AIService:
             )
 
             data = {
-                "products":  search_service.to_api_response(listings),
+                "products": listings,
                 "next_step": "select_market"
             }
 
