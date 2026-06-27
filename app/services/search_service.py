@@ -63,6 +63,21 @@ class SearchService:
         normalized_query = query.lower().strip()
         query_hash = self._make_hash(query)
 
+
+        # =====================================================
+# CACHE READ (BEFORE SEARCH)
+# =====================================================
+        cache = await db.scalar(
+            select(SearchResultCache)
+            .where(
+                SearchResultCache.query_hash == query_hash,
+                SearchResultCache.expires_at > datetime.now(timezone.utc)
+            )
+        )
+
+        if cache:
+            return json.loads(cache.result_json)
+
         # =====================================================
         # BASE QUERY
         # =====================================================
@@ -163,40 +178,44 @@ class SearchService:
 
                 await product_recommendation_service.rebuild_features(
                     db,
-                    listing.id
+                    first_listing.id
                 )
 
+        
         # =====================================================
-        # CACHE SERIALIZED VERSION
-        # =====================================================
-        serialized = self.to_api_response(listings)
+# CACHE SERIALIZED VERSION
+# =====================================================
+        serialized =     self.to_api_response(listings)
 
         cache_stmt = (
             select(SearchResultCache)
             .where(SearchResultCache.query_hash == query_hash)
         )
 
-        cache_result = await db.execute(cache_stmt)
-        existing_cache = cache_result.scalar_one_or_none()
+        cache_result = await    db.execute(cache_stmt)
+        existing_cache =    cache_result.scalar_one_or_none()
 
         if existing_cache:
-            existing_cache.result_json = json.dumps(serialized)
+            existing_cache.result_json =  json.dumps(serialized)
             existing_cache.total_results = len(serialized)
-            existing_cache.expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+            existing_cache.expires_at = (
+                datetime.now(timezone.utc)
+                + timedelta(minutes=10)
+            )
         else:
             db.add(
                 SearchResultCache(
                     query_hash=query_hash,
                     query_text=query,
-                    result_json=json.dumps(serialized),
-                    total_results=len(serialized),
-                    expires_at=datetime.now(timezone.utc) + timedelta(minutes=10)
+            result_json=json.dumps(serialized),
+            total_results=len(serialized),
+                    expires_at=(
+                datetime.now(timezone.utc)
+                        + timedelta(minutes=10)
+                    )
                 )
             )
 
         await db.commit()
 
-        return listings
-
-
-search_service = SearchService()
+        return serialized
