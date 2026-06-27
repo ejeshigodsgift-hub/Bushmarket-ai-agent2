@@ -4,6 +4,10 @@
 
 import hashlib
 import json
+import time
+import logging
+
+logger = logging.getLogger(__name__)
 from app.db.models.cooperative_demand_signal import CooperativeDemandSignal
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, or_, func, cast, Float
