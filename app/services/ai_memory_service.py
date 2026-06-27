@@ -12,7 +12,7 @@ class AIMemoryService:
             .join(AIConversation)
             .where(AIConversation.user_id == user_id)
             .order_by(desc(AIMessage.created_at))
-            .limit(10)
+            .limit(30)
         )
 
         result = await db.execute(stmt)
