@@ -106,6 +106,15 @@ class AISummaryService:
 
         except Exception as e:
 
+
+            await ai_observability_service.log_request(
+                db=db,
+                operation="conversation_summary",
+            conversation_id=conversation_id,
+                status="failed",
+                error_message=str(e)
+            )
+
             logger.exception(
                 f"AI summary failed for     conversation "
                 f"{conversation_id}"
@@ -137,6 +146,16 @@ class AISummaryService:
         )
 
         await db.flush()
+
+        await ai_observability_service.log_request(
+            db=db,
+            operation="conversation_summary",
+            conversation_id=conversation_id,
+            status="success",
+            metadata={
+                "messages_processed":   len(messages)
+            }
+        )
 
         return summary_record
 
