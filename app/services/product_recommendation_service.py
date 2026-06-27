@@ -96,13 +96,15 @@ class ProductRecommendationService:
 
         return score
 
+
+
     async def rebuild_features(
         self,
         db: AsyncSession,
         listing_id: str
     ):
 
-        try:
+    try:
 
         recommendation_stats = await db.execute(
             select(
