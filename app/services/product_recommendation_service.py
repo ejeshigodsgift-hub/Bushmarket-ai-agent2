@@ -7,6 +7,11 @@ from sqlalchemy import (
     func
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from app.db.models.cooperative_demand_signal import (
     CooperativeDemandSignal
 )
