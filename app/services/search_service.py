@@ -68,6 +68,9 @@ class SearchService:
         query_hash = self._make_hash(query)
 
 
+        start_time = time.perf_counter()
+
+
         # =====================================================
 # CACHE READ (BEFORE SEARCH)
 # =====================================================
@@ -219,6 +222,25 @@ class SearchService:
                     )
                 )
             )
+
+
+        search_latency_ms = (
+            time.perf_counter() - start_time
+         ) * 1000
+
+        logger.info(
+            f"Search latency={search_latency_ms}"
+        )
+
+        await    ai_observability_service.log_request(
+            db=db,
+            operation="search",
+            user_id=user_id,
+            latency_ms=search_latency_ms,
+            metadata={
+                "query": query
+            }
+        )
 
         await db.commit()
 
