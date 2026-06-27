@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-
+import time
 from app.services.llm_service import llm_service
 from app.services.search_service import search_service
 from app.services.pricing_service import pricing_service
@@ -32,6 +32,8 @@ class AIService:
         audio_file=None
         conversation_id: str | None = None
     ):
+
+        start_time = time.perf_counter()
         # =====================================================
         # SESSION
         # ====== ===============================================
@@ -420,6 +422,22 @@ class AIService:
         # =====================================================
         # COMMIT
         # =====================================================
+        
+
+
+        latency_ms = (
+            time.perf_counter() - start_time
+        ) * 1000
+
+        await    ai_observability_service.log_request(
+            db=db,
+            operation="chat",
+            user_id=user_id,
+            conversation_id=conversation_id,
+            latency_ms=latency_ms,
+            status="success"
+        )
+
         await db.commit()
 
         # =====================================================
