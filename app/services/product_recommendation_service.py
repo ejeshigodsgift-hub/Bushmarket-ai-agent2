@@ -7,6 +7,10 @@ from sqlalchemy import (
     func
 )
 
+from app.db.models.cooperative_demand_signal import (
+    CooperativeDemandSignal
+)
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.market_product_listing import (
@@ -119,6 +123,23 @@ class ProductRecommendationService:
         carts = carts or 0
         purchases = purchases or 0
 
+        demand_count = await db.scalar(
+            select(
+         func.count(CooperativeDemandSignal.id)
+            ).where(
+        CooperativeDemandSignal.product_id
+                == (
+            select(MarketProductListing.product_id)
+                    .where(
+                        MarketProductListing.id == listing_id
+                    )
+                    .scalar_subquery()
+                )
+            )
+        )
+
+        demand_count = demand_count or 0
+
         feature = await db.scalar(
             select(ProductRecommendationFeature)
             .where(
@@ -138,6 +159,7 @@ class ProductRecommendationService:
         feature.click_score = clicks
         feature.cart_score = carts
         feature.purchase_score = purchases
+        feature.demand_score = demand_count
 
         feature.popularity_score = (
             clicks
@@ -147,6 +169,7 @@ class ProductRecommendationService:
 
         feature.final_score = (
             feature.popularity_score
+            + demand_count
         )
 
         intelligence = await db.scalar(
@@ -158,6 +181,14 @@ class ProductRecommendationService:
         )
 
         if intelligence:
+
+            intelligence.demand_score = (
+                feature.demand_score
+            )
+
+            intelligence.sales_score = (
+                feature.purchase_score
+            )
 
             intelligence.recommendation_score = (
                 feature.final_score
