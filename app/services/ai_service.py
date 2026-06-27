@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+
 from app.services.llm_service import llm_service
 from app.services.search_service import search_service
 from app.services.pricing_service import pricing_service
@@ -25,16 +26,24 @@ class AIService:
         user_id: str,
         message: str | None = None,
         audio_file=None
+        conversation_id: str | None = None
     ):
         # =====================================================
         # SESSION
-        # =====================================================
+        # ====== ===============================================
+
         session_id = str(uuid4())
 
-        conversation = await ai_logger.get_or_create_conversation(
-            db=db,
-            user_id=user_id
-        )
+        if conversation_id:
+            conversation = await  ai_logger.get_conversation(
+                db,
+                conversation_id
+            )
+        else:
+            conversation = await ai_logger.get_or_create_conversation(
+                db,
+                user_id
+            )
         conversation_id = conversation.id
 
         session = await    ai_logger.get_latest_shopping_session(
