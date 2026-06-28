@@ -162,15 +162,16 @@ class AISummaryService:
             db=db,
             operation="conversation_summary",
             conversation_id=conversation_id,
+            model_name="gpt-4o-mini",
             prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
+         completion_tokens=completion_tokens,
             total_tokens=total_tokens,
+            estimated_cost=estimated_cost,
             status="success",
             metadata={
-                "messages_processed":   len(messages)
+                "messages_processed":    len(messages)
             }
         )
-
         return summary_record
 
 
