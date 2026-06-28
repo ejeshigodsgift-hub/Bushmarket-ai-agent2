@@ -97,7 +97,7 @@ class AISummaryService:
         # =====================================
         try:
 
-            summary_text =   llm_service.summarize_conversation(
+            summary_result = llm_service.summarize_conversation(
                 existing_summary,
                 [
                     {
@@ -107,6 +107,12 @@ class AISummaryService:
                     for m in messages
                 ]
             )
+
+            summary_text = summary_result["summary"]
+
+            prompt_tokens =      summary_result["prompt_tokens"]
+            completion_tokens =  summary_result["completion_tokens"]
+            total_tokens = summary_result["total_tokens"]
 
         except Exception as e:
 
@@ -155,6 +161,9 @@ class AISummaryService:
             db=db,
             operation="conversation_summary",
             conversation_id=conversation_id,
+            prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
             status="success",
             metadata={
                 "messages_processed":   len(messages)
