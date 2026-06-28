@@ -432,8 +432,8 @@ class AIService:
         # COMMIT
         # =====================================================
         
+            await db.commit()
             
-
             latency_ms = (
                 time.perf_counter() - start_time
             ) * 1000
