@@ -141,7 +141,18 @@ Create an updated conversation summary.
             ]
         )
 
-        return response.choices[0].message.content.strip()
+        usage = response.usage
+
+        prompt_tokens = usage.prompt_tokens
+        completion_tokens =   usage.completion_tokens
+        total_tokens = usage.total_tokens
+
+        return {
+            "summary": response.choices[0].message.content.strip(),
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens
+        }
 
 
 llm_service = LLMService(
