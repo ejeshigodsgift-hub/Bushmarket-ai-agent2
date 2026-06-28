@@ -32,7 +32,7 @@ class AIService:
         db,
         user_id: str,
         message: str | None = None,
-        audio_file=None
+        audio_file=None,
         conversation_id: str | None = None
     ):
 
@@ -467,7 +467,7 @@ class AIService:
                 status="failed",
                 error_message=str(e)
             )
-
+            await db.commit()
             raise
 
 
