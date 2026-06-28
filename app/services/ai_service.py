@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 import time
+from decimal import Decimal
 from app.services.llm_service import llm_service
 from app.services.search_service import search_service
 from app.services.pricing_service import pricing_service
