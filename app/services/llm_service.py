@@ -80,10 +80,9 @@ class LLMService:
 
         try:
 
-            response = await  self.client.chat.completions.create(
+            response = await    self._chat_completion(
                 model="gpt-4o-mini",
                 response_format={"type":  "json_object"},
-                timeout=20,
                 messages=[
                     {
                         "role": "system",
