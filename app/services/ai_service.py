@@ -386,6 +386,19 @@ class AIService:
                 )
                 reply = "Message sent to cooperative."
 
+
+             # =====================================================
+# COOPERATIVE CREATE
+# =====================================================
+            elif intent == "cooperative_create":
+
+                reply = (
+                    "AI cooperative creation is not available yet. "
+                    "Please create a cooperative manually."
+                )
+
+                data = {}                 
+
         # =====================================================
         # DEFAULT RESPONSE
         # =====================================================
