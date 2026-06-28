@@ -147,6 +147,8 @@ Create an updated conversation summary.
         completion_tokens =   usage.completion_tokens
         total_tokens = usage.total_tokens
 
+        
+
         return {
             "summary": response.choices[0].message.content.strip(),
             "prompt_tokens": prompt_tokens,
