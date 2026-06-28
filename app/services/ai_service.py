@@ -473,10 +473,11 @@ class AIService:
                 recommendation_data.append({
                     "listing_id": str(listing.id),
                     "title": getattr(listing, "title", None),
-                    "unit_price": float(
-                        getattr(listing,  "unit_price", 0) or 0
+                    "unit_price": str(
+                        getattr(listing, "unit_price", Decimal("0"))
                     )
-                })
+                                            
+            })                
 
             return {
                 "reply": reply,
