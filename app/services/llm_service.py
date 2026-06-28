@@ -6,13 +6,18 @@ from app.core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+
 
 
 class LLMService:
 
     def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key)
-
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            timeout=20
+        )
     # =====================================================
     # INTENT ROUTER
     # =====================================================
