@@ -466,9 +466,22 @@ class AIService:
         # =====================================================
         # FINAL RESPONSE
         # =====================================================
+            recommendation_data = []
+
+            for listing in recommendations[:10]:
+
+                recommendation_data.append({
+                    "listing_id": str(listing.id),
+                    "title": getattr(listing, "title", None),
+                    "unit_price": float(
+                        getattr(listing,  "unit_price", 0) or 0
+                    )
+                })
+
             return {
                 "reply": reply,
                 "data": data,
+                "recommendations":    recommendation_data,
                 "intent": intent,
                 "session_id": session_id
             }
