@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 
+
 from app.core.config import settings
 from app.integrations.kafka_client import event_bus
+
+from app.api.routes.ai import router as ai_router
 
 # =========================
 # AUTH ROUTES
@@ -112,6 +115,9 @@ app.include_router(cart_router)
 
 # ORDERS
 app.include_router(orders_router)
+
+# AI
+app.include_router(ai_router)
 
 
 # =====================================================
