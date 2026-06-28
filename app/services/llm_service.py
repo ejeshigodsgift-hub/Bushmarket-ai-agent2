@@ -1,4 +1,4 @@
-from openai import OpenAI
+from openai import AsyncOpenAI
 import json
 
 from app.core.config import settings
@@ -16,55 +16,49 @@ class LLMService:
     # =====================================================
     # INTENT ROUTER
     # =====================================================
-    def parse_intent(
+    async def parse_intent(
         self,
         message: str,
         context: list | None = None
     ):
 
         prompt = f"""
-You are Bushmarket AI Router.
+    You are Bushmarket AI Router.
 
-You understand shopping, cooperative buying, and agent workflows.
+    CONTEXT:
+    {context}
 
-CONTEXT:
-{context}
+    USER MESSAGE:
+    {message}
 
-USER MESSAGE:
-{message}
+    INTENTS:
+    - search_product
+    - select_market
+    - select_quantity
+    - confirm_checkout
+    - add_to_cart
+    - price_check
+    - cooperative_status
+    - cooperative_reminder
+    - cooperative_message
+    - cooperative_create
+    - agent_request
+    - checkout
+    - general_chat
 
-INTENTS:
-- search_product
-- select_market
-- select_quantity
-- confirm_checkout
-- add_to_cart
-- price_check
-- cooperative_status
-- cooperative_reminder
-- cooperative_message
-- cooperative_create
-- agent_request
-- checkout
-- general_chat
-
-RULES:
-- Always extract product name into "query"
-- quantity default is 1 if not stated
-- If unclear, return general_chat
-
-RETURN ONLY VALID JSON:
-{{
-  "intent": "",
-  "query": "",
-  "quantity": 1
-}}
-"""
+    RETURN ONLY VALID JSON:
+    {{
+      "intent": "",
+      "query": "",
+      "quantity": 1
+    }}
+    """
 
         try:
 
-             response = self.client.chat.completions.create(
+            response = await  self.client.chat.completions.create(
                 model="gpt-4o-mini",
+                response_format={"type":  "json_object"},
                 messages=[
                     {
                         "role": "system",
@@ -77,18 +71,15 @@ RETURN ONLY VALID JSON:
                 ]
             )
 
-        except Exception as e:
+        except Exception:
 
-            logger.exception(
-                "OpenAI Failure"
-            )
-
+            logger.exception("OpenAI Failure")
             raise
 
         try:
 
             return json.loads(
-            response.choices[0].message.content
+             response.choices[0].message.content
             )
 
         except Exception as e:
