@@ -113,6 +113,7 @@ class AISummaryService:
             prompt_tokens =      summary_result["prompt_tokens"]
             completion_tokens =  summary_result["completion_tokens"]
             total_tokens = summary_result["total_tokens"]
+            estimated_cost = summary_result["estimated_cost"]
 
         except Exception as e:
 
