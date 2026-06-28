@@ -35,16 +35,5 @@ async def search_products(
     return {
         "query": payload.query,
         "total_results": len(listings),
-        "results": [
-            {
-                "listing_id": listing.id,
-                "product_name": listing.product.name,
-                "image_url": listing.product.image_url,
-                "unit_price": float(listing.unit_price),
-                "market_name": listing.market.market_name,
-                "available_stock": listing.available_stock,
-                "status": listing.status
-            }
-            for listing in listings
-        ]
+        "results": listings
     }
