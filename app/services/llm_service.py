@@ -59,6 +59,7 @@ class LLMService:
             response = await  self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 response_format={"type":  "json_object"},
+                timeout=20,
                 messages=[
                     {
                         "role": "system",
@@ -104,6 +105,7 @@ class LLMService:
 
         response = await self.client.chat.completions.create(
             model="gpt-4o-mini",
+            timeout=20,
             messages=[
                 {
                     "role": "system",
