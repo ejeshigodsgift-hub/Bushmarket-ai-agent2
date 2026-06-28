@@ -20,6 +20,9 @@ from app.services.cooperative_message_service import cooperative_message_service
 from app.db.models.ai_product_recommendation import AIProductRecommendation
 from app.services.stt_service import stt_service
 from app.db.models.ai_shopping_session import AIShoppingSession
+from app.services.ai_observability_service import (
+    ai_observability_service
+)
 
 
 class AIService:
@@ -426,7 +429,7 @@ class AIService:
         # COMMIT
         # =====================================================
         
-
+            await db.commit()
 
             latency_ms = (
                 time.perf_counter() - start_time
@@ -442,7 +445,7 @@ class AIService:
             
             )
 
-            await db.commit()
+            
 
         # =====================================================
         # FINAL RESPONSE
