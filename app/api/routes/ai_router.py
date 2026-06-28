@@ -70,25 +70,25 @@ GET MY CONVERSATIONS
 
 @router.get("/conversations")
 async def get_my_conversations(
-request: Request,
-db: AsyncSession = Depends(get_db),
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
 
-user_id = request.state.user["id"]
+    user_id = request.state.user["id"]
 
-stmt = (
-    select(AIConversation)
-    .where(
-        AIConversation.user_id == user_id
+    stmt = (
+        select(AIConversation)
+        .where(
+            AIConversation.user_id == user_id
+        )
+        .order_by(
+            AIConversation.created_at.desc()
+        )
     )
-    .order_by(
-        AIConversation.created_at.desc()
-    )
-)
 
-result = await db.execute(stmt)
+    result = await db.execute(stmt)
 
-return result.scalars().all()
+    return result.scalars().all()
 
 =====================================================
 
@@ -98,29 +98,29 @@ GET SINGLE CONVERSATION
 
 @router.get("/conversation/{conversation_id}")
 async def get_conversation_detail(
-conversation_id: str,
-request: Request,
-db: AsyncSession = Depends(get_db),
+    conversation_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
 
-conversation = await ai_logger.get_conversation(
-    db=db,
-    conversation_id=conversation_id,
-)
-
-if not conversation:
-    raise HTTPException(
-        status_code=404,
-        detail="Conversation not found"
+    conversation = await     ai_logger.get_conversation(
+        db=db,
+        conversation_id=conversation_id,
     )
 
-if conversation.user_id != request.state.user["id"]:
-    raise HTTPException(
-        status_code=403,
-        detail="Access denied"
-    )
+    if not conversation:
+        raise HTTPException(
+            status_code=404,
+           detail="Conversation not found"
+        )
 
-return conversation
+    if conversation.user_id !=    request.state.user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied"
+        )
+
+    return conversation
 
 =====================================================
 
@@ -130,41 +130,41 @@ GET MESSAGES
 
 @router.get("/messages/{conversation_id}")
 async def get_messages(
-conversation_id: str,
-request: Request,
-db: AsyncSession = Depends(get_db),
+    conversation_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
 
-conversation = await ai_logger.get_conversation(
-    db=db,
-    conversation_id=conversation_id,
-)
-
-if not conversation:
-    raise HTTPException(
-        status_code=404,
-        detail="Conversation not found"
+    conversation = await    ai_logger.get_conversation(
+        db=db,
+        conversation_id=conversation_id,
     )
 
-if conversation.user_id != request.state.user["id"]:
-    raise HTTPException(
-        status_code=403,
-        detail="Access denied"
+    if not conversation:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found"
+        )
+
+    if conversation.user_id !=     request.state.user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied"
+        )
+
+    stmt = (
+        select(AIMessage)
+        .where(
+            AIMessage.conversation_id == conversation_id
+        )
+        .order_by(
+            AIMessage.created_at.asc()
+        )
     )
 
-stmt = (
-    select(AIMessage)
-    .where(
-        AIMessage.conversation_id == conversation_id
-    )
-    .order_by(
-        AIMessage.created_at.asc()
-    )
-)
+    result = await db.execute(stmt)
 
-result = await db.execute(stmt)
-
-return result.scalars().all()
+    return result.scalars().all()
 
 =====================================================
 
@@ -174,38 +174,38 @@ DELETE CONVERSATION
 
 @router.delete("/conversation/{conversation_id}")
 async def delete_conversation(
-conversation_id: str,
-request: Request,
-db: AsyncSession = Depends(get_db),
+    conversation_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
 
-conversation = await ai_logger.get_conversation(
-    db=db,
-    conversation_id=conversation_id,
-)
-
-if not conversation:
-    raise HTTPException(
-        status_code=404,
-        detail="Conversation not found"
+    conversation = await    ai_logger.get_conversation(
+        db=db,
+        conversation_id=conversation_id,
     )
 
-if conversation.user_id != request.state.user["id"]:
-    raise HTTPException(
-        status_code=403,
-        detail="Access denied"
-    )
+    if not conversation:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found"
+        )
+
+    if conversation.user_id !=    request.state.user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied"
+        )
 
 await ai_logger.delete_conversation(
-    db=db,
-    conversation_id=conversation_id,
-)
+        db=db,
+        conversation_id=conversation_id,
+    )
 
-await db.commit()
+    await db.commit()
 
-return {
-    "success": True
-}
+    return {
+        "success": True
+    }
 
 =====================================================
 
@@ -215,20 +215,20 @@ CLEAR MY HISTORY
 
 @router.delete("/history")
 async def clear_user_history(
-request: Request,
-db: AsyncSession = Depends(get_db),
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
 
-await ai_logger.clear_user_history(
-    db=db,
-    user_id=request.state.user["id"],
-)
+    await ai_logger.clear_user_history(
+        db=db,
+        user_id=request.state.user["id"],
+    )
 
-await db.commit()
+    await db.commit()
 
-return {
-    "success": True
-}
+    return {
+        "success": True
+    }
 
 =====================================================
 
