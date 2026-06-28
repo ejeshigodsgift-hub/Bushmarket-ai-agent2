@@ -23,6 +23,9 @@ from app.db.models.ai_shopping_session import AIShoppingSession
 from app.services.ai_observability_service import (
     ai_observability_service
 )
+from app.services.product_recommendation_service import (
+    product_recommendation_service
+)
 
 
 class AIService:
@@ -429,7 +432,7 @@ class AIService:
         # COMMIT
         # =====================================================
         
-            await db.commit()
+            
 
             latency_ms = (
                 time.perf_counter() - start_time
@@ -445,7 +448,7 @@ class AIService:
             
             )
 
-            
+            await db.commit()
 
         # =====================================================
         # FINAL RESPONSE
@@ -458,6 +461,8 @@ class AIService:
             }
 
         except Exception as e:
+            
+            await db.rollback()
 
             await ai_observability_service.log_request(
                 db=db,
