@@ -285,24 +285,44 @@ RECOMMENDATION ADD TO CART TRACKING
 
 @router.post("/recommendations/cart")
 async def add_to_cart_recommendation(
-payload: RecommendationActionRequest,
-db: AsyncSession = Depends(get_db),
+    payload: RecommendationActionRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
 
-rec = await db.get(
-    AIProductRecommendation,
-    payload.recommendation_id,
-)
+    rec = await db.get(
+        AIProductRecommendation,
+        payload.recommendation_id,
+    )
 
-if rec:
+    if not rec:
+        raise HTTPException(
+            status_code=404,
+            detail="Recommendation not found"
+        )
+
+    conversation = await ai_logger.get_conversation(
+        db=db,
+        conversation_id=rec.conversation_id
+    )
+
+    if (
+        not conversation
+        or conversation.user_id != request.state.user["id"]
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied"
+        )
+
     await recommendation_learning_service.process_add_to_cart(
         db,
         rec
     )
 
-await db.commit()
+    await db.commit()
 
-return {"status": "ok"}
+    return {"status": "ok"}
 =====================================================
 
 RECOMMENDATION PURCHASE TRACKING
@@ -311,21 +331,41 @@ RECOMMENDATION PURCHASE TRACKING
 
 @router.post("/recommendations/purchase")
 async def purchase_recommendation(
-payload: RecommendationActionRequest,
-db: AsyncSession = Depends(get_db),
+    payload: RecommendationActionRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
 
-rec = await db.get(
-    AIProductRecommendation,
-    payload.recommendation_id,
-)
+    rec = await db.get(
+        AIProductRecommendation,
+        payload.recommendation_id,
+    )
 
-if rec:
+    if not rec:
+        raise HTTPException(
+            status_code=404,
+            detail="Recommendation not found"
+        )
+
+    conversation = await ai_logger.get_conversation(
+        db=db,
+        conversation_id=rec.conversation_id
+    )
+
+    if (
+        not conversation
+        or conversation.user_id != request.state.user["id"]
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied"
+        )
+
     await recommendation_learning_service.process_purchase(
         db,
         rec
     )
 
-await db.commit()
+    await db.commit()
 
-return {"status": "ok"}
+    return {"status": "ok"}
