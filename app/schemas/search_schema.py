@@ -8,12 +8,17 @@ class SearchRequest(BaseModel):
     limit: int = 20
 
 
+class MarketInfo(BaseModel):
+    id: str
+    name: str
+
+
 class SearchResultItem(BaseModel):
     listing_id: str
     product_name: str
     image_url: Optional[str]
     unit_price: float
-    market_name: str
+    market: MarketInfo
     availability: int
 
 
