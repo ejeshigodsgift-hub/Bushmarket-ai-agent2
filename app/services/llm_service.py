@@ -147,13 +147,20 @@ Create an updated conversation summary.
         completion_tokens =   usage.completion_tokens
         total_tokens = usage.total_tokens
 
+        estimated_cost = (
+            prompt_tokens * 0.00000015
+        ) + (
+            completion_tokens * 0.00000060
+        )
+
         
 
         return {
             "summary": response.choices[0].message.content.strip(),
             "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens
+            "completion_tokens":    completion_tokens,
+            "total_tokens": total_tokens,
+            "estimated_cost": estimated_cost
         }
 
 
