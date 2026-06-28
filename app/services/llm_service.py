@@ -96,38 +96,38 @@ class LLMService:
     # =====================================================
     # CONVERSATION SUMMARIZER
     # =====================================================
-    def summarize_conversation(
+    async def summarize_conversation(
         self,
         existing_summary: str,
         messages: list[dict]
     ):
 
-        response = self.client.chat.completions.create(
+        response = await self.client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "You summarize conversations. "
+                        "You summarize   conversations. "
                         "Keep important user preferences, "
                         "shopping interests, products discussed, "
                         "cooperative activities, decisions made, "
                         "agent requests, checkout actions, and "
                         "important context needed for future chats. "
-                        "Return only the updated summary."
+                        "Return only the   updated summary."
                     )
                 },
                 {
                     "role": "user",
                     "content": f"""
-EXISTING SUMMARY:
-{existing_summary}
+    EXISTING SUMMARY:
+    {existing_summary}
 
-NEW MESSAGES:
-{json.dumps(messages, ensure_ascii=False)}
+    NEW MESSAGES:
+    {json.dumps(messages,     ensure_ascii=False)}
 
-Create an updated conversation summary.
-"""
+    Create an updated conversation summary.
+    """
                 }
             ]
         )
@@ -135,7 +135,7 @@ Create an updated conversation summary.
         usage = response.usage
 
         prompt_tokens = usage.prompt_tokens
-        completion_tokens =   usage.completion_tokens
+        completion_tokens = usage.completion_tokens
         total_tokens = usage.total_tokens
 
         estimated_cost = (
@@ -144,12 +144,10 @@ Create an updated conversation summary.
             completion_tokens * 0.00000060
         )
 
-        
-
         return {
             "summary": response.choices[0].message.content.strip(),
             "prompt_tokens": prompt_tokens,
-            "completion_tokens":    completion_tokens,
+            "completion_tokens":  completion_tokens,
             "total_tokens": total_tokens,
             "estimated_cost": estimated_cost
         }
