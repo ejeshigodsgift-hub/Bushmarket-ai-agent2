@@ -464,15 +464,19 @@ class AIService:
             
             await db.rollback()
 
-            await ai_observability_service.log_request(
-                db=db,
-                operation="chat",
-                user_id=user_id,
+            try:
+
+                await ai_observability_service.log_request(
+                    db=db,
+                    operation="chat",
+                    user_id=user_id,
                 conversation_id=conversation_id,
-                status="failed",
-                error_message=str(e)
-            )
-            await db.commit()
+                    status="failed",
+                    error_message=str(e)
+                )
+                await db.commit()
+            except Exception:
+                pass
             raise
 
 
