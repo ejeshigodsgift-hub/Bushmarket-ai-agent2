@@ -36,6 +36,34 @@ class IdempotencyService:
         result = await db.execute(stmt)
         return result.scalar_one_or_none() is not None
 
+
+    
+    # =========================================
+    # COMPATIBILITY HELPERS
+    # =========================================
+
+    async def exists(
+        self,
+        db: AsyncSession,
+        key: str
+    ) -> bool:
+        return await self.is_processed(
+            db=db,
+            key=key
+        )
+
+    async def record(
+        self,
+        db: AsyncSession,
+        key: str
+    ):
+        return await self.mark_processed(
+            db=db,
+            key=key,
+            reference=key,
+            action="generic"
+        )
+
     # =========================================
     # MARK AS PROCESSED
     # =========================================
