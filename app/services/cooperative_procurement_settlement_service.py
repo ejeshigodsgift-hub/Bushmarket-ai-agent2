@@ -179,6 +179,8 @@ class CooperativeProcurementSettlementService:
             }
         )
 
+        await db.commit()
+
         return {
             "status": "success",
             "cooperative_id": cooperative_id,
