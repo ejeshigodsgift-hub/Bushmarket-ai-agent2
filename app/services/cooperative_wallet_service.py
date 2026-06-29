@@ -211,16 +211,22 @@ class CooperativeWalletService:
     # =========================================================
     
 
-    async def _trigger_milestone(self,  db, cooperative, milestone: str, message:  str):
+    async def _trigger_milestone(
+        self,
+        db: AsyncSession,
+        cooperative: Cooperative,
+        milestone: str,
+        message: str
+    ):
         existing = await db.execute(
             select(MilestoneEvent).where(
-                MilestoneEvent.cooperative_id == cooperative.id,
+                MilestoneEvent.cooperative_id ==  cooperative.id,
                 MilestoneEvent.milestone == milestone
             )
         )
 
         if existing.scalar_one_or_none():
-            return  # already triggered
+            return
 
         event = MilestoneEvent(
             cooperative_id=cooperative.id,
@@ -229,19 +235,31 @@ class CooperativeWalletService:
 
         db.add(event)
 
-        await self._notify(cooperative,  message)
+        await self._notify(
+            db=db,
+            cooperative=cooperative,
+            message=message
+        )
+
+
+
+
             
-    async def _notify(self, cooperative: Cooperative, message: str):
+    async def _notify(
+        self,
+        db: AsyncSession,
+        cooperative: Cooperative,
+        message: str
+    ):
 
         await outbox_service.queue_event(
-            db=None,
+            db=db,
             topic="cooperative.notification",
             payload={
                 "cooperative_id": cooperative.id,
                 "message": message
             }
         )
-
     # =========================================================
     # 10. REFUND ORCHESTRATION (NOT EXECUTION)
     # =========================================================
