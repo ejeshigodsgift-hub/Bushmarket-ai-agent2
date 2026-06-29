@@ -116,9 +116,7 @@ async def transition(
         }
     )
 
-    await db.commit()
-    await db.refresh(cooperative)
-
+    
     return cooperative
 
 cooperative_state_service = CooperativeStateService()
