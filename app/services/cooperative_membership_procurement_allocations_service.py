@@ -101,7 +101,7 @@ class CooperativeMembershipProcurementAllocationService:
         if remaining > 0:
             allocations[0].allocated_quantity +=  remaining
 
-        await db.commit()
+        await db.flush()
 
         return allocations
 
