@@ -96,8 +96,12 @@ class CooperativeFundingService:
         if cooperative.status == "funded":
             return True
 
-        cooperative.status = "funded"
-        cooperative.funded_at = datetime.now(timezone.utc)
+        await cooperative_state_service.transition(
+            db=db,
+            cooperative=cooperative,
+            new_state="funded",
+            reason="funding target reached"
+        )
 
         await outbox_service.queue_event(
             db=db,
