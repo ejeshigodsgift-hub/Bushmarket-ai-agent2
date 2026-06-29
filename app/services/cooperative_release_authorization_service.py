@@ -76,7 +76,10 @@ class CooperativeReleaseAuthorizationService:
         # STEP 2: FINANCIAL EXECUTION
         # ================================
 
-        reference = f"COOP-RELEASE-{procurement.id}-{datetime.utcnow().timestamp()}"
+        reference = (
+            f"COOP-RELEASE-{procurement.id}-"
+    f"{datetime.now(timezone.utc).timestamp()}"
+        )
 
         escrow_id = cooperative.id  # (or real escrow_account_id if you have one)
 
