@@ -2,6 +2,9 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.cooperative_membership_service import (
+    CooperativeMembershipService
+)
 
 from app.services.outbox_service import outbox_service
 from app.services.audit_service import AuditService
@@ -66,6 +69,15 @@ class CooperativePaymentService:
                 "membership_id": membership_id,
                 "payment_reference": payment_reference
             }
+        )
+
+
+        membership_service =  CooperativeMembershipService()
+
+        await membership_service.activate_membership(
+            db=db,
+            membership_id=membership_id,
+            payment_reference=payment_reference
         )
 
         await db.commit()
