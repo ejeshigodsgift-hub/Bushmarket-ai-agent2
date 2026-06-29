@@ -5,6 +5,13 @@ from fastapi import (
     HTTPException
 )
 
+from pydantic import BaseModel
+
+from app.services.wallet_payment_service import (
+    wallet_payment_service
+)
+
+
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -61,4 +68,32 @@ async def checkout(
         "checkout_id": checkout.id,
         "total": str(checkout.total),
         "expires_at": checkout.expires_at.isoformat()
+    }
+
+
+@router.post("/pay-with-wallet")
+async def pay_with_wallet(
+    payload: WalletPaymentRequest,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = request.state.user
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized"
+        )
+
+    result = await wallet_payment_service.pay_order_with_wallet(
+        db=db,
+        user_id=user["id"],
+        order_id=payload.order_id,
+        wallet_id=payload.wallet_id,
+        reference=f"WALLET-ORDER-{payload.order_id}"
+    )
+
+    return {
+        "status": "success",
+        "data": result
     }
