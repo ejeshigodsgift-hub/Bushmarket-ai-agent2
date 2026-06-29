@@ -139,6 +139,10 @@ class CooperativeDecisionService:
             }
         )
 
+        await db.commit()
+        await db.refresh(cooperative)
+
+
         return cooperative
 
 
