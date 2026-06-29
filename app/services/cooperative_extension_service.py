@@ -34,6 +34,9 @@ class CooperativeExtensionService:
         settings = await db.scalar(
             select(PlatformSettings).where(
                 PlatformSettings.is_active == True
+            )
+        )
+
 
         if not settings:
             raise ValueError("Platform settings not configured")
