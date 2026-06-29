@@ -52,11 +52,22 @@ class CooperativeMergeVotingService:
             await db.commit()
             return "EXPIRED"
 
+        existing_vote = await db.execute(
+            select(CooperativeMergeVote).where(
+             CooperativeMergeVote.proposal_id == proposal_id,
+                CooperativeMergeVote.member_id == member_id
+            )
+        )
+
+        if existing_vote.scalar_one_or_none():
+            raise ValueError("Already voted")
+
         vote_obj = CooperativeMergeVote(
             proposal_id=proposal_id,
             member_id=member_id,
             vote=vote
         )
+
 
         db.add(vote_obj)
 
