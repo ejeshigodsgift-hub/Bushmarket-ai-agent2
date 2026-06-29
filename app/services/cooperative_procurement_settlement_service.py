@@ -1,6 +1,7 @@
 from decimal import Decimal
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.db.models.cooperative import Cooperative
 from app.db.models.financial_transaction import FinancialTransaction
