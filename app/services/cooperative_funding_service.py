@@ -114,6 +114,9 @@ class CooperativeFundingService:
                 "current_members": cooperative.current_members
             }
         )
+        
+        await db.commit()
+        await db.refresh(cooperative)
 
         return True
 
