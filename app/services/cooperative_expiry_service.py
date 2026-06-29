@@ -70,12 +70,7 @@ class CooperativeExpiryService:
                     cooperative=coop
                 )
 
-                opened += 1
-
-        await db.commit()
-
-        return opened
-
+                
             
             
             # =================================================
