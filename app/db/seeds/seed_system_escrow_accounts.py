@@ -24,7 +24,8 @@ async def seed_system_escrow_accounts(db):
     db.add(
         EscrowAccount(
             cooperative_id=MARKETPLACE_COOPERATIVE_ID,
-            status="active"
+            type="marketplace",
+            status="active"            
         )
     )
 
