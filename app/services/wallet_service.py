@@ -109,6 +109,32 @@ class WalletService:
 
         return wallet
 
+
+
+    async def get_wallet_for_update(
+        self,
+        db: AsyncSession,
+        wallet_id: str
+    ):
+
+        stmt = (
+            select(Wallet)
+            .where(Wallet.id == wallet_id)
+            .with_for_update()
+        )
+
+        result = await db.execute(stmt)
+
+        wallet = result.scalar_one_or_none()
+
+        if not wallet:
+            raise HTTPException(
+                404,
+                "Wallet not found"
+            )
+
+        return wallet
+
     # =====================================================
     # BALANCE QUERY
     # =====================================================
@@ -150,7 +176,10 @@ class WalletService:
         if amount <= 0:
             raise HTTPException(400, "Invalid amount")
 
-        wallet = await self.get_wallet(db, wallet_id)
+        wallet = await self.get_wallet_for_update(
+            db,
+            wallet_id
+        )
 
         # 1. CREDIT WALLET (SOURCE OF TRUTH UPDATE)
         wallet.balance += amount
@@ -208,7 +237,10 @@ class WalletService:
 
         await idempotency_service.ensure(db=db, key=reference)
 
-        wallet = await self.get_wallet(db, wallet_id)
+        wallet = await  self.get_wallet_for_update(
+            db,
+            wallet_id
+        )
 
         if wallet.balance < amount:
             raise HTTPException(400, "Insufficient balance")
