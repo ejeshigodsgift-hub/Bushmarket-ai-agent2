@@ -145,104 +145,109 @@ class PaymentWebhookService:
         if existing_tx.scalar_one_or_none():
             return {"message": "Already processed"}
 
+
+
         # =========================================
         # 3. UPDATE PAYMENT INTENT
         # =========================================
-        intent.status = "successful"
 
-        # record transaction FIRST
-        payment_tx = await  self.payment_service.record_transaction(
-            db=db,
-            intent_id=intent.id,
-            gateway=gateway,
-            amount=amount,
-             gateway_reference=payment_reference,
-            status="successful"
-        )
+        async with db.begin():
+
+            intent.status = "successful"
+
+            # record transaction FIRST
+            payment_tx = await  self.payment_service.record_transaction(
+                db=db,
+                intent_id=intent.id,
+                gateway=gateway,
+                amount=amount,
+              gateway_reference=payment_reference,
+                status="successful"
+            )
 
 
 
         # =========================================
         # 4. ROUTE BASED ON PURPOSE
         # =========================================
-        if intent.purpose == "wallet_topup":
+            if intent.purpose == "wallet_topup":
 
-            await self._handle_wallet_topup(
-                db=db,
-                intent=intent,
+                await self._handle_wallet_topup(
+                    db=db,
+                    intent=intent,
                 reference=payment_reference,
-                amount=amount
-            )
+                    amount=amount
+                )
 
-        elif intent.purpose == "cooperative_membership":
+            elif intent.purpose == "cooperative_membership":
 
-            await self._handle_cooperative_membership(
-                db=db,
-                intent=intent,
+                await self._handle_cooperative_membership(
+                    db=db,
+                    intent=intent,
                 reference=payment_reference,
-                amount=amount
-            )
+                    amount=amount
+                )
 
-        elif intent.purpose == "escrow_fund":
+            elif intent.purpose ==  "escrow_fund":
 
-            await self._handle_escrow_fund(
-                db=db,
-                intent=intent,
+                await self._handle_escrow_fund(
+                    db=db,
+                    intent=intent,
                 reference=payment_reference,
-                amount=amount
-            )
+                    amount=amount
+                )
 
-        elif intent.purpose == "order":
+            elif intent.purpose == "order":
 
-            await self._handle_order_payment(
-                db=db,
-                intent=intent,
+                await self._handle_order_payment(
+                    db=db,
+                    intent=intent,
                 reference=payment_reference,
-                amount=amount
-            )
+                    amount=amount
+                )
 
         # =========================================
         # 5. AUDIT LOG
         # =========================================
-        await self.audit.log(
-            db=db,
-            user_id=user_id,
-            action="payment_webhook_success",
-            entity_type="payment",
-            entity_id=intent.id,
-            metadata={
-                "reference": payment_reference,
-                "amount": amount,
-                "purpose": intent.purpose
-            },
-            reference=payment_reference,
-            amount=amount
-        )
+            await self.audit.log(
+                db=db,
+                user_id=user_id,
+             action="payment_webhook_success",
+                entity_type="payment",
+                entity_id=intent.id,
+                metadata={
+                    "reference": payment_reference,
+                    "amount": amount,
+                    "purpose": intent.purpose
+                },
+                reference=payment_reference,
+                amount=amount
+            )
 
         # =========================================
         # 6. OUTBOX EVENT
         # =========================================
-        await outbox_service.queue_event(
-            db=db,
+            await outbox_service.queue_event(
+                db=db,
             topic="payment.webhook.successful",
-            payload={
-                "intent_id": intent.id,
-                "reference": payment_reference,
-                "purpose": intent.purpose,
-                "amount": amount
-            }
-        )
+                payload={
+                    "intent_id": intent.id,
+                    "reference": payment_reference,
+                    "purpose": intent.purpose,
+                    "amount": amount
+                }
+            )
 
         
-        await  self.idempotency_service.mark_processed(
-            db=db,
-            key=payment_reference
-        )
+            await  self.idempotency_service.mark_processed(
+                db=db,
+                key=payment_reference
+            )
 
 
 
         
-        return {"status": "processed"}
+            return {"status": "processed"}
 
         
 
@@ -446,7 +451,7 @@ class PaymentWebhookService:
                 "order_number": order.order_number,
                 "user_id": order.user_id,
                 "reference": reference,
-                "amount": amount
+                "amount": str(amount)
             }
         )
 
