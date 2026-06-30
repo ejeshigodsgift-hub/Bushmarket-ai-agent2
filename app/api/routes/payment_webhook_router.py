@@ -25,6 +25,16 @@ async def paystack_webhook(
         payload = await request.json()
         event = payload.get("event")
 
+        signature = request.headers.get(
+            "x-paystack-signature"
+        )
+
+        if not signature:
+            raise HTTPException(
+                401,
+                "Missing webhook signature"
+            )
+
         if event != "charge.success":
             return {"status": "ignored"}
 
@@ -85,12 +95,16 @@ async def paystack_webhook(
         # =========================================
         # BUSINESS LOGIC
         # =========================================
-        await payment_webhook_service.handle_payment_success(
+        signature = request.headers.get("x-paystack-signature")
+
+        await  payment_webhook_service.handle_payment_su ccess(
             db=db,
             payment_reference=reference,
             gateway="paystack",
-            amount=float(amount),
-            user_id=intent.user_id
+            amount=amount,
+            user_id=intent.user_id,
+            payload=payload,
+            signature=signature
         )
 
         # =========================================
