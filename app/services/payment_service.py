@@ -178,3 +178,6 @@ class PaymentService:
         
 
         return True
+
+
+payment_service = PaymentService()
