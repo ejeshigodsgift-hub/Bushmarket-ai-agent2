@@ -97,9 +97,7 @@ async def pay_with_wallet(
         reference=f"WALLET-ORDER-{payload.order_id}"
     )
 
-    return 
-        {
-            "status": "success",
-            "order_id": result.id
-        }
+    return {
+        "status": "success",
+        "order_id": result.id
     }
