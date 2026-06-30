@@ -217,7 +217,7 @@ class PaymentWebhookService:
                 entity_id=intent.id,
                 metadata={
                     "reference": payment_reference,
-                    "amount": amount,
+                    "amount": str(amount),
                     "purpose": intent.purpose
                 },
                 reference=payment_reference,
@@ -234,7 +234,7 @@ class PaymentWebhookService:
                     "intent_id": intent.id,
                     "reference": payment_reference,
                     "purpose": intent.purpose,
-                    "amount": amount
+                    "amount": str(amount)
                 }
             )
 
@@ -463,7 +463,7 @@ class PaymentWebhookService:
                 "intent_id": intent.id,
                 "user_id": intent.user_id,
                 "reference": reference,
-                "amount": amount
+                "amount": str(amount)
             }
         )
 
