@@ -3,6 +3,7 @@ from decimal import Decimal
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.db.models.ledger_account import LedgerAccount
 
 from app.db.models.wallet import Wallet
 from app.db.models.payment_intent import PaymentIntent
@@ -48,6 +49,27 @@ class WalletService:
         )
 
         db.add(wallet)
+
+
+        await db.flush()
+
+        existing_ledger = await db.execute(
+            select(LedgerAccount).where(
+                LedgerAccount.user_id == user_id,
+                LedgerAccount.account_type == "wallet"
+            )
+        )
+
+        if not  existing_ledger.scalar_one_or_none():
+
+            db.add(
+                LedgerAccount(
+                    user_id=user_id,
+                    account_type="wallet",
+                    currency=currency,
+                    is_active=True
+                )
+            )
 
         await self.audit.log(
             db=db,
