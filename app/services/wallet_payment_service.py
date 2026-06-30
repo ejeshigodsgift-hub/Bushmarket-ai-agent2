@@ -4,6 +4,7 @@ from decimal import Decimal
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.payment_service import payment_service
 
 from app.db.models.wallet import Wallet
 from app.db.models.order import Order
@@ -11,7 +12,7 @@ from app.db.models.checkout import Checkout
 from app.db.models.escrow_account import EscrowAccount
 
 from app.db.seeds.system_cooperatives import (
-MARKETPLACE_COOPERATIVE_ID,
+MARKETPLeACE_COOPERATIVE_ID,
 )
 
 from app.services.financial_core_service import (
@@ -153,6 +154,22 @@ async def pay_order_with_wallet(
             400,
             "Insufficient wallet balance"
         )
+
+    # =====================================
+# PAYMENT INTENT
+# =====================================
+
+
+
+    await   payment_service.create_payment_intent(
+        db=db,
+        user_id=user_id,
+        amount=float(amount),
+        purpose="wallet_order",
+        reference=reference,
+        checkout_id=order.checkout_id,
+        order_id=order.id
+    )
 
     # =====================================
     # ESCROW
