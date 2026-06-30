@@ -71,11 +71,16 @@ async def checkout(
     }
 
 
+
+class WalletPaymentRequest(BaseModel):
+    order_id: str
+    wallet_id: str
+
 @router.post("/pay-with-wallet")
 async def pay_with_wallet(
     payload: WalletPaymentRequest,
     request: Request,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     user = request.state.user
 
@@ -93,7 +98,9 @@ async def pay_with_wallet(
         reference=f"WALLET-ORDER-{payload.order_id}"
     )
 
-    return {
-        "status": "success",
-        "data": result
+    return 
+        {
+            "status": "success",
+            "order_id": result.id
+        }
     }
