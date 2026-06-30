@@ -233,36 +233,37 @@ class WalletService:
 
         await idempotency_service.ensure(db=db, key=reference)
 
-        wallet = await  self.get_wallet_for_update(
-            db,
-            wallet_id
-        )
+        async with db.begin():
 
-        if wallet.balance < amount:
-            raise HTTPException(400, "Insufficient balance")
+            wallet = await self.get_wallet_for_update(
+                db,
+                wallet_id
+            )
 
-        # Reserve funds (not yet deducted permanently)
-        wallet.balance -= amount
-        wallet.version += 1
+            if wallet.balance < amount:
+                raise HTTPException(400, "Insufficient balance")
 
-        await self.audit.log(
-            db=db,
-            user_id=wallet.user_id,
-            action="wallet_withdrawal_requested",
-            entity_type="wallet",
-            entity_id=wallet.id,
-            reference=reference,
-            amount=float(amount)
-        )
+            wallet.balance -= amount
+            wallet.version += 1
 
-        await outbox_service.queue_event(
-            db=db,
-            topic="wallet.withdrawal.requested",
-            payload={
-                "wallet_id": wallet.id,
-                "amount": str(amount),
-                "reference": reference
-            }
-        )
+            await self.audit.log(
+                db=db,
+                user_id=wallet.user_id,
+          action="wallet_withdrawal_requested",
+                entity_type="wallet",
+                entity_id=wallet.id,
+                reference=reference,
+                amount=str(amount)
+            )
+
+            await outbox_service.queue_event(
+                db=db,
+         topic="wallet.withdrawal.requested",
+                payload={
+                    "wallet_id": wallet.id,
+                    "amount": str(amount),
+                    "reference": reference
+                }
+            )
 
         return wallet
