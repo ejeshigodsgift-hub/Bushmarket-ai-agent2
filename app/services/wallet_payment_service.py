@@ -186,7 +186,7 @@ async def pay_order_with_wallet(
 # ESCROW DEPOSIT
 # =====================================
 
-await self.financial_core.escrow_deposit(
+    await self.financial_core.escrow_deposit(
     db=db,
     escrow_id=escrow.id,
     amount=amount,
@@ -195,32 +195,7 @@ await self.financial_core.escrow_deposit(
     credit_ledger_account=escrow_ledger.id
 )
 
-    # =====================================
-    # WALLET DEBIT
-    # =====================================
-
-    await self.financial_core.wallet_debit(
-        db=db,
-        wallet_id=wallet.id,
-        amount=amount,
-        reference=f"{reference}-WALLET",
-        debit_ledger_account="wallet_liability",
-        credit_ledger_account="marketplace_escrow"
-    )
-
-    # =====================================
-    # ESCROW DEPOSIT
-    # =====================================
-
-    await self.financial_core.escrow_deposit(
-        db=db,
-        escrow_id=escrow.id,
-        amount=amount,
-        reference=f"{reference}-ESCROW",
-        debit_ledger_account="marketplace_escrow",
-        credit_ledger_account="escrow_liability"
-    )
-
+    
     # =====================================
     # ORDER UPDATE
     # =====================================
