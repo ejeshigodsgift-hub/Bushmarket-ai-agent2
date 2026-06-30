@@ -20,6 +20,7 @@ FinancialCoreService
 
 from app.services.audit_service import AuditService
 from app.services.outbox_service import outbox_service
+from app.db.models.ledger_account import LedgerAccount
 
 class WalletPaymentService:
 
@@ -48,6 +49,42 @@ async def _get_marketplace_escrow(
         )
 
     return escrow
+
+
+
+async def _get_ledger_account(
+    self,
+    db: AsyncSession,
+    account_type: str,
+    user_id: str | None = None,
+    cooperative_id: str | None = None
+):
+    stmt = select(LedgerAccount).where(
+        LedgerAccount.account_type == account_type
+    )
+
+    if user_id:
+        stmt = stmt.where(
+            LedgerAccount.user_id == user_id
+        )
+
+    if cooperative_id:
+        stmt = stmt.where(
+            LedgerAccount.cooperative_id == cooperative_id
+        )
+
+    result = await db.execute(stmt)
+
+    account = result.scalar_one_or_none()
+
+    if not account:
+        raise HTTPException(
+            404,
+            f"{account_type} ledger account not found"
+        )
+
+    return account
+
 
 async def pay_order_with_wallet(
     self,
@@ -108,9 +145,55 @@ async def pay_order_with_wallet(
     # ESCROW
     # =====================================
 
+    # =====================================
+# ESCROW
+# =====================================
+
     escrow = await self._get_marketplace_escrow(
         db
     )
+
+# =====================================
+# LEDGER ACCOUNTS
+# =====================================
+
+    wallet_ledger = await   self._get_ledger_account(
+        db=db,
+        account_type="wallet",
+        user_id=user_id
+    )
+
+    escrow_ledger = await  self._get_ledger_account(
+        db=db,
+        account_type="escrow",
+      cooperative_id=MARKETPLACE_COOPERATIVE_ID
+    )
+
+# =====================================
+# WALLET DEBIT
+# =====================================
+
+    await self.financial_core.wallet_debit(
+        db=db,
+        wallet_id=wallet.id,
+        amount=amount,
+        reference=f"{reference}-WALLET",
+      debit_ledger_account=wallet_ledger.id,
+     credit_ledger_account=escrow_ledger.id
+    )
+
+# =====================================
+# ESCROW DEPOSIT
+# =====================================
+
+await self.financial_core.escrow_deposit(
+    db=db,
+    escrow_id=escrow.id,
+    amount=amount,
+    reference=f"{reference}-ESCROW",
+    debit_ledger_account=wallet_ledger.id,
+    credit_ledger_account=escrow_ledger.id
+)
 
     # =====================================
     # WALLET DEBIT
