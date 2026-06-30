@@ -136,3 +136,22 @@ async def payment_intent(db_session):
     await db_session.refresh(intent)
 
     return intent
+
+
+@pytest_asyncio.fixture
+async def user(db_session):
+
+    user = User(
+        id=str(uuid.uuid4()),
+        full_name="Test User",
+        email="test@example.com",
+        phone="08012345678",
+        password_hash=hash_password("password")
+    )
+
+    db_session.add(user)
+
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    return user
