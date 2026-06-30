@@ -176,51 +176,47 @@ class WalletService:
         if amount <= 0:
             raise HTTPException(400, "Invalid amount")
 
-        wallet = await self.get_wallet_for_update(
-            db,
-            wallet_id
-        )
+        async with db.begin():
 
-        # 1. CREDIT WALLET (SOURCE OF TRUTH UPDATE)
-        wallet.balance += amount
-        wallet.version += 1
+            wallet = await  self.get_wallet_for_update(
+                db,
+                wallet_id
+            )
 
-        # 2. LEDGER POSTING (MANDATORY DOUBLE ENTRY)
-        await self.financial_core._post_double_entry(
-            db=db,
-            debit_account_id=ledger_debit_account,
-            credit_account_id=ledger_credit_account,
-            amount=amount,
-            reference=reference,
-            description="Wallet Top-up"
-        )
+            wallet.balance += amount
+            wallet.version += 1
 
-        # 3. AUDIT LOG
-        await self.audit.log(
-            db=db,
-            user_id=user_id,
-            action="wallet_topup",
-            entity_type="wallet",
-            entity_id=wallet.id,
-            reference=reference,
-            amount=float(amount),
-            metadata={"amount": str(amount)}
-        )
+            await  self.financial_core._post_double_entry(
+                db=db,
+         debit_account_id=ledger_debit_account,
+         credit_account_id=ledger_credit_account,
+                amount=amount,
+                reference=reference,
+                description="Wallet Top-up"
+            )
 
-        # 4. OUTBOX EVENT
-        await outbox_service.queue_event(
-            db=db,
-            topic="wallet.topup.completed",
-            payload={
-                "wallet_id": wallet.id,
-                "user_id": user_id,
-                "amount": str(amount),
-                "reference": reference
-            }
-        )
+            await self.audit.log(
+                db=db,
+                user_id=user_id,
+                action="wallet_topup",
+                entity_type="wallet",
+                entity_id=wallet.id,
+                reference=reference,
+                amount=str(amount),
+                metadata={"amount": str(amount)}
+            )
 
-        return wallet
-
+            await outbox_service.queue_event(
+                db=db,
+                topic="wallet.topup.completed",
+                payload={
+                    "wallet_id": wallet.id,
+                    "user_id": user_id,
+                    "amount": str(amount),
+                    "reference": reference
+                }
+            )
+            return wallet
     # =====================================================
     # WALLET WITHDRAWAL (PREPARATION PHASE)
     # =====================================================
