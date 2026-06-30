@@ -6,6 +6,7 @@ from fastapi import (
 )
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from pydantic import BaseModel
 
