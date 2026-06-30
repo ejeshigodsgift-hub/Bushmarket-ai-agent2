@@ -5,6 +5,9 @@ from app.core.config import settings
 from app.integrations.kafka_client import event_bus
 
 from app.api.routes.ai import router as ai_router
+from app.db.session import SessionLocal
+from app.db.init_db import init_db
+
 
 # =========================
 # AUTH ROUTES
