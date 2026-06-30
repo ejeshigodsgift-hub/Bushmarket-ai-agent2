@@ -99,11 +99,13 @@ async def pay_order_with_wallet(
     # ORDER
     # =====================================
 
-    order = await db.get(
-        Order,
-        order_id,
-        with_for_update=True
+    result = await db.execute(
+        select(Order)
+        .where(Order.id == order_id)
+        .with_for_update()
     )
+
+    order = result.scalar_one_or_none()
 
     if not order:
         raise HTTPException(
