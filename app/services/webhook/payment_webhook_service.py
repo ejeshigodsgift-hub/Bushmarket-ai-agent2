@@ -70,9 +70,27 @@ class PaymentWebhookService:
         db: AsyncSession,
         payment_reference: str,
         gateway: str,
-        amount: float,
-        user_id: str
+        amount: Decimal,
+        user_id: str,
+        payload: dict,
+        signature: str
     ):
+
+        # =========================================
+# WEBHOOK SIGNATURE VERIFICATION
+# =========================================
+
+        is_valid = await  self.payment_service.verify_signature(
+            gateway=gateway,
+            payload=payload,
+            signature=signature
+        )
+
+        if not is_valid:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid webhook    signature"
+            )
 
 
         already_processed = await self.idempotency_service.is_processed(
@@ -107,7 +125,7 @@ class PaymentWebhookService:
         if not intent:
             raise HTTPException(404, "Payment intent not found")
 
-        if Decimal(str(amount)) != intent.amount:  
+        if amount != intent.amount:
             raise HTTPException(  
                 400,  
                 "Payment amount mismatch"  
@@ -236,7 +254,7 @@ class PaymentWebhookService:
         db: AsyncSession,
         intent: PaymentIntent,
         reference: str,
-        amount: float
+        amount: Decimal
     ):
 
 
@@ -271,7 +289,7 @@ class PaymentWebhookService:
         db: AsyncSession,
         intent: PaymentIntent,
         reference: str,
-        amount: float
+        amount: Decimal
     ):
         """
         Gateway → Escrow ONLY
@@ -301,7 +319,7 @@ class PaymentWebhookService:
         db: AsyncSession,
         intent: PaymentIntent,
         reference: str,
-        amount: float
+        amount: Decimal
     ):
         """
         Direct escrow funding for orders or marketplace holds
@@ -332,7 +350,7 @@ class PaymentWebhookService:
         db: AsyncSession,
         intent: PaymentIntent,
         reference: str,
-        amount: float
+        amount: Decimal
     ):
         """
         Gateway → Order fulfillment flow (Bushmarket standard)
