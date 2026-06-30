@@ -78,6 +78,9 @@ async def startup():
 
     await event_bus.start()
 
+    async with SessionLocal() as db:
+        await init_db(db)
+
 
 @app.on_event("shutdown")
 async def shutdown():
