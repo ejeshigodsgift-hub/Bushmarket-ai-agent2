@@ -25,6 +25,21 @@ class Wallet(Base):
     __table_args__ = (
         Index("idx_wallet_user", "user_id"),
         Index("idx_wallet_coop", "cooperative_id"),
+
+        CheckConstraint(
+            "balance >= 0",
+         name="ck_wallet_balance_non_negative"
+        ),
+
+        CheckConstraint(
+            "escrow_balance >= 0",
+         name="ck_wallet_escrow_non_negative"
+        ),
+
+        CheckConstraint(
+            "ledger_balance >= 0",
+         name="ck_wallet_ledger_non_negative"
+        ),
     )
 
     id: Mapped[str] = mapped_column(
