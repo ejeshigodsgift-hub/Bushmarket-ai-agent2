@@ -196,7 +196,7 @@ class HoldService:
             entity_type="escrow",
             entity_id=escrow.id,
             reference=reference,
-            amount=float(amount)
+            amount=Decimal(amount)
         )
 
         return escrow
