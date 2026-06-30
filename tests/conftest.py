@@ -1,7 +1,10 @@
 import uuid
 from decimal import Decimal
+from unittest.mock import AsyncMock
 
 import pytest
+import pytest_asyncio
+
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
     AsyncSession,
@@ -10,7 +13,6 @@ from sqlalchemy.ext.asyncio import (
 
 from app.db.base import Base
 from app.db.models.wallet import Wallet
-
 
 # ==========================================
 # TEST DATABASE
@@ -32,9 +34,10 @@ TestingSessionLocal = async_sessionmaker(
 
 # ==========================================
 # DB SESSION FIXTURE
-# ==========================================
+# =========================================
 
-@pytest.fixture
+
+@pytest_asyncio.fixture
 async def db_session():
 
     async with engine.begin() as conn:
@@ -51,7 +54,7 @@ async def db_session():
 # WALLET FIXTURE
 # ==========================================
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def wallet(db_session):
 
     wallet = Wallet(
@@ -70,3 +73,45 @@ async def wallet(db_session):
     await db_session.refresh(wallet)
 
     return wallet
+
+
+
+@pytest.fixture
+def mock_idempotency_service():
+    service = AsyncMock()
+    service.is_processed.return_value = False
+    service.mark_processed.return_value = None
+    return service
+
+
+@pytest.fixture
+def mock_payment_service():
+    service = AsyncMock()
+    service.record_transaction.return_value = AsyncMock(
+        id="tx1"
+    )
+    return service
+
+
+@pytest.fixture
+def mock_financial_core():
+    service = AsyncMock()
+
+    service.escrow_deposit.return_value = None
+    service.credit_wallet.return_value = None
+
+    return service
+
+
+@pytest.fixture
+def mock_audit_service():
+    service = AsyncMock()
+    service.log.return_value = None
+    return service
+
+
+@pytest.fixture
+def mock_outbox_service():
+    service = AsyncMock()
+    service.queue_event.return_value = None
+    return service
