@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
+from app.db.models.payment_intent import PaymentIntent
 
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
@@ -115,3 +116,23 @@ def mock_outbox_service():
     service = AsyncMock()
     service.queue_event.return_value = None
     return service
+
+
+@pytest_asyncio.fixture
+async def payment_intent(db_session):
+
+    intent = PaymentIntent(
+        id=str(uuid.uuid4()),
+        user_id=str(uuid.uuid4()),
+        reference="test-payment-ref",
+        amount=Decimal("1000.00"),
+        purpose="wallet_topup",
+        status="pending"
+    )
+
+    db_session.add(intent)
+
+    await db_session.commit()
+    await db_session.refresh(intent)
+
+    return intent
