@@ -99,7 +99,11 @@ async def pay_order_with_wallet(
     # ORDER
     # =====================================
 
-    order = await db.get(Order, order_id)
+    order = await db.get(
+        Order,
+        order_id,
+        with_for_update=True
+    )
 
     if not order:
         raise HTTPException(
@@ -140,6 +144,13 @@ async def pay_order_with_wallet(
     amount = Decimal(
         str(order.total_amount)
     )
+
+
+    if wallet.balance < amount:
+        raise HTTPException(
+            400,
+            "Insufficient wallet balance"
+        )
 
     # =====================================
     # ESCROW
@@ -257,6 +268,9 @@ async def pay_order_with_wallet(
     )
 
     await db.flush()
+
+    await db.commit()
+    await db.refresh(order)
 
     return order
 
