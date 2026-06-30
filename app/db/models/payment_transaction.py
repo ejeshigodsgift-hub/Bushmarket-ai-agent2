@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import (
     String,
@@ -54,7 +55,7 @@ class PaymentTransaction(Base):
         index=True
     )
 
-    amount: Mapped[float] = mapped_column(
+    amount: Mapped[Decimal] = mapped_column(
         Numeric(18, 2),
         nullable=False
     )
