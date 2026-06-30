@@ -27,9 +27,23 @@ async def test_signup_success(
 async def test_signup_duplicate_email(
     db_session
 ):
-    await auth_service.signup(...)
+    await auth_service.signup(
+        db=db_session,
+        data={
+            "full_name": "John Doe",
+            "email": "john@test.com",
+            "password": "secret123"
+        }
+    )
 
-    result = await auth_service.signup(...)
+    result = await auth_service.signup(
+        db=db_session,
+        data={
+            "full_name": "John Doe",
+            "email": "john@test.com",
+            "password": "secret123"
+        }
+    )
 
     assert result is None
 
