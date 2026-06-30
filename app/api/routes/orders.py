@@ -41,14 +41,15 @@ async def checkout(
             detail="Unauthorized"
         )
 
-    cart = (
-        db.query(Cart)
-        .filter(
+    result = await db.execute(
+        select(Cart).where(
             Cart.user_id == user["id"],
             Cart.status == "active"
         )
-        .first()
     )
+
+    cart = result.scalar_one_or_none()
+
 
     if not cart:
         raise HTTPException(
