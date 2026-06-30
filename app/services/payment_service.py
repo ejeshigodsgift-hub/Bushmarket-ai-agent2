@@ -5,6 +5,7 @@ from app.db.models.payment_intent import PaymentIntent
 from app.db.models.payment_transaction import PaymentTransaction
 
 from app.services.outbox_service import outbox_service
+from decimal import Decimal
 
 
 class PaymentService:
@@ -19,7 +20,7 @@ class PaymentService:
         self,
         db: AsyncSession,
         user_id: str,
-        amount: float,
+        amount: Decimal,
         purpose: str,
         reference: str,
         currency: str = "NGN",
@@ -46,15 +47,15 @@ class PaymentService:
             payload={
                 "intent_id": intent.id,
                 "user_id": user_id,
-                "amount": amount,
+                "amount": str(amount),
                 "purpose": purpose,
                 "checkout_id":  checkout_id,
                 "order_id": order_id
             }
         )
 
-        await db.commit()
-        await db.refresh(intent)
+        # await db.commit()
+        # await db.refresh(intent)
 
         return intent
 
