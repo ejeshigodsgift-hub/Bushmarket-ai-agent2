@@ -5,14 +5,13 @@ from fastapi import (
     HTTPException
 )
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from pydantic import BaseModel
 
 from app.services.wallet_payment_service import (
     wallet_payment_service
 )
-
-
-from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.db.models.cart import Cart
@@ -31,7 +30,7 @@ checkout_service = CheckoutService()
 @router.post("/checkout")
 async def checkout(
     request: Request,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
 
     user = request.state.user
