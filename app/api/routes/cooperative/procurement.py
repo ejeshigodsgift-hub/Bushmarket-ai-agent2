@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException
 
 from app.db.session import get_db
+from decimal import Decimal
 
 from app.services.cooperative_full_procurement_service import (
     CooperativeFullProcurementService
@@ -35,18 +37,21 @@ async def create_full_procurement(
         payload["listing_id"]
     )
 
-    if not listing:
-        return {
-            "status": "listing_not_found"
-        }
+    
 
+    raise HTTPException(
+        status_code=404,
+        detail="Listing not found"
+)
     return await service.create_full_procurement(
         db=db,
         cooperative_id=payload["cooperative_id"],
         listing=listing,
         quantity=payload["quantity"],
-        total_cost=payload["total_cost"]
-    )
+        total_cost=Decimal(
+            str(payload["total_cost"])
+        )
+    
 
 
 @router.post("/complete/{procurement_id}")
