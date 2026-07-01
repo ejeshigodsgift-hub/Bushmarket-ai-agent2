@@ -4,6 +4,7 @@ from app.services.financial_transaction_service import (
     financial_transaction_service
 )
 
+
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -857,5 +858,71 @@ class FinancialCoreService:
         )
 
         return escrow
+
+
+
+     #. GET COOPERATIVE ESCROW
+
+    async def get_cooperative_escrow(
+        self,
+        db: AsyncSession,
+        cooperative_id: str
+    ) -> EscrowAccount:
+
+        result = await db.execute(
+            select(EscrowAccount).where(
+                EscrowAccount.cooperative_id ==     cooperative_id
+            )
+        )
+
+        escrow = result.scalar_one_or_none()
+
+        if not escrow:
+            raise HTTPException(
+                status_code=404,
+                detail="Cooperative escrow account not found"
+            )
+
+        if escrow.is_frozen:
+            raise HTTPException(
+                400,
+                "Escrow account is frozen"
+            )
+
+        if escrow.status != "active":
+            raise HTTPException(
+                400,
+                "Escrow account is not active"
+            )
+
+        return escrow
+
+
+
+    # Reserve FOR PARTIAL PROCUREMENT
+
+    async def  reserve_for_partial_procurement(
+        self,
+        db: AsyncSession,
+        cooperative_id: str,
+        amount: Decimal,
+        reference: str,
+        reserved_ledger_account: str,
+        available_ledger_account: str
+    ):
+
+        escrow = await     self.get_cooperative_escrow(
+            db=db,
+            cooperative_id=cooperative_id
+        )
+
+        return await self.escrow_hold(
+            db=db,
+            escrow_id=escrow.id,
+            amount=amount,
+            reference=reference,
+         reserved_ledger_account=reserved_ledger_account,
+         available_ledger_account=available_ledger_account
+    )
 
 
