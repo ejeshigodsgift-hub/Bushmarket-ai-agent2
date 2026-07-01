@@ -48,7 +48,7 @@ async def cast_vote(
     return await service.cast_vote(
         db=db,
         proposal_id=payload["proposal_id"],
-        member_id=payload["member_id"],
+        member_id=user["id"],
         vote=payload["vote"]
     )
 
