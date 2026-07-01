@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
+from fastapi import APIRouter, Depends, Request
 
 from app.db.session import get_db
 
@@ -39,8 +40,11 @@ async def create_proposal(
 @router.post("/vote")
 async def cast_vote(
     payload: dict,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
+    user = request.state.user
+      
     return await service.cast_vote(
         db=db,
         proposal_id=payload["proposal_id"],
