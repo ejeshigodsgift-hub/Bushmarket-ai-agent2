@@ -3,6 +3,7 @@ from fastapi import FastAPI
 
 from app.core.config import settings
 from app.integrations.kafka_client import event_bus
+from app.api.routes.metrics import router as metrics_router
 
 from app.api.routes.ai import router as ai_router
 from app.db.session import SessionLocal
@@ -124,6 +125,9 @@ app.include_router(orders_router)
 
 # AI
 app.include_router(ai_router)
+
+# Metric
+app.include_router(metrics_router, prefix="/api")
 
 
 # =====================================================
