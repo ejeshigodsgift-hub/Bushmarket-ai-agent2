@@ -39,10 +39,11 @@ async def create_full_procurement(
 
     
 
-    raise HTTPException(
-        status_code=404,
-        detail="Listing not found"
-)
+    if not listing:
+        raise HTTPException(
+            status_code=404,
+            detail="Listing not found"
+        )
     return await service.create_full_procurement(
         db=db,
         cooperative_id=payload["cooperative_id"],
@@ -51,6 +52,7 @@ async def create_full_procurement(
         total_cost=Decimal(
             str(payload["total_cost"])
         )
+    )
     
 
 
