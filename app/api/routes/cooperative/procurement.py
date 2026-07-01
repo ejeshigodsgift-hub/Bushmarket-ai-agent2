@@ -7,6 +7,15 @@ from app.services.cooperative_full_procurement_service import (
     CooperativeFullProcurementService
 )
 
+from app.db.models.market_product_listing import (
+    MarketProductListing
+)
+
+from app.db.models.cooperative_procurement import (
+    CooperativeProcurement
+)
+
+
 router = APIRouter(
     prefix="/cooperative/procurement",
     tags=["Cooperative Procurement"]
@@ -20,10 +29,21 @@ async def create_full_procurement(
     payload: dict,
     db: AsyncSession = Depends(get_db)
 ):
+
+    listing = await db.get(
+        MarketProductListing,
+        payload["listing_id"]
+    )
+
+    if not listing:
+        return {
+            "status": "listing_not_found"
+        }
+
     return await service.create_full_procurement(
         db=db,
         cooperative_id=payload["cooperative_id"],
-        listing=payload["listing"],
+        listing=listing,
         quantity=payload["quantity"],
         total_cost=payload["total_cost"]
     )
@@ -34,13 +54,16 @@ async def complete_procurement(
     procurement_id: str,
     db: AsyncSession = Depends(get_db)
 ):
+
     procurement = await db.get(
-        service.__annotations__.get(
-            "CooperativeProcurement",
-            object
-        ),
+        CooperativeProcurement,
         procurement_id
     )
+
+    if not procurement:
+        return {
+            "status": "procurement_not_found"
+        }
 
     return await service.complete_procurement(
         db=db,
