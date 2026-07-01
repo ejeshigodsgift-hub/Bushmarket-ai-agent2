@@ -331,23 +331,33 @@ class PaymentWebhookService:
         amount: Decimal
     ):
         """
-        Gateway → Escrow ONLY
-        Activation happens AFTER validation
+        Gateway → Cooperative Escrow
+        Membership activation happens later
         """
 
         escrow_account = await self._get_escrow_account(
-                db,
-                intent.cooperative_id
-            )
+            db,
+            intent.cooperative_id
+        )
 
-        if not escrow_account:
-            raise HTTPException(400, "Cooperative escrow missing")
+        escrow_ledger_id = await self.financial_core.get_ledger_account_id(
+            db=db,
+            account_type="escrow",
+        cooperative_id=escrow_account.cooperative_id
+        )
+
+        platform_ledger_id = await self.financial_core.get_ledger_account_id(
+            db=db,
+            account_type="platform"
+        )
 
         await self.financial_core.escrow_deposit(
             db=db,
             escrow_id=escrow_account.id,
             amount=amount,
-            reference=reference
+           reference=f"{reference}-membership",
+        debit_ledger_account=escrow_ledger_id,
+        credit_ledger_account=platform_ledger_id
         )
 
     # =====================================================
