@@ -15,8 +15,13 @@ from app.services.cooperative_state_service import (
 )
 from app.services.audit_service import AuditService
 
-from app.integrations.financial_core import financial_core
+from app.services.financial_core_service import (
+    financial_core_service,
+)
 
+from app.services.cooperative_partial_procurement_service import (
+    cooperative_partial_procurement_service,
+)
 
 class CooperativeEngine:
 
@@ -248,7 +253,8 @@ class CooperativeEngine:
             reason="partial procurement initiated",
         )
 
-        escrow = await financial_core.get_cooperative_escrow(
+        escrow = await financial_core_service.get_cooperative_escrow(
+            db=db,
             cooperative_id=coop.id,
         )
 
@@ -265,15 +271,20 @@ class CooperativeEngine:
 
             return coop
 
-        await financial_core.reserve_for_partial_procurement(
+        await financial_core_service.reserve_for_partia  l_procurement(
+            db=db,
             cooperative_id=coop.id,
             amount=available,
+    reference=f"partial-procurement-{coop.id}",
+    reserved_ledger_account="PROCUREMENT_RESERVED",
+    available_ledger_account="COOPERATIVE_AVAILABLE",
         )
 
-        await financial_core.create_partial_order(
+        await cooperative_partial_procurement_service.c reate_partial_order(
+            db=db,
             cooperative_id=coop.id,
-            amount=available,
-            mode="partial",
+            listing_id=listing_id,
+    requested_quantity=requested_quantity,
         )
 
         return coop
