@@ -177,3 +177,13 @@ user_id=current_user.id
 )
 
 
+@router.post("/activate/{membership_id}")
+async def activate_membership(
+    membership_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    return await cooperative_membership_service.activate_membership(
+        db=db,
+        membership_id=membership_id
+    )
+
