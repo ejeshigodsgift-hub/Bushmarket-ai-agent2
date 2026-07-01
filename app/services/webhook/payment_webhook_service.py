@@ -10,6 +10,10 @@ from app.db.seeds.system_cooperatives import (
 from app.db.models.order import Order
 from app.services.inventory_service import InventoryService
 from app.db.models.checkout import Checkout
+from app.monitoring.metrics import (
+    payment_success_total,
+    webhook_received_total
+)
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -91,6 +95,8 @@ class PaymentWebhookService:
                 status_code=401,
                 detail="Invalid webhook    signature"
             )
+
+        webhook_received_total.inc()
 
 
         already_processed = await self.idempotency_service.is_processed(
@@ -245,7 +251,7 @@ class PaymentWebhookService:
             )
 
 
-
+            payment_success_total.inc()
         
             return {"status": "processed"}
 
