@@ -11,6 +11,21 @@ from app.db.init_db import init_db
 from app.api.routes.cooperatives import (
     router as cooperatives_router
 )
+from app.api.routes.cooperative.membership import (
+    router as cooperative_membership_router
+)
+
+from app.api.routes.cooperative.voting import (
+    router as cooperative_voting_router
+)
+
+from app.api.routes.cooperative.procurement import (
+    router as cooperative_procurement_router
+)
+
+from app.api.routes.cooperative.extension_requests import (
+    router as cooperative_extension_router
+)
 
 
 # =========================
