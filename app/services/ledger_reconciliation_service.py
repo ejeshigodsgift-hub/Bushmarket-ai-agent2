@@ -50,20 +50,48 @@ class LedgerReconciliationService:
 
         for r in rows:
 
-            ledger_balance = Decimal(r.ledger_balance or 0)
+            ledger_balance =    Decimal(r.ledger_balance or 0)
 
-            ok.append({
-                "wallet_account_id": r.id,
-                "user_id": r.user_id,
-                "ledger_balance": str(ledger_balance)
-            })
+            wallet_result = await db.execute(
+                select(Wallet).where(
+                    Wallet.user_id == r.user_id
+                )
+            )
+
+            wallet =  wallet_result.scalar_one_or_none()
+
+            wallet_balance = (
+                wallet.ledger_balance
+                if wallet
+                else Decimal("0")
+            )
+
+            if wallet_balance != ledger_balance:
+
+                mismatches.append({
+                    "wallet_account_id": r.id,
+                    "user_id": r.user_id,
+                    "wallet_balance": str(wallet_balance),
+                    "ledger_balance": str(ledger_balance),
+                    "difference": str(
+                        wallet_balance -  ledger_balance
+                    )
+                })
+
+            else:
+
+                ok.append({
+                    "wallet_account_id": r.id,
+                    "user_id": r.user_id,
+                    "wallet_balance": str(wallet_balance),
+                    "ledger_balance": str(ledger_balance)
+                })
 
         return {
             "total_wallet_accounts": len(rows),
             "ok": ok,
             "mismatches": mismatches
         }
-
     # =====================================================
     # ESCROW RECONCILIATION
     # =====================================================
@@ -94,11 +122,49 @@ class LedgerReconciliationService:
 
             ledger_balance = Decimal(r.ledger_balance or 0)
 
-            ok.append({
-                "escrow_account_id": r.id,
-                "cooperative_id": r.cooperative_id,
-                "ledger_balance": str(ledger_balance)
-            })
+            escrow_result = await db.execute(
+                select(EscrowAccount).where(
+                    EscrowAccount.cooperative_id
+                    == r.cooperative_id
+                )
+            )
+
+            escrow = escrow_result.scalar_one_or_none()
+
+            escrow_balance = (
+                escrow.ledger_balance
+                if escrow
+                else Decimal("0")
+            )
+
+            if escrow_balance != ledger_balance:
+
+                mismatches.append({
+                    "escrow_account_id": r.id,
+                    "cooperative_id": r.cooperative_id,
+                    "escrow_balance": str(
+                        escrow_balance
+                    ),
+                    "ledger_balance": str(
+                        ledger_balance
+                    ),
+                    "difference": str(
+                        escrow_balance - ledger_balance
+                    )
+                })
+
+            else:
+
+                ok.append({
+                    "escrow_account_id": r.id,
+                    "cooperative_id": r.cooperative_id,
+                    "escrow_balance": str(
+                        escrow_balance
+                    ),
+                    "ledger_balance": str(
+                        ledger_balance
+                    )
+                })
 
         return {
             "total_escrow_accounts": len(rows),
@@ -233,6 +299,13 @@ class LedgerReconciliationService:
 
         ledger_total = Decimal(ledger_total_result.scalar() or 0)
 
+        has_mismatch = (
+            len(wallets["mismatches"]) > 0
+            or
+            len(escrows["mismatches"]) > 0
+            or
+            integrity["mismatched"] > 0
+        )
 
         await self.persist_reconciliation_result(
             db=db,
@@ -242,6 +315,7 @@ class LedgerReconciliationService:
             expected=ledger_total,
             actual=ledger_total,  # or external system snapshot if available
             metadata={
+                "has_mismatch": has_mismatch,
                 "wallets": wallets,
                 "escrows": escrows,
                 "integrity": integrity
