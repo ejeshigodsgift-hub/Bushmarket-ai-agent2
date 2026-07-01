@@ -8,6 +8,9 @@ from app.api.routes.metrics import router as metrics_router
 from app.api.routes.ai import router as ai_router
 from app.db.session import SessionLocal
 from app.db.init_db import init_db
+from app.api.routes.cooperatives import (
+    router as cooperatives_router
+)
 
 
 # =========================
@@ -107,6 +110,9 @@ app.include_router(auth_router)
 
 # USERS
 app.include_router(users_router)
+
+# COOPERATIVES
+app.include_router(cooperatives_router)
 
 # ADMIN
 app.include_router(admin_router)
