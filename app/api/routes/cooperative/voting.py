@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException
 
 from app.db.session import get_db
 
@@ -66,9 +67,10 @@ async def evaluate_votes(
     proposal = result.scalar_one_or_none()
 
     if not proposal:
-        return {
-            "status": "proposal_not_found"
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Proposal not found"
+        )
 
     return await service.evaluate_votes(
         db=db,
