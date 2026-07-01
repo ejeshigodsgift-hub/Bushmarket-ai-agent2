@@ -129,6 +129,22 @@ app.include_router(users_router)
 # COOPERATIVES
 app.include_router(cooperatives_router)
 
+app.include_router(
+    cooperative_membership_router
+)
+
+app.include_router(
+    cooperative_voting_router
+)
+
+app.include_router(
+    cooperative_procurement_router
+)
+
+app.include_router(
+    cooperative_extension_router
+)
+
 # ADMIN
 app.include_router(admin_router)
 
