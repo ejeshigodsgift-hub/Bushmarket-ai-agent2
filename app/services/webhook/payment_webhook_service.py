@@ -267,31 +267,59 @@ class PaymentWebhookService:
         reference: str,
         amount: Decimal
     ):
+        escrow_account = await    self._get_escrow_account(
+            db,
+            WALLET_COOPERATIVE_ID
+        )
 
-
-            escrow_account = await self._get_escrow_account(
-                db,
-                WALLET_COOPERATIVE_ID
+        wallet = (
+            await db.execute(
+                select(Wallet).where(
+                    Wallet.user_id ==     intent.user_id
+                )
             )
-            if not escrow_account:
-                raise HTTPException(400,  "Escrow account missing")
+        ).scalar_one_or_none()
 
-            # 3. ESCROW DEPOSIT
-            await self.financial_core.escrow_deposit(
-                db=db,
-                escrow_id=escrow_account.id,
-                amount=amount,
-                reference=reference
-            )
-
-            # 4. WALLET CREDIT
-            await self.financial_core.credit_wallet(
-                db=db,
-                user_id=intent.user_id,
-                amount=amount,
-                reference=reference
+        if not wallet:
+            raise HTTPException(
+                404,
+                "Wallet not found"
             )
 
+        escrow_ledger_id = await self.financial_core.get_ledger_account_id(
+            db=db,
+            account_type="escrow",
+        cooperative_id=escrow_account.cooperative_id
+        )
+
+        wallet_ledger_id = await self.financial_core.get_ledger_account_id(
+            db=db,
+            account_type="wallet",
+            user_id=intent.user_id
+        )
+
+        platform_ledger_id = await self.financial_core.get_ledger_account_id(
+            db=db,
+            account_type="platform"
+        )
+
+        await self.financial_core.escrow_deposit(
+            db=db,
+            escrow_id=escrow_account.id,
+            amount=amount,
+            reference=f"{reference}-escrow",
+         debit_ledger_account=escrow_ledger_id,
+        credit_ledger_account=platform_ledger_id
+        )
+
+        await self.financial_core.wallet_credit(
+            db=db,
+            wallet_id=wallet.id,
+            amount=amount,
+            reference=f"{reference}-wallet",
+        debit_ledger_account=platform_ledger_id,
+        credit_ledger_account=wallet_ledger_id
+        )
     # =====================================================
     # COOPERATIVE MEMBERSHIP FLOW
     # =====================================================
@@ -344,13 +372,25 @@ class PaymentWebhookService:
         if not escrow_account:
             raise HTTPException(400, "Escrow not found")
 
+        escrow_ledger_id = await self.financial_core.get_ledger_account_id(
+            db=db,
+            account_type="escrow",
+    cooperative_id=escrow_account.cooperative_id
+        )
+
+        platform_ledger_id = await self.financial_core.get_ledger_account_id(
+            db=db,
+            account_type="platform"
+        )
+
         await self.financial_core.escrow_deposit(
             db=db,
             escrow_id=escrow_account.id,
             amount=amount,
-            reference=reference
-        )
-
+            reference=reference,
+    debit_ledger_account=escrow_ledger_id,
+    credit_ledger_account=platform_ledger_id
+)
 
 
     # =====================================================
@@ -428,6 +468,8 @@ class PaymentWebhookService:
         checkout.completed_at = datetime.now(timezone.utc)
 
     # 7. ESCROW HOLD (FINAL SETTLEMENT STEP)
+        # 7. ESCROW DEPOSIT
+
         escrow_account = await self._get_escrow_account(
             db,
             MARKETPLACE_COOPERATIVE_ID
@@ -439,12 +481,26 @@ class PaymentWebhookService:
                 detail="Escrow account not found"
             )
 
+        escrow_ledger_id = await self.financial_core.get_ledger_account_id(
+            db=db,
+            account_type="escrow",
+    cooperative_id=escrow_account.cooperative_id
+        )
+
+        platform_ledger_id = await self.financial_core.get_ledger_account_id(
+            db=db,
+            account_type="platform"
+        )
+
         await self.financial_core.escrow_deposit(
             db=db,
             escrow_id=escrow_account.id,
             amount=amount,
-            reference=reference
+            reference=f"{reference}-escrow",
+    debit_ledger_account=escrow_ledger_id,
+    credit_ledger_account=platform_ledger_id
         )
+
 
     # 8. EMIT EVENTS
         await db.flush()
