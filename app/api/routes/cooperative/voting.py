@@ -1,9 +1,15 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+
 from app.services.cooperative_partial_voting_service import (
     CooperativePartialVotingService
+)
+
+from app.db.models.cooperative_partial_procurement_proposal import (
+    CooperativePartialProcurementProposal
 )
 
 router = APIRouter(
@@ -47,7 +53,24 @@ async def evaluate_votes(
     proposal_id: str,
     db: AsyncSession = Depends(get_db)
 ):
+
+    result = await db.execute(
+        select(
+            CooperativePartialProcurementProposal
+        ).where(
+            CooperativePartialProcurementProposal.id
+            == proposal_id
+        )
+    )
+
+    proposal = result.scalar_one_or_none()
+
+    if not proposal:
+        return {
+            "status": "proposal_not_found"
+        }
+
     return await service.evaluate_votes(
         db=db,
-        proposal_id=proposal_id
+        proposal=proposal
     )
