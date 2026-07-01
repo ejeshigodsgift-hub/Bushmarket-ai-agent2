@@ -42,6 +42,44 @@ class FinancialCoreService:
     async def _lock_ledger(self, db: AsyncSession, account_id: str):
         stmt = select(LedgerAccount).where(LedgerAccount.id == account_id).with_for_update()
         return (await db.execute(stmt)).scalar_one()
+    
+
+    async def get_ledger_account_id(
+        self,
+        db: AsyncSession,
+        account_type: str,
+        cooperative_id: str | None = None,
+        user_id: str | None = None
+) -> str:
+
+        stmt = select(LedgerAccount).where(
+            LedgerAccount.account_type == account_type,
+            LedgerAccount.is_active == True
+        )
+
+        if cooperative_id:
+            stmt = stmt.where(
+                LedgerAccount.cooperative_id == cooperative_id
+            )
+
+        if user_id:
+            stmt = stmt.where(
+                LedgerAccount.user_id == user_id
+            )
+
+        result = await db.execute(stmt)
+
+        account = result.scalar_one_or_none()
+
+        if not account:
+            raise HTTPException(
+                404,
+                f"Ledger account not found: {account_type}"
+            )
+
+        return account.id
+
+
 
     # =========================================================
     # DOUBLE ENTRY CORE ENGINE (ATOMIC POSTING)
