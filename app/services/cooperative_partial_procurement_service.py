@@ -19,6 +19,12 @@ from app.db.models.cooperative_contribution import (
 )
 
 
+from fastapi import HTTPException
+
+from app.db.models.cooperative_member import (
+    CooperativeMember
+)
+
 class CooperativePartialProcurementService(
     ProcurementBaseService
 ):
@@ -154,3 +160,63 @@ class CooperativePartialProcurementService(
         await db.commit()
 
         return procurement
+
+
+
+
+    async def create_partial_order(
+        self,
+        db: AsyncSession,
+        cooperative_id: str,
+        listing_id: str,
+        requested_quantity: int,
+    ):
+
+        listing = await db.get(
+            MarketProductListing,
+            listing_id
+       )
+
+        if not listing:
+            raise HTTPException(
+                404,
+                "Listing not found"
+            )
+
+        available_quantity = (
+            listing.inventory.available_stock
+        )
+
+        if available_quantity <= 0:
+            raise HTTPException(
+                400,
+                "No stock available"
+            )
+
+        member_result = await db.execute(
+            select(
+            func.count(CooperativeMember.id)
+            ).where(
+            CooperativeMember.cooperative_id
+                == cooperative_id
+            )
+        )
+
+        member_count = (
+            member_result.scalar() or 0
+        )
+
+        total_cost = (
+            listing.unit_price
+            * requested_quantity
+        )
+
+        return await self.create_partial_procurement(
+            db=db,
+            cooperative_id=cooperative_id,
+            listing=listing,
+        requested_quantity=requested_quantity,
+        available_quantity=available_quantity,
+            member_count=member_count,
+            total_cost=total_cost
+        )
