@@ -2,6 +2,9 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
+from app.db.models.wallet import Wallet
+from app.db.models.escrow_account import EscrowAccount
+
 from app.db.models.financial_reconciliation import FinancialReconciliation  
 
 from datetime import datetime
