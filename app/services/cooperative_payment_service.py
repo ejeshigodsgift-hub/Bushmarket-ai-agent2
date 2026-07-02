@@ -77,13 +77,8 @@ class CooperativePaymentService:
         )
 
 
-        membership_service =  CooperativeMembershipService()
-
-        await membership_service.activate_membership(
-            db=db,
-            membership_id=membership_id,
-            payment_reference=payment_reference
-        )
+        # Membership activation is handled by PaymentWebhookService.
+# This method only emits cooperative payment events.
 
         await db.commit()
 
