@@ -62,6 +62,23 @@ class CooperativeMergeVotingService:
         if existing_vote.scalar_one_or_none():
             raise ValueError("Already voted")
 
+
+        membership = await db.get(
+            CooperativeMembership,
+            member_id
+        )
+
+        if membership.expiry_decision_type:
+            raise ValueError(
+                "Member already voted in expiry decision"
+            )
+
+        membership.expiry_decision_type = "merge"
+        membership.expiry_decision_voted_at = datetime.now(
+            timezone.utc
+        )
+
+
         vote_obj = CooperativeMergeVote(
             proposal_id=proposal_id,
             member_id=member_id,
@@ -87,6 +104,9 @@ class CooperativeMergeVotingService:
             db=db,
             proposal_id=proposal_id
         )
+
+
+
 
     async def evaluate(
         self,
