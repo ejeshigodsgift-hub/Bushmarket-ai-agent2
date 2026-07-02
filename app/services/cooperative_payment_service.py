@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +10,9 @@ from app.services.cooperative_membership_service import (
 from app.services.outbox_service import outbox_service
 from app.services.audit_service import AuditService
 
-from app.integrations.financial_core import financial_core
+from app.services.payment_service import PaymentService
+
+payment_service = PaymentService()
 
 
 class CooperativePaymentService:
@@ -25,16 +28,18 @@ class CooperativePaymentService:
         db: AsyncSession,
         membership_id: str,
         user_id: str,
-        amount: float,
+        amount: Decimal,
         cooperative_id: str
     ):
 
         # send to financial core
-        payment_intent = await financial_core.create_payment_intent(
+        payment_intent = await payment_service.create_payment_intent(
+            db=db,
             user_id=user_id,
             amount=amount,
             purpose="cooperative_membership",
-            reference=f"coop_mem_{membership_id}"
+     reference=f"coop_mem_{membership_id}",
+            cooperative_id=cooperative_id,
         )
 
         await outbox_service.queue_event(
