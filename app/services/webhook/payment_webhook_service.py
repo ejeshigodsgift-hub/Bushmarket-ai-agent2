@@ -14,6 +14,10 @@ from app.monitoring.metrics import (
     payment_success_total,
     webhook_received_total
 )
+from app.services.cooperative_membership_service import (
+    CooperativeMembershipService
+)
+from app.db.models.cooperative_membership import CooperativeMembership
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -358,6 +362,25 @@ class PaymentWebhookService:
            reference=f"{reference}-membership",
         debit_ledger_account=escrow_ledger_id,
         credit_ledger_account=platform_ledger_id
+        )
+
+        membership = await db.get(
+            CooperativeMembership,
+            intent.membership_id
+        )
+
+        if membership:
+            membership.payment_status = "paid"
+            membership.payment_reference = reference
+
+
+
+        membership_service = CooperativeMembershipService()
+
+        await membership_service.activate_membership(
+            db=db,
+            membership_id=intent.membership_id,
+            payment_reference=reference,
         )
 
     # =====================================================
