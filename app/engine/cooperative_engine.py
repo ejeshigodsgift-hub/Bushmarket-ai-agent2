@@ -222,6 +222,10 @@ class CooperativeEngine:
         db: AsyncSession,
         coop,
     ):
+   
+        
+
+        
 
         if coop.allow_extension:
 
@@ -303,6 +307,10 @@ class CooperativeEngine:
         cooperative_id: str,
         user_id: str,
     ):
+
+          # I USED RETURN COOP TO MAKE CODE BELOW UNREASONABLE
+
+        return coop
 
         coop = await cooperative_service.get_cooperative(
             db,
