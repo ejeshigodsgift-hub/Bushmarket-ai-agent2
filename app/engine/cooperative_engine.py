@@ -246,6 +246,10 @@ class CooperativeEngine:
         coop,
     ):
 
+       # I RETURN COOP TO MAKE TRIGGERS   BELOW  UNREACHABLE
+
+        return coop
+
         await cooperative_state_service.transition(
             db=db,
             cooperative=coop,
