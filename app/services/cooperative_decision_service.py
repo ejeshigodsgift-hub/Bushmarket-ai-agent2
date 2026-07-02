@@ -10,6 +10,24 @@ from app.services.outbox_service import (
     outbox_service
 )
 
+from sqlalchemy import select, func
+
+from app.db.models.cooperative_membership import (
+    CooperativeMembership
+)
+
+from app.db.models.cooperative_extension_vote import (
+    CooperativeExtensionVote
+)
+
+from app.db.models.cooperative_partial_vote import (
+    CooperativePartialVote
+)
+
+from app.db.models.cooperative_merge_vote import (
+    CooperativeMergeVote
+)
+
 
 class CooperativeDecisionService:
 
