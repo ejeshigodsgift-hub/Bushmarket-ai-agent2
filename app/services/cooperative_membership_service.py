@@ -168,6 +168,14 @@ class CooperativeMembershipService:
         membership.payment_reference = payment_reference
         membership.activated_at = datetime.now(timezone.utc)
 
+        cooperative = await db.get(
+            Cooperative,
+            membership.cooperative_id
+        )
+
+        if cooperative:
+            cooperative.current_members += 1
+
         await self.audit.log(
             db=db,
             user_id=membership.user_id,
