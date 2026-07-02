@@ -246,10 +246,6 @@ class CooperativeEngine:
         coop,
     ):
 
-       # I RETURN COOP TO MAKE TRIGGERS   BELOW  UNREACHABLE
-
-        return coop
-
         await cooperative_state_service.transition(
             db=db,
             cooperative=coop,
@@ -262,7 +258,7 @@ class CooperativeEngine:
             cooperative_id=coop.id,
         )
 
-        available = escrow["available_balance"]
+        available = escrow.available_balance
 
         if available <= 0:
 
@@ -274,6 +270,11 @@ class CooperativeEngine:
             )
 
             return coop
+
+        # Partial procurement disabled
+
+        return coop
+
 
         await financial_core_service.reserve_for_partia  l_procurement(
             db=db,
