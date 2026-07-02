@@ -38,6 +38,11 @@ class HoldService:
         reserved_ledger_account: str,
         available_ledger_account: str
     ):
+        # I DISABLED CODE WITH RETURN NONE
+
+        return None        
+
+
         await self._idempotent(db, reference)
 
         if amount <= 0:
@@ -85,6 +90,12 @@ class HoldService:
         reserved_ledger_account: str,
         available_ledger_account: str
     ):
+
+         # I DISABLED CODE WITH RETURN NONE
+
+        return None 
+
+
         """
         Same as hold but explicitly used for incremental reservation
         """
@@ -109,6 +120,13 @@ class HoldService:
         reserved_ledger_account: str,
         available_ledger_account: str
     ):
+
+         # I DISABLED CODE WITH RETURN NONE
+
+        return None 
+
+
+
         await self._idempotent(db, reference)
 
         if amount <= 0:
@@ -156,6 +174,11 @@ class HoldService:
         settlement_ledger_account: str,
         reserved_ledger_account: str
     ):
+
+         # I DISABLED CODE WITH RETURN NONE
+
+        return None 
+        
         await self._idempotent(db, reference)
 
         if amount <= 0:
@@ -213,6 +236,13 @@ class HoldService:
         settlement_ledger_account: str,
         reserved_ledger_account: str
     ):
+
+
+         # I DISABLED CODE WITH RETURN NONE
+
+        return None 
+
+
         return await self.release(
             db,
             escrow_id,
@@ -226,6 +256,11 @@ class HoldService:
     # INTERNAL HELPERS
     # =========================================================
     async def _idempotent(self, db, reference: str):
+
+        # I DISABLED CODE WITH RETURN NONE
+
+        return None  
+
         exists = await idempotency_service.exists(db=db, key=reference)
         if exists:
             raise HTTPException(409, "Duplicate operation")
@@ -243,6 +278,10 @@ class HoldService:
 
     async def _emit(self, db, topic: str, tx: EscrowTransaction):
         db.add(tx)
+
+         # I DISABLED CODE WITH RETURN NONE
+
+        return None 
 
         await outbox_service.queue_event(
             db=db,
