@@ -45,6 +45,23 @@ class CooperativeExtensionVoteService:
         if existing:
             raise ValueError("User already voted in this round")
 
+
+        membership = await db.get(
+            CooperativeMembership,
+            membership_id
+        )
+
+        if membership.expiry_decision_type:
+            raise ValueError(
+                "Member already voted in expiry decision"
+            )
+
+        membership.expiry_decision_type = "extension"
+        membership.expiry_decision_voted_at =   datetime.now(
+            timezone.utc
+        )
+
+
         # -------------------------------------
         # Create vote
         # -------------------------------------
