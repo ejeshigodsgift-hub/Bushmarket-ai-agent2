@@ -11,7 +11,9 @@ from app.db.models.platform_settings import PlatformSettings
 
 from app.services.audit_service import AuditService
 from app.services.outbox_service import outbox_service
-from app.integrations.financial_core import financial_core
+from app.services.payment_service import PaymentService
+
+payment_service = PaymentService()
 
 
 class CooperativeMembershipService:
@@ -96,12 +98,13 @@ class CooperativeMembershipService:
         # -----------------------------
         # CREATE PAYMENT INTENT
         # -----------------------------
-        payment_intent = await financial_core.create_payment_intent(
+        payment_intent = await payment_service.create_payment_intent(
             db=db,
             user_id=user_id,
-            amount=float(membership.contribution_amount),
+    amount=float(membership.contribution_amount),
             purpose="cooperative_membership",
-            reference=f"coop_mem_{membership.id}"
+    reference=f"coop_mem_{membership.id}",
+            cooperative_id=cooperative_id,
         )
 
         membership.payment_reference = payment_intent.id
@@ -158,10 +161,13 @@ class CooperativeMembershipService:
         # -----------------------------
         # STRICT PAYMENT ENFORCEMENT
         # -----------------------------
-        payment = await financial_core.verify_payment(payment_reference)
+        # Payment already verified by webhook
 
-        if not payment or  payment["status"] !=  PaymentStatus.SUCCESS:
-            raise HTTPException(402,   "Payment not completed")
+        if membership.payment_status !=  "paid":
+            raise HTTPException(
+               402,
+                "Payment not completed"
+            )
 
         membership.status = "active"
         membership.payment_status = "paid"
