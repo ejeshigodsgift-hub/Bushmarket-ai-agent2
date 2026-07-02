@@ -39,6 +39,10 @@ class CooperativeEngine:
         ip: str | None = None,
     ):
 
+        # I USED RETURN COOP TO MAKE CODE BELOW UNREASONABLE
+
+        return coop
+
         membership = (
             await cooperative_membership_service.create_pending_membership(
                 db=db,
@@ -89,6 +93,10 @@ class CooperativeEngine:
         payment_reference: str,
         user_id: str,
     ):
+
+        # I USED RETURN COOP TO MAKE CODE BELOW UNREASONABLE
+
+        return coop
 
         membership = (
             await cooperative_membership_service.activate_membership(
@@ -346,6 +354,10 @@ class CooperativeEngine:
         db: AsyncSession,
         payment_reference: str,
     ):
+
+        # I USED RETURN COOP TO MAKE CODE BELOW UNREASONABLE
+
+        return coop
 
         payment = await financial_core.verify_payment(
             payment_reference
