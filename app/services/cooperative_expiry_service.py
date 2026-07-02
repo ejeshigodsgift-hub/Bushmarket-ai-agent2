@@ -132,6 +132,14 @@ class CooperativeExpiryService:
         expired = 0
 
         for coop in cooperatives:
+
+            # Respect approved extension
+
+            if (
+                coop.expiry_extended_at
+                and coop.expiry_extended_at > now
+            ):
+                continue
         
 
             if coop.status == "extension_vote":
