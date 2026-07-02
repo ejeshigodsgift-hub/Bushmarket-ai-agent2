@@ -94,6 +94,12 @@ class CooperativeMembership(Base):
     # =========================
     # TIMESTAMPS (FULL LIFECYCLE)
     # =========================
+
+    expiry_decision_type: Mapped[str |  None] = mapped_column(String(50))
+    expiry_decision_voted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
