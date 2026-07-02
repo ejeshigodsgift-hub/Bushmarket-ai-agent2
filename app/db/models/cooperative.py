@@ -121,6 +121,13 @@ class Cooperative(Base):
 
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    
+
+    expiry_extended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
     # =========================
     # BUSINESS RULE FLAGS (ADMIN CONTROLLED / SOFT CODED)
     # =========================
