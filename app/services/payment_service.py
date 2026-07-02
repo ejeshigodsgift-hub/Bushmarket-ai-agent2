@@ -67,7 +67,7 @@ class PaymentService:
         db: AsyncSession,
         intent_id: str,
         gateway: str,
-        amount: float,
+        amount: Decimal,
         gateway_reference: str | None,
         status: str,
         failure_reason: str | None = None
