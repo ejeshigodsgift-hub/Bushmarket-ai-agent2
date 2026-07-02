@@ -29,6 +29,10 @@ class EscrowService:
         cooperative_id: str
     ):
 
+         # I DISABLED CODE WITH RETURN NONE
+
+        return None 
+
         result = await db.execute(
             select(EscrowAccount).where(
                 EscrowAccount.cooperative_id == cooperative_id
@@ -74,6 +78,10 @@ class EscrowService:
         reference: str,
         meta: dict | None = None
     ):
+
+          # I DISABLED CODE WITH RETURN NONE
+
+        return None       
 
         escrow = await db.get(EscrowAccount, escrow_account_id)
 
@@ -131,6 +139,10 @@ class EscrowService:
         reference: str
     ):
 
+         # I DISABLED CODE WITH RETURN NONE
+
+        return None 
+
         escrow = await db.get(EscrowAccount, escrow_account_id)
 
         if escrow.available_balance < amount:
@@ -172,6 +184,10 @@ class EscrowService:
         amount: float,
         reference: str
     ):
+
+         # I DISABLED CODE WITH RETURN NONE
+
+        return None 
 
         escrow = await db.get(EscrowAccount, escrow_account_id)
 
