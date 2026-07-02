@@ -50,6 +50,10 @@ class CooperativePartialVotingService:
 
         return proposal
 
+
+
+
+
     async def cast_vote(
         self,
         db: AsyncSession,
@@ -89,6 +93,23 @@ class CooperativePartialVotingService:
         if existing:
             raise ValueError("Already voted")
 
+
+        membership = await db.get(
+            CooperativeMembership,
+            member_id
+        )
+
+        if membership.expiry_decision_type:
+            raise ValueError(
+                "Member already voted in expiry decision"
+            )
+
+        membership.expiry_decision_type = "partial"
+        membership.expiry_decision_voted_at = datetime.now(
+            timezone.utc
+        )
+
+
         vote_record = CooperativePartialVote(
             id=f"v_{datetime.now(timezone.utc).timestamp()}",
             proposal_id=proposal_id,
@@ -104,6 +125,9 @@ class CooperativePartialVotingService:
             db=db,
             proposal=proposal,
         )
+
+
+
 
     async def evaluate_votes(
         self,
